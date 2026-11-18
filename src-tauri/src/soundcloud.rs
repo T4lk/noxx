@@ -493,9 +493,10 @@ impl SoundCloud {
                     continue;
                 }
             }
-            if status == 401 {
-                self.reject_token(&token);
-                return Err(msg("Your SoundCloud session expired. Reconnect to sync likes."));
+            // Never mark the whole session expired from here: write endpoints can refuse a
+            // like (rate limits, bot checks) while the login itself is fine. Reads decide that.
+            if status == 401 || status == 403 {
+                return Err(msg(format!("SoundCloud refused the like ({status}). Your login is unchanged; try again in a bit.")));
             }
             if (status == 429 || status >= 500) && attempt < RETRY_DELAYS_MS.len() {
                 tokio::time::sleep(Duration::from_millis(RETRY_DELAYS_MS[attempt])).await;
@@ -960,6 +961,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         println!("unlike {id}: {res:?}");
         res.expect("unlike request");
+    }
+
+    /// Is the saved session still accepted? Read-only /me call on a copy of the session.
+    #[tokio::test]
+    #[ignore]
+    async fn live_session_me() {
+        let src = std::env::var("RIFF_LIVE_SESSION_DIR").expect("RIFF_LIVE_SESSION_DIR");
+        let dir = std::env::temp_dir().join("riff-rs-live-me");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::copy(PathBuf::from(src).join("soundcloud-session.json"), dir.join("soundcloud-session.json")).unwrap();
+        let sc = SoundCloud::new(dir.clone());
+        let me = sc.api("/me", &[]).await;
+        let st = sc.status();
+        let _ = std::fs::remove_dir_all(&dir);
+        println!("me ok={} expired={} followers={:?}", me.is_ok(), st.expired, me.as_ref().ok().map(|v| v["followers_count"].clone()));
+        assert!(me.is_ok() && !st.expired, "token not accepted: {:?}", me.err());
     }
 
     /// A dead token must not break public requests; the session reads as expired.

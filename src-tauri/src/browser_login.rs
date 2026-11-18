@@ -58,6 +58,34 @@ t.textContent=ok?'You are signed in':'That did not work';m.textContent=ok?('Sign
     )
 }
 
+/// The cookie value as the browser hands it over: maybe URL-encoded, quoted, or
+/// prefixed with "OAuth ".
+fn clean_token(raw: &str) -> String {
+    let mut t = raw.trim().to_string();
+    if t.contains('%') {
+        if let Ok(d) = url::form_urlencoded::parse(format!("x={t}").as_bytes()).next().map(|(_, v)| v.into_owned()).ok_or(()) {
+            t = d;
+        }
+    }
+    let t = t.trim().trim_matches('"').trim();
+    let t = t.strip_prefix("OAuth ").unwrap_or(t).trim();
+    t.to_string()
+}
+
+/// Length and character classes of a value, for logs (never the value itself).
+fn shape(raw: &str) -> String {
+    let t = raw.trim();
+    let has = |f: fn(&char) -> bool| t.chars().any(|c| f(&c));
+    format!(
+        "{} chars, digits:{} letters:{} dashes:{} other:{}",
+        t.chars().count(),
+        has(|c| c.is_ascii_digit()),
+        has(|c| c.is_ascii_alphabetic()),
+        t.contains('-'),
+        has(|c| !c.is_ascii_alphanumeric() && *c != '-'),
+    )
+}
+
 fn respond(sock: &mut TcpStream, status: &str, ctype: &str, body: &str) {
     let _ = sock.write_all(
         format!(
@@ -130,10 +158,11 @@ pub fn run(app: AppHandle) -> Result<String, String> {
             ("GET", "/") => respond(&mut sock, "200 OK", "text/html", &index_html()),
             ("GET", "/cb") => respond(&mut sock, "200 OK", "text/html", &callback_html()),
             ("POST", "/token") => {
-                let token = body.trim().to_string();
-                let valid = !token.is_empty() && token.len() < 200 && token.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.');
-                if !valid {
-                    respond(&mut sock, "400 Bad Request", "text/plain", "That doesn't look like a SoundCloud login.");
+                let token = clean_token(&body);
+                if token.is_empty() || token.len() > 1024 || !token.bytes().all(|b| b.is_ascii_graphic()) {
+                    // Never log the token itself, only its shape.
+                    crate::features::about::line(&app, "warn", &format!("browser sign-in: rejected login value ({})", shape(&body)));
+                    respond(&mut sock, "400 Bad Request", "text/plain", "That doesn't look like a SoundCloud login. Make sure you're signed in on soundcloud.com, then click the bookmark again.");
                     continue;
                 }
                 let sc = app.state::<crate::AppState>().sc.clone();
@@ -154,6 +183,16 @@ pub fn run(app: AppHandle) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn token_cleanup() {
+        let t = "2-312345-123456789-AbCdEfGhIjKlMn";
+        assert_eq!(super::clean_token(t), t);
+        assert_eq!(super::clean_token(&format!("\"{t}\"")), t);
+        assert_eq!(super::clean_token(&format!("OAuth {t}")), t);
+        assert_eq!(super::clean_token("2-312345-123%2D456"), "2-312345-123-456");
+        assert!(!super::shape(t).contains("Ab"));
+    }
+
     #[test]
     fn bookmarklet_targets_loopback_only() {
         let b = super::bookmarklet();
