@@ -62,3 +62,7 @@ Tests: `cargo test` runs offline. `cargo test -- --ignored --nocapture` runs aga
 - Inspired by riff.
 - [hls.js](https://github.com/video-dev/hls.js) (MIT) for HLS playback.
 - [UnifrakturCook](https://fonts.google.com/specimen/UnifrakturCook) (SIL OFL) for the wordmark.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Bundled hls.js is MIT and the UnifrakturCook font is SIL OFL 1.1 (see `ui/vendor/`).
