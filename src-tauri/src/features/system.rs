@@ -61,6 +61,9 @@ fn read_settings(dir: &Path) -> Settings {
 /// Settings read before the Tauri builder exists (single-instance has to be
 /// decided there). Same folder as `app_data_dir()` on Windows.
 pub fn early_settings() -> Settings {
+    if let Some(dir) = crate::portable_dir() {
+        return read_settings(&dir);
+    }
     std::env::var_os("APPDATA")
         .map(|d| read_settings(&PathBuf::from(d).join(IDENTIFIER)))
         .unwrap_or_default()
@@ -204,7 +207,13 @@ fn dir_size(p: &Path) -> u64 {
 }
 
 fn web_cache_dirs(app: &AppHandle) -> Vec<PathBuf> {
-    let Ok(local) = app.path().app_local_data_dir() else { return vec![] };
+    let local = match crate::portable_dir() {
+        Some(d) => d.join("webview"),
+        None => match app.path().app_local_data_dir() {
+            Ok(d) => d,
+            Err(_) => return vec![],
+        },
+    };
     let d = local.join("EBWebView").join("Default");
     ["Cache", "Code Cache", "GPUCache", "Service Worker/CacheStorage", "Service Worker/ScriptCache"]
         .iter()

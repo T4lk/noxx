@@ -1,5 +1,6 @@
 pub(crate) mod library;
 pub(crate) mod soundcloud;
+mod browser_login;
 mod features;
 
 use std::path::PathBuf;
@@ -43,6 +44,16 @@ async fn sc_use_token(app: AppHandle, state: State<'_, AppState>, token: String)
     let status = state.sc.login_with_token(&token).await?;
     after_login(&app);
     Ok(status)
+}
+
+/// Sign in through the default browser (see browser_login.rs). Resolves once the
+/// browser hands the login over, or errors after 10 minutes.
+#[tauri::command]
+async fn sc_login_browser(app: AppHandle) -> Result<Status, String> {
+    let a = app.clone();
+    tauri::async_runtime::spawn_blocking(move || browser_login::run(a)).await.map_err(|e| e.to_string())??;
+    after_login(&app);
+    Ok(app.state::<AppState>().sc.status())
 }
 
 #[tauri::command]
@@ -222,8 +233,29 @@ fn get_library(state: State<'_, AppState>) -> LibraryData {
 }
 
 #[tauri::command]
-fn toggle_favorite(state: State<'_, AppState>, track: Track) -> bool {
-    state.lib.lock().unwrap().toggle_favorite(track)
+async fn toggle_favorite(app: AppHandle, state: State<'_, AppState>, track: Track) -> Res<bool> {
+    let id = track.id.clone();
+    let from_sc = track.source.is_empty() || track.source == "soundcloud";
+    let on = state.lib.lock().unwrap().toggle_favorite(track);
+    // Hearts on SoundCloud tracks are mirrored to the account (like / unlike) when signed in.
+    if from_sc && state.sc.is_logged_in() && id.bytes().all(|b| b.is_ascii_digit()) {
+        let sc = state.sc.clone();
+        tauri::async_runtime::spawn(async move {
+            let res = sc.set_like(&id, on).await;
+            let st = app.state::<AppState>();
+            match res {
+                Ok(()) => {
+                    st.lib.lock().unwrap().mark_synced_like(&id, on);
+                    let _ = app.emit("library-changed", ());
+                }
+                Err(e) => {
+                    let what = if on { "like" } else { "unlike" };
+                    let _ = app.emit("sc-like-error", format!("Couldn't {what} it on SoundCloud: {e}"));
+                }
+            }
+        });
+    }
+    Ok(on)
 }
 
 #[tauri::command]
@@ -276,7 +308,21 @@ async fn feature(app: AppHandle, name: String, args: Option<serde_json::Value>) 
 
 // ------------------------------------------------------------------
 
+/// Portable mode: a file named `portable` next to the exe keeps every bit of app data
+/// (library, login, settings, WebView profile) in a `data` folder beside it.
+pub(crate) fn portable_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    dir.join("portable").is_file().then(|| dir.join("data"))
+}
+
 pub fn run() {
+    if let Some(dir) = portable_dir() {
+        let web = dir.join("webview");
+        let _ = std::fs::create_dir_all(&web);
+        // WebView2 reads this before Tauri's own data folder.
+        std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &web);
+    }
     let mut builder = tauri::Builder::default();
     // Settings → Advanced → Allow multiple instances (off: a second launch focuses this window).
     // RIFF_SELFTEST runs alongside a normal copy, so it skips the check.
@@ -288,7 +334,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
+            let data_dir = match portable_dir() {
+                Some(d) => d,
+                None => app.path().app_data_dir()?,
+            };
             std::fs::create_dir_all(&data_dir)?;
             let sc = Arc::new(SoundCloud::new(data_dir.clone()));
             let handle = app.handle().clone();
@@ -318,6 +367,7 @@ pub fn run() {
             sc_status,
             sc_login,
             sc_use_token,
+            sc_login_browser,
             sc_logout,
             search,
             trending,

@@ -60,7 +60,8 @@
     <h1>noxx</h1>
     <p>A fast desktop music player for SoundCloud, YouTube and YouTube Music. Written in Rust.</p>
     <div class="btns">
-      <a class="btn primary" id="dl" href="https://github.com/T4lk/noxx/releases/latest">Download for Windows</a>
+      <a class="btn primary" id="dl" href="https://github.com/T4lk/noxx/releases/latest">Download installer</a>
+      <a class="btn" id="dl-portable" href="https://github.com/T4lk/noxx/releases/latest">Portable (.zip)</a>
       <a class="btn" href="https://github.com/T4lk/noxx">View source</a>
     </div>
     <div class="small" id="ver">Windows 10 / 11 · free</div>
@@ -102,6 +103,8 @@
       if (!rel) return;
       const exe = (rel.assets || []).find((a) => /setup\.exe$/i.test(a.name));
       if (exe) document.getElementById('dl').href = exe.browser_download_url;
+      const zip = (rel.assets || []).find((a) => /portable\.zip$/i.test(a.name));
+      if (zip) document.getElementById('dl-portable').href = zip.browser_download_url;
       document.getElementById('ver').textContent = `${rel.tag_name} · Windows 10 / 11 · free`;
     })
     .catch(() => {});

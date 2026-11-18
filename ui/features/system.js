@@ -32,6 +32,8 @@
   R.audio.addEventListener('play', () => { lastPlayState = performance.now(); });
   R.audio.addEventListener('pause', () => { lastPlayState = performance.now(); });
   R.on('trackchange', () => { lastTrackChange = performance.now(); });
+  // Hearts are mirrored to SoundCloud likes in the background; say so when that fails.
+  R.listen('sc-like-error', (e) => R.toast(String(e.payload || "Couldn't update the like on SoundCloud")));
   R.listen('media-key', (e) => {
     const k = e.payload;
     const now = performance.now();

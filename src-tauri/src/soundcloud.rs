@@ -450,6 +450,62 @@ impl SoundCloud {
         }
     }
 
+    /// Likes (`on`) or unlikes a track on the signed-in account:
+    /// PUT / DELETE `/users/{me}/track_likes/{id}`. Unliking something that isn't liked
+    /// (404) counts as done.
+    pub async fn set_like(&self, track_id: &str, on: bool) -> Result<()> {
+        let uid = self.user_id()?;
+        let token = self.token().ok_or(ScError::NotLoggedIn)?;
+        if track_id.is_empty() || !track_id.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(msg("Not a SoundCloud track"));
+        }
+        let endpoint = format!("/users/{uid}/track_likes/{track_id}");
+        let mut client_id = self.client_id(false).await?;
+        let mut refreshed = false;
+        let mut attempt = 0usize;
+        loop {
+            let url = Self::build_url(&endpoint, &[], &client_id)?;
+            let req = if on { self.http.put(url) } else { self.http.delete(url) };
+            let res = req
+                .header(ACCEPT, "application/json")
+                .header(AUTHORIZATION, format!("OAuth {token}"))
+                .header(REFERER, format!("{WEB_BASE}/"))
+                .send()
+                .await;
+            let res = match res {
+                Ok(r) => r,
+                Err(e) if attempt < RETRY_DELAYS_MS.len() => {
+                    tokio::time::sleep(Duration::from_millis(RETRY_DELAYS_MS[attempt])).await;
+                    attempt += 1;
+                    let _ = e;
+                    continue;
+                }
+                Err(e) => return Err(msg(format!("SoundCloud request failed: {e}"))),
+            };
+            let status = res.status().as_u16();
+            if res.status().is_success() || (!on && status == 404) {
+                return Ok(());
+            }
+            if (status == 401 || status == 403) && !refreshed {
+                refreshed = true;
+                if let Ok(id) = self.client_id(true).await {
+                    client_id = id;
+                    continue;
+                }
+            }
+            if status == 401 {
+                self.reject_token(&token);
+                return Err(msg("Your SoundCloud session expired. Reconnect to sync likes."));
+            }
+            if (status == 429 || status >= 500) && attempt < RETRY_DELAYS_MS.len() {
+                tokio::time::sleep(Duration::from_millis(RETRY_DELAYS_MS[attempt])).await;
+                attempt += 1;
+                continue;
+            }
+            return Err(ScError::Status(status));
+        }
+    }
+
     // ---------------- hydration ----------------
 
     /// Replaces `{id, kind}` stubs with full track objects, keeping order.
@@ -885,6 +941,25 @@ mod tests {
         let unique: std::collections::HashSet<_> = likes.iter().map(|t| &t.id).collect();
         assert_eq!(unique.len(), likes.len(), "duplicate tracks across pages");
         assert!(likes.iter().all(|t| t.title != "untitled" && t.duration > 0));
+    }
+
+    /// Uses the real signed-in session (copied, read only) to unlike a track that is not
+    /// liked: checks auth and the endpoint without changing the account.
+    /// RIFF_LIVE_SESSION_DIR = folder holding soundcloud-session.json, RIFF_LIVE_TRACK = an unliked track id.
+    #[tokio::test]
+    #[ignore]
+    async fn live_unlike_noop() {
+        let src = std::env::var("RIFF_LIVE_SESSION_DIR").expect("RIFF_LIVE_SESSION_DIR");
+        let id = std::env::var("RIFF_LIVE_TRACK").expect("RIFF_LIVE_TRACK");
+        let dir = std::env::temp_dir().join("riff-rs-live-like");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::copy(PathBuf::from(src).join("soundcloud-session.json"), dir.join("soundcloud-session.json")).unwrap();
+        let sc = SoundCloud::new(dir.clone());
+        assert!(sc.is_logged_in(), "no session");
+        let res = sc.set_like(&id, false).await;
+        let _ = std::fs::remove_dir_all(&dir);
+        println!("unlike {id}: {res:?}");
+        res.expect("unlike request");
     }
 
     /// A dead token must not break public requests; the session reads as expired.

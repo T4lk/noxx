@@ -31,8 +31,14 @@ It uses about **230 MB** of memory in total, where the Electron version used abo
 
 ## Install
 
-Grab `noxx_x.y.z_x64-setup.exe` from the [latest release](https://github.com/T4lk/noxx/releases/latest) and run it.
-It needs Windows 10 or 11 with the WebView2 runtime, which Windows 11 already has.
+Get either one from the [latest release](https://github.com/T4lk/noxx/releases/latest):
+
+- **Installer:** `noxx_x.y.z_x64-setup.exe` installs noxx and adds Start menu and desktop shortcuts.
+- **Portable:** `noxx_x.y.z_x64-portable.zip` needs no install. Unzip it anywhere (even a USB stick) and run `noxx.exe`. Your library, login and settings stay in the `data` folder next to it. To use the normal `%APPDATA%` location instead, delete the `portable` file.
+
+Both need Windows 10 or 11 with the WebView2 runtime, which Windows 11 already has.
+
+Every push to `main` is built by GitHub Actions; the builds are under the run's artifacts. Pushing a `v*` tag publishes a release.
 
 ## Build from source
 
@@ -41,7 +47,7 @@ You need [Rust](https://rustup.rs) and Node.js (only for the Tauri CLI).
 ```sh
 cd src-tauri
 cargo run --release                          # run it
-npx @tauri-apps/cli@^2 build --bundles nsis  # build the installer
+powershell -File ../scripts/package.ps1      # installer + portable zip into dist/
 ```
 
 Tests: `cargo test` runs offline. `cargo test -- --ignored --nocapture` runs against the real services.

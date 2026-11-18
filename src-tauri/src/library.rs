@@ -72,6 +72,17 @@ impl Library {
         now_fav
     }
 
+    /// After a heart was pushed to SoundCloud: track whether the id now counts as a synced like,
+    /// so a later unlike on soundcloud.com removes it here too.
+    pub fn mark_synced_like(&mut self, id: &str, liked: bool) {
+        let ids = &mut self.data.synced_like_ids;
+        ids.retain(|x| x != id);
+        if liked {
+            ids.insert(0, id.to_string());
+        }
+        self.save();
+    }
+
     /// Mirror SoundCloud likes into favorites:
     /// liked tracks first in SoundCloud's order (newest like on top), then
     /// favorites that never came from SoundCloud. Tracks that came from an

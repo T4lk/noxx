@@ -1,8 +1,8 @@
 [package]
-name = "riff-rs"
-version = "0.1.0"
+name = "noxx"
+version = "0.1.1"
 edition = "2021"
-description = "Fast desktop music player for SoundCloud"
+description = "noxx: fast desktop music player for SoundCloud, YouTube and YouTube Music"
 license = "MIT"
 
 [lib]

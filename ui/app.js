@@ -540,8 +540,10 @@ $('#account-pill').onclick = () => {
 function connectDialog(force) {
   const m = openModal(`<h3>${force ? 'Reconnect' : 'Connect'} SoundCloud</h3>
     <p>A SoundCloud window opens. Sign in there and it closes by itself. Your likes and playlists show up right after.</p>
+    <p class="muted">Or use your own browser: a page opens with one bookmark button that hands your SoundCloud login to noxx.</p>
     <div class="row-btns">
       <button class="btn outline" data-k="token">Paste token</button>
+      <button class="btn outline" data-k="browser">Use my browser</button>
       <button class="btn outline" data-k="cancel">Cancel</button>
       <button class="btn primary" data-k="open">Open sign-in</button>
     </div>`);
@@ -551,6 +553,17 @@ function connectDialog(force) {
     toast('Waiting for SoundCloud sign-in…');
     try {
       const status = await invoke('sc_login', { force });
+      onStatus(status);
+      toast(`Connected as ${displayName(status.username)}`);
+    } catch (e) {
+      toast(errText(e), 'error');
+    }
+  };
+  m.querySelector('[data-k=browser]').onclick = async () => {
+    closeModal();
+    toast('Finish signing in in your browser…');
+    try {
+      const status = await invoke('sc_login_browser');
       onStatus(status);
       toast(`Connected as ${displayName(status.username)}`);
     } catch (e) {
@@ -879,11 +892,31 @@ function toolList(ctx, tracks, opts = {}, container = view) {
 }
 
 function renderLikes() {
-  const favs = state.library.favorites;
+  // Two kinds of likes: SoundCloud likes (synced with the signed-in account; hearting a
+  // SoundCloud track while signed in likes it there too) and noxx likes (kept only in noxx:
+  // YouTube tracks, or anything hearted while signed out). Signing in is optional.
+  const all = state.library.favorites;
+  const scIds = new Set(state.library.syncedLikeIds || []);
+  const scCount = all.filter((t) => scIds.has(t.id)).length;
+  const showTabs = state.status.loggedIn || scCount > 0;
+  const src = showTabs ? (load('likes.src', 'all') || 'all') : 'all';
+  const favs = src === 'sc' ? all.filter((t) => scIds.has(t.id)) : src === 'local' ? all.filter((t) => !scIds.has(t.id)) : all;
+  const tabs = showTabs
+    ? `<div class="likes-src" role="tablist">${[['all', 'All', all.length], ['sc', 'SoundCloud', scCount], ['local', 'noxx', all.length - scCount]]
+      .map(([k, label, n]) => `<button role="tab" class="likes-src-btn${src === k ? ' on' : ''}" data-src="${k}" aria-selected="${src === k}">${label}<span>${n}</span></button>`).join('')}</div>`
+    : '';
+  const note = state.status.loggedIn
+    ? ` · synced with SoundCloud <button class="sync-mini" data-a="sync" title="Sync likes now" aria-label="Sync likes now">${ICON.sync}</button>`
+    : ' · saved in noxx';
   const head = add(`<div class="head-row"><div><div class="page-title">Likes</div>
-    <div class="page-sub">${plural(favs.length, 'track')} saved · ${totalTime(favs)}${state.status.loggedIn ? ` · synced with SoundCloud <button class="sync-mini" data-a="sync" title="Sync likes now" aria-label="Sync likes now">${ICON.sync}</button>` : ''}</div></div>
+    <div class="page-sub">${plural(favs.length, 'track')} · ${totalTime(favs)}${note}</div>${tabs}</div>
     <div class="actions">${listActions()}</div></div>`);
+  head.querySelectorAll('[data-src]').forEach((b) => { b.onclick = () => { store('likes.src', b.dataset.src); render(true); }; });
   wireActions(head, favs, { sync: () => syncLikes(true) });
+  if (!favs.length && all.length) {
+    emptyMsg(src === 'sc' ? 'No SoundCloud likes yet. Heart a SoundCloud track while signed in.' : 'No noxx-only likes. Hearts on YouTube tracks, or on anything while signed out, land here.');
+    return;
+  }
   if (!favs.length) {
     if (state.status.loggedIn) emptyMsg('No likes yet. Syncing with SoundCloud…');
     else emptyMsg('No liked tracks yet. Click the heart on any song, or connect SoundCloud.', 'Connect SoundCloud', () => connectDialog(false));

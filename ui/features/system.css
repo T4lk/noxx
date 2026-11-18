@@ -22,3 +22,10 @@
 .sys-cache-row input { accent-color: var(--primary); width: 16px; height: 16px; margin: 0; }
 .sys-cache-row span:nth-child(2) { flex: 1; }
 .sys-cache-size { color: var(--on-variant); font-variant-numeric: tabular-nums; }
+
+/* Likes page: All / SoundCloud / noxx */
+.likes-src { display: inline-flex; gap: 4px; margin-top: 10px; padding: 3px; border-radius: 999px; background: var(--container-high); }
+.likes-src-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--on-variant); font: inherit; font-size: calc(13px * var(--fs, 1)); font-weight: 500; cursor: pointer; }
+.likes-src-btn span { font-size: .85em; opacity: .7; }
+.likes-src-btn:hover { color: var(--on-surface); }
+.likes-src-btn.on { background: var(--container-highest); color: var(--on-surface); }
