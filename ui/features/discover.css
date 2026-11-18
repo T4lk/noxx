@@ -1,0 +1,151 @@
+/* Discover: My Wave carousel, For you mixes, artist hero card, song radio pill (riff look, grey theme). */
+
+.dc-count { margin-left: auto; font-size: calc(12px * var(--fs)); font-weight: 400; color: var(--on-variant); }
+.dc-label {
+  font-size: calc(11px * var(--fs)); font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--outline); margin: 18px 0 8px;
+}
+.dc-back { background: var(--container-high); position: relative; z-index: 2; }
+.dc-backrow { margin-bottom: 16px; }
+
+/* ---------- horizontal rows ---------- */
+.dc-row { display: flex; gap: 16px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; scroll-behavior: smooth; }
+.dc-row::-webkit-scrollbar { display: none; }
+
+.dc-mix { flex: none; width: 150px; cursor: pointer; min-width: 0; }
+.dc-mix.loading { opacity: .5; pointer-events: none; }
+.dc-mix-art {
+  position: relative; width: 150px; height: 150px; border-radius: var(--r-l); margin-bottom: 8px;
+  background: var(--container-high) center/cover; display: grid; place-items: center; color: var(--on-variant);
+  transition: transform 160ms var(--ease);
+}
+.dc-mix:hover .dc-mix-art { transform: scale(1.03); }
+.dc-mix-art > svg { width: 36px; height: 36px; }
+.dc-mix .a { font-weight: 500; font-size: calc(13px * var(--fs)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-mix .b { color: var(--on-variant); font-size: calc(11px * var(--fs)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-featured { margin-bottom: 4px; }
+.dc-featured .tile.loading { opacity: .5; pointer-events: none; }
+.dc-connect .actions { flex: none; }
+
+/* round play button that appears on hover (riff's my-wave-track-play-overlay) */
+.dc-play {
+  position: absolute; right: 10px; bottom: 10px; width: 42px; height: 42px; border-radius: 50%;
+  background: var(--primary); color: var(--on-primary); display: grid; place-items: center;
+  opacity: 0; transform: scale(.85); transition: opacity 200ms, transform 200ms var(--ease);
+  box-shadow: 0 4px 12px #0006;
+}
+.dc-play svg { width: 18px; height: 18px; }
+.dc-mix:hover .dc-play, .dc-wave-card.focus:hover .dc-play { opacity: 1; transform: scale(1); }
+
+/* ---------- your artists ---------- */
+.dc-artist { flex: none; width: 112px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 0; border-radius: var(--r-l); }
+.dc-artist:hover { background: var(--container); }
+.dc-artist-av {
+  width: 92px; height: 92px; border-radius: 50%; background: var(--container-high) center/cover;
+  display: grid; place-items: center; color: var(--on-variant); transition: transform 160ms var(--ease);
+}
+.dc-artist:hover .dc-artist-av { transform: scale(1.04); }
+.dc-artist span { max-width: 100%; padding: 0 6px; font-size: calc(12px * var(--fs)); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- My Wave (riff's coverflow carousel) ---------- */
+.dc-wave {
+  --card: clamp(170px, 26vh, 290px);
+  position: relative; overflow: hidden; border-radius: var(--r-xl); background: var(--container);
+  padding: 20px 0 18px; margin-bottom: 8px;
+}
+.dc-wave.loading .dc-wave-row { opacity: .4; pointer-events: none; }
+.dc-wave-ambient {
+  position: absolute; inset: -40px; background: center/cover no-repeat; opacity: .35;
+  filter: blur(60px) saturate(1.3) brightness(.6); transform: scale(1.2);
+  transition: background-image 200ms, opacity 200ms; pointer-events: none;
+}
+.dc-wave-head { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 22px; }
+.dc-wave-head .actions { align-items: center; }
+.dc-wave-head .pill-btn { background: var(--container-high); }
+.dc-wave-label { font-size: calc(18px * var(--fs)); font-weight: 700; }
+.dc-wave-sub { color: var(--on-variant); font-size: calc(12px * var(--fs)); margin-top: 2px; }
+.dc-wave-row {
+  position: relative; z-index: 1; display: flex; gap: 24px; align-items: center; overflow-x: auto; overflow-y: hidden;
+  padding: 16px calc(50% - var(--card) / 2); scrollbar-width: none; transition: opacity 200ms;
+  min-height: calc(var(--card) + 32px);
+}
+.dc-wave-row::-webkit-scrollbar { display: none; }
+.dc-wave-card {
+  position: relative; flex: none; width: var(--card); height: var(--card); border-radius: 28px; cursor: pointer;
+  transition: transform 200ms var(--ease), opacity 200ms, filter 200ms; will-change: transform, opacity;
+}
+.dc-wave-cover {
+  width: 100%; height: 100%; border-radius: 28px; background: var(--container-highest) center/cover;
+  display: grid; place-items: center; color: var(--on-variant); box-shadow: 0 16px 40px #0007;
+}
+.dc-wave-cover svg { width: 48px; height: 48px; }
+.dc-wave-card.near { transform: scale(.72); filter: blur(4px); opacity: .6; }
+.dc-wave-card.far { transform: scale(.5); opacity: 0; pointer-events: none; }
+.dc-wave-card.dc-skel { background: var(--container-high); }
+.dc-wave-meta { position: relative; z-index: 1; text-align: center; padding: 0 24px; min-height: 42px; }
+.dc-wave-title { font-size: calc(16px * var(--fs)); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-wave-artist { color: var(--on-variant); font-size: calc(12.5px * var(--fs)); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-wave-msg { margin: auto; display: flex; align-items: center; gap: 12px; color: var(--on-variant); }
+
+/* skeleton shimmer */
+.dc-skel { position: relative; overflow: hidden; background: var(--container-high); }
+.dc-skel::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, #ffffff14, transparent); animation: dc-shimmer 1.4s infinite;
+}
+@keyframes dc-shimmer { to { transform: translateX(100%); } }
+.dc-skel-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.dc-skel-tile { height: 64px; border-radius: var(--r-l); }
+
+/* ---------- artist hero card ---------- */
+.dc-ahero { position: relative; overflow: hidden; border-radius: var(--r-xl); padding: 28px 32px 32px; margin-bottom: 8px; background: var(--container); }
+.dc-ahero-bg {
+  position: absolute; inset: 0; background: var(--container-high) center/cover no-repeat;
+  filter: blur(70px) saturate(1.5) brightness(.5); transform: scale(1.3); transform-origin: center top;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
+  transition: background-image 200ms;
+}
+.dc-ahero.has-banner .dc-ahero-bg { filter: blur(18px) saturate(1.2) brightness(.45); transform: scale(1.1); }
+.dc-ahero .dc-back { margin-bottom: 22px; }
+.dc-ahero-body { position: relative; z-index: 1; display: flex; align-items: center; gap: 36px; }
+.dc-avatar {
+  position: relative; overflow: hidden; flex: none; width: clamp(150px, 16vw, 220px); height: clamp(150px, 16vw, 220px);
+  border-radius: 28px; background: linear-gradient(135deg, var(--container-highest), var(--container)) center/cover;
+  display: grid; place-items: center; color: var(--primary); box-shadow: 0 14px 40px #0008;
+}
+.dc-avatar > svg { width: 44px; height: 44px; opacity: .8; }
+.dc-avatar.loading::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, #ffffff14, transparent); animation: dc-shimmer 1.5s infinite;
+}
+.dc-ameta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.dc-verified {
+  display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 3px 10px; border-radius: 9999px;
+  background: var(--container-highest); color: var(--primary); font-size: calc(11px * var(--fs)); font-weight: 500;
+}
+.dc-verified svg { width: 14px; height: 14px; }
+.dc-aname { margin: 0; font-size: clamp(1.8rem, 3.2vw, 3rem); font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
+.dc-astats { color: var(--on-variant); font-size: calc(12.5px * var(--fs)); }
+.dc-abio {
+  margin: 0; max-width: 640px; color: var(--on-variant); font-size: calc(12.5px * var(--fs)); line-height: 1.5;
+  white-space: pre-line; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; user-select: text;
+}
+.dc-aactions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.dc-aactions[hidden] { display: none; }
+.dc-bigplay {
+  width: 56px; height: 56px; border-radius: 50%; background: var(--primary); color: var(--on-primary);
+  display: grid; place-items: center; box-shadow: 0 4px 12px #0004; transition: transform 150ms var(--ease);
+}
+.dc-bigplay:hover { transform: scale(1.05); }
+.dc-bigplay:active { transform: scale(.96); }
+.dc-bigplay svg { width: 26px; height: 26px; margin-left: 2px; }
+@media (max-width: 760px) { .dc-ahero-body { flex-direction: column; align-items: flex-start; gap: 20px; } }
+
+/* ---------- song radio ---------- */
+.dc-radio-pill.on { background: var(--primary) !important; color: var(--on-primary); }
+.dc-radio-pill.loading { opacity: .5; pointer-events: none; }
+.dc-queue-note { padding: 18px 16px 24px; color: var(--on-variant); font-size: calc(12.5px * var(--fs)); text-align: center; }
+
+.dc-artist-link { cursor: pointer; }
+.dc-artist-link:hover { text-decoration: underline; color: var(--on-surface); }

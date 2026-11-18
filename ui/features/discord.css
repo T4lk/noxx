@@ -1,0 +1,8 @@
+/* Discord Rich Presence settings card (riff: Settings > Integrations) */
+.dc-card .dc-logo { width: 22px; height: 22px; flex: none; color: #5865F2; }
+.dc-status { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dc-status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--outline); transition: background .2s ease; }
+.dc-dot.on { background: #3ba55d; }
+
+/* the on/off switch is the core .switch component (style.css) */

@@ -1,0 +1,35 @@
+/* localfiles: riff's "My files" view */
+.lf-head .btn svg { width: 16px; height: 16px; }
+
+/* riff's .view-search-box */
+.view-search-box.lf-search {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--container); border-radius: 9999px;
+  padding: 8px 16px; margin-bottom: 16px;
+  transition: background 150ms var(--ease);
+}
+.lf-search:focus-within { background: var(--container-highest); }
+.lf-search svg { width: 16px; height: 16px; color: var(--outline); flex-shrink: 0; }
+.lf-search .view-search-input {
+  flex: 1; min-width: 0; background: transparent; border: 0; outline: 0;
+  color: var(--on-surface); font-size: calc(13px * var(--fs)); user-select: text;
+}
+.lf-search .view-search-input::placeholder { color: var(--outline); }
+
+.lf-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.lf-empty .btn { margin-top: 0; }
+
+/* folders modal */
+.lf-roots { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; margin: 0 -6px; }
+.lf-root {
+  display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px;
+  border-radius: var(--r-m); background: var(--container-high); color: var(--on-variant);
+}
+.lf-root > svg { width: 16px; height: 16px; flex: none; }
+.lf-root-path {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--on-surface); font-size: calc(12.5px * var(--fs)); user-select: text;
+}
+.lf-root .pill-btn { background: var(--container-highest); flex: none; }
+.lf-roots-empty { color: var(--outline); padding: 10px 12px; font-size: calc(12.5px * var(--fs)); }
+.modal .row-btns .btn svg { width: 16px; height: 16px; }

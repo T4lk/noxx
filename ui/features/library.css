@@ -1,0 +1,48 @@
+/* library feature: list toolbar, History view, "Jump back in" strip */
+
+.lib-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; width: 100%; }
+
+/* riff's .view-search-box */
+.lib-search {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+  background: var(--container); border-radius: 9999px; padding: 8px 16px; cursor: text;
+  transition: background 150ms var(--ease);
+}
+.lib-search:focus-within { background: var(--container-highest); }
+.lib-search svg { width: 16px; height: 16px; flex: none; color: var(--outline); }
+.lib-search-input {
+  flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; user-select: text;
+  color: var(--on-surface); font-size: calc(13px * var(--fs));
+}
+.lib-search-input::placeholder { color: var(--outline); }
+
+.lib-count { color: var(--outline); font-size: calc(12px * var(--fs)); white-space: nowrap; }
+.lib-count:empty { display: none; }
+
+/* riff's .pill-select */
+.lib-sort {
+  background: var(--container-highest); border: 0; outline: 0; color: var(--on-surface);
+  padding: 8px 12px; border-radius: var(--r-m); font: inherit; font-size: calc(13px * var(--fs)); cursor: pointer;
+}
+.lib-sort option { background: var(--container-high); color: var(--on-surface); }
+
+/* History tabs */
+.lib-tabs { display: flex; gap: 8px; margin: -4px 0 16px; }
+.lib-chip {
+  height: 32px; padding: 0 16px; border-radius: 9999px; font-weight: 500; font-size: calc(12px * var(--fs));
+  background: var(--container-high); color: var(--on-variant); transition: background 150ms var(--ease), color 150ms var(--ease);
+}
+.lib-chip:hover { background: var(--container-highest); color: var(--on-surface); }
+.lib-chip.on { background: var(--primary); color: var(--on-primary); }
+
+/* Home: "Jump back in" */
+.lib-jump-title .lib-more {
+  margin-left: auto; font-size: calc(12px * var(--fs)); font-weight: 500; color: var(--on-variant);
+  padding: 4px 10px; border-radius: 9999px;
+}
+.lib-jump-title .lib-more:hover { background: var(--container); color: var(--on-surface); }
+.lib-jump {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 150px; gap: 18px;
+  overflow-x: auto; overflow-y: hidden; padding: 8px; margin: -8px -8px 0; scrollbar-width: thin;
+}
+.lib-jump .card { margin: 0; }

@@ -1,0 +1,15 @@
+/* youtube feature styles: riff's "Required tools" prompt + settings card */
+.yt-tools .yt-tool-row { background: var(--container-high); border-radius: var(--r-m); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+.yt-tools .yt-tool-head { display: flex; align-items: center; gap: 10px; }
+.yt-tools .yt-tool-name { font-weight: 600; font-size: calc(14px * var(--fs)); color: var(--on-surface); }
+.yt-tools .yt-pct { font-size: calc(12px * var(--fs)); color: var(--outline); flex: 1; }
+.yt-tools .yt-tool-icon { width: 18px; height: 18px; display: grid; place-items: center; color: var(--on-variant); }
+.yt-tools .yt-tool-icon svg { width: 16px; height: 16px; }
+.yt-tools .yt-tool-icon.ok { color: var(--primary); }
+.yt-tools .yt-tool-icon.bad { color: var(--error, #ffb4ab); }
+.yt-tools .yt-tool-icon.busy { border: 2px solid var(--container-highest); border-top-color: var(--primary); border-radius: 50%; animation: yt-spin 0.8s linear infinite; }
+.yt-tools .yt-bar { height: 4px; border-radius: 2px; background: var(--container-highest); overflow: hidden; }
+.yt-tools .yt-bar i { display: block; height: 100%; width: 0; background: var(--primary); border-radius: 2px; transition: width 200ms; }
+.yt-tools .yt-err { margin-top: 10px; color: var(--error, #ffb4ab); font-size: calc(12px * var(--fs)); background: rgba(255, 84, 73, 0.1); border-radius: 8px; padding: 8px 12px; word-break: break-word; }
+.yt-set > svg { width: 28px; height: 28px; flex: none; color: var(--on-variant); }
+@keyframes yt-spin { to { transform: rotate(360deg); } }

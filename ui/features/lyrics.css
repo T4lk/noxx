@@ -1,0 +1,198 @@
+/* lyrics feature styles: right-panel lyrics mode + TV karaoke (riff look, grey theme) */
+
+/* ---------- right panel: riff's header pill of round icon buttons, centred over the banner ---------- */
+.ly-bar {
+  align-self: center; display: flex; align-items: center; gap: 8px; padding: 4px 12px; margin: -8px 0;
+  border-radius: 9999px; background: rgba(0, 0, 0, .2);
+}
+.ly-tabs, .ly-actions { display: contents; }
+.ly-tab, .lyrics-action-btn {
+  position: relative; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: rgba(255, 255, 255, .12); color: var(--on-surface);
+  transition: background 150ms var(--ease), color 150ms var(--ease), transform 150ms ease;
+}
+.th-light .ly-bar { background: rgba(255, 255, 255, .35); }
+.th-light .ly-tab, .th-light .lyrics-action-btn { background: rgba(0, 0, 0, .08); }
+.ly-tab svg, .lyrics-action-btn svg { width: 18px; height: 18px; }
+.ly-tab:hover, .lyrics-action-btn:hover { background: var(--primary); color: var(--on-primary); }
+.ly-tab.active { background: var(--primary); color: var(--on-primary); }
+.ly-tab:active, .lyrics-action-btn:active { transform: scale(.92); }
+.lyrics-action-btn:disabled { opacity: .35; pointer-events: none; }
+.lyrics-mode-btn {
+  height: 26px; padding: 0 10px; border-radius: 9999px; font-size: calc(11px * var(--fs)); font-weight: 500;
+  background: color-mix(in srgb, var(--container-highest) 55%, transparent); color: var(--on-variant); opacity: .7;
+  transition: opacity 200ms ease, background 200ms ease;
+}
+.lyrics-mode-btn:hover { opacity: 1; color: var(--on-surface); }
+
+/* ---------- right panel: riff's layout (cover, title, then lyrics or up next below) ---------- */
+.ly-section { display: none; min-height: 0; }
+.ly-empty-msg {
+  display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--outline);
+  font-size: calc(12px * var(--fs)); padding: 0;
+}
+.ly-empty-msg svg { width: 16px; height: 16px; }
+.ly-empty-msg.loading span { animation: ly-pulse 1.2s ease-in-out infinite; }
+@keyframes ly-pulse { 50% { opacity: .45; } }
+.ly-status {
+  align-self: center; font-size: calc(10px * var(--fs)); color: var(--outline);
+  background: var(--container); padding: 2px 8px; border-radius: 9999px; margin-top: 6px;
+}
+
+.right-panel.ly-none .ly-section { display: block; }
+.right-panel.ly-none .ly-list, .right-panel.ly-none .ly-status { display: none; }
+.right-panel.ly-none .rp-next { display: none; }
+.right-panel.ly-on .rp-next { display: none; }
+.right-panel.ly-on .ly-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; margin: -12px -12px -12px; animation: ly-in 200ms var(--ease); }
+.right-panel.ly-on .ly-empty-msg { display: none; }
+@keyframes ly-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* ---------- lyric lines ---------- */
+.lyrics-container {
+  position: relative; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; min-height: 0;
+  padding: 12px 8px; scrollbar-width: none; scroll-behavior: auto;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
+}
+.lyrics-container::-webkit-scrollbar { display: none; }
+.lyrics-container.plain { -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 88%, transparent 100%); mask-image: linear-gradient(to bottom, #000 0, #000 88%, transparent 100%); }
+
+.lyric-line {
+  font-size: calc(18px * var(--fs)); font-weight: 600; line-height: 1.45; color: var(--on-surface);
+  padding: 8px 12px; border-radius: var(--r-m); width: 100%; overflow-wrap: anywhere; white-space: normal;
+  transform-origin: left center; user-select: text;
+  transition: opacity var(--lyric-duration, 200ms) var(--lyric-ease, cubic-bezier(0.65, 0, 0.35, 1)),
+    transform var(--lyric-duration, 200ms) var(--lyric-ease, cubic-bezier(0.65, 0, 0.35, 1));
+}
+.synced .lyric-line {
+  cursor: pointer; user-select: none;
+  /* riff also blurs distant lines; opacity alone is far cheaper with software compositing */
+  opacity: max(.22, calc(1 - var(--dist, 0) * .22));
+}
+.synced .lyric-line:hover { opacity: 1; background: color-mix(in srgb, var(--on-surface) 5%, transparent); }
+.synced .lyric-line.active { opacity: 1; transform: scale(1.04); }
+.lyric-line.gap { font-size: calc(14px * var(--fs)); letter-spacing: 2px; color: var(--outline); }
+.lyrics-container.plain .lyric-line { font-size: calc(15px * var(--fs)); font-weight: 500; padding: 2px 12px; color: var(--on-variant); }
+.ly-break { height: 14px; flex: none; }
+
+/* sweep ("Word" mode): the active line fills left to right as it is sung */
+.sweep .lyric-line .lyric-fill {
+  --k: 0;
+  background-image: linear-gradient(var(--lyric-sweep, 90deg),
+    var(--on-surface) calc(var(--k) * (100% + var(--lyric-fw, 2%)) - var(--lyric-fw, 2%)),
+    color-mix(in srgb, var(--on-surface) 38%, transparent) calc(var(--k) * (100% + var(--lyric-fw, 2%))));
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+  -webkit-box-decoration-break: slice; box-decoration-break: slice; padding-block: .14em;
+}
+
+.lyric-line.rtl { direction: rtl; text-align: right; transform-origin: right center; }
+.lyric-line.rtl .lyric-fill { --lyric-sweep: 270deg; }
+
+/* Word mode, "Words" style: the sung word is lit in the accent colour */
+.lyric-word { display: inline-block; margin-right: 4px; padding-block: .1em; transition: color .15s ease; }
+.lyric-line.rtl .lyric-word { margin-right: 0; margin-left: 4px; }
+.lyric-word.past-word { color: var(--on-surface); }
+.lyric-word.active-word { color: var(--primary); font-weight: 600; }
+
+/* translation under each line */
+.lyric-translation { font-size: .85em; font-weight: 500; opacity: .7; margin-top: 4px; -webkit-text-fill-color: currentColor; }
+.lyrics-container.plain .lyric-translation { margin-top: 1px; }
+.tvk-list .lyric-translation { color: #ffffffb3; }
+.lyrics-action-btn[data-a=tr].active { background: var(--primary); color: var(--on-primary); }
+.lyrics-action-btn[data-a=tr].busy svg { animation: ly-pulse 1s ease-in-out infinite; }
+
+/* ---------- playbar toggle ---------- */
+.pill-btn.ly-pb.on { background: var(--primary) !important; color: var(--on-primary); }
+
+/* ---------- settings: switches are the core .switch component (style.css), rows use themes.css ---------- */
+.ly-dd .th-dd-menu { display: flex; flex-direction: column; }
+.ly-dd-list { max-height: 280px; overflow-y: auto; scrollbar-width: thin; }
+.ly-dd-search { padding: 8px 10px 4px; flex: none; }
+.ly-dd-search input {
+  width: 100%; height: 34px; border: 0; outline: 0; border-radius: 9999px; padding: 0 14px;
+  background: var(--container-highest); color: var(--on-surface); font: inherit; font-size: calc(13px * var(--fs));
+}
+.ly-dd .th-dd-opt[hidden] { display: none; }
+
+/* ---------- custom lyrics editor ---------- */
+.modal.ly-modal { width: min(560px, 92vw); }
+.ly-ed-track { display: flex; flex-direction: column; gap: 2px; background: var(--container-high); border-radius: var(--r-m); padding: 10px 14px; margin-bottom: 12px; min-width: 0; }
+.ly-ed-track b, .ly-ed-track span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ly-ed-track span { color: var(--on-variant); font-size: calc(12px * var(--fs)); }
+.ly-editor textarea {
+  width: 100%; height: min(46vh, 380px); resize: vertical; background: var(--container-high); color: var(--on-surface);
+  border: 0; outline: 0; border-radius: var(--r-m); padding: 12px 14px; font: inherit; font-size: calc(13px * var(--fs));
+  line-height: 1.5; user-select: text;
+}
+.ly-editor textarea:focus { background: var(--container-highest); }
+
+/* ---------- TV karaoke ---------- */
+.tvk { position: fixed; inset: 0; z-index: 80; background: #000; display: flex; flex-direction: column; overflow: hidden; opacity: 0; transition: opacity 200ms var(--ease); }
+.tvk.show { opacity: 1; }
+.tvk-bg {
+  position: absolute; inset: 0; background: #111 center/cover no-repeat; filter: blur(40px) brightness(.55) saturate(1.1);
+  transform: scale(1.2); pointer-events: none; transition: background-image 200ms;
+}
+.tvk-bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(#0000008c, #000000bf); }
+.tvk-close {
+  position: absolute; top: 28px; right: 28px; z-index: 3; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; background: #ffffff26; border: 1px solid #ffffff33;
+  backdrop-filter: blur(12px); transition: opacity 200ms ease, background .2s ease, transform .2s ease;
+}
+.tvk-close:hover { background: #ffffff4d; transform: scale(1.05); }
+.tvk-layout {
+  position: relative; z-index: 2; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  gap: clamp(32px, 5vw, 72px); padding: 40px clamp(32px, 6vw, 96px);
+}
+.tvk-side { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 22px; flex: none; }
+.tvk-cover {
+  width: clamp(200px, 28vw, 420px); aspect-ratio: 1; border-radius: 28px; background: var(--container) center/cover;
+  box-shadow: 0 20px 60px #00000080; display: grid; place-items: center; color: var(--outline);
+}
+.tvk-cover svg { width: 48px; height: 48px; }
+.tvk-meta { display: flex; flex-direction: column; gap: 8px; max-width: clamp(200px, 28vw, 420px); text-shadow: 0 2px 10px #000c; transition: opacity 200ms ease; }
+.tvk-title { font-size: clamp(20px, 2.4vw, 30px); font-weight: 700; color: #fff; line-height: 1.25; overflow-wrap: anywhere; }
+.tvk-artist { font-size: clamp(14px, 1.6vw, 18px); color: #ffffffbf; }
+.tvk-msg { color: #ffffffa6; font-size: clamp(14px, 1.4vw, 17px); }
+.tvk-controls { display: flex; align-items: center; gap: 18px; transition: opacity 200ms ease; }
+.tvk-ctrl { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff; opacity: .85; }
+.tvk-ctrl:hover { opacity: 1; background: #ffffff1f; }
+.tvk-play { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #111; transition: transform .15s ease; }
+.tvk-play:hover { transform: scale(1.05); }
+.tvk-play svg { width: 26px; height: 26px; }
+.tvk-content { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; }
+.tvk-list { align-items: center; padding-inline: 24px; will-change: scroll-position; }
+.tvk-list .lyric-line {
+  font-size: clamp(1.8rem, 3.2vw, 2.8rem); font-weight: 700; line-height: 1.5; text-align: center; transform-origin: center;
+  max-width: 900px; margin: 6px 0; color: #fff; --on-surface: #fff;
+}
+.tvk-list.synced .lyric-line { filter: none; }
+.tvk-list.plain .lyric-line { font-size: clamp(1.2rem, 2vw, 1.7rem); color: #ffffffd9; }
+.tvk-list .lyric-line.rtl { transform-origin: center; }
+
+.tvk.tvk-idle { cursor: none; }
+.tvk.tvk-idle .tvk-close, .tvk.tvk-idle .tvk-controls { opacity: 0; pointer-events: none; }
+.tvk.tvk-idle .tvk-meta { opacity: .6; }
+
+.tvk.tvk-nolyrics .tvk-content { display: none; }
+
+/* TV karaoke visualizer (riff: 28 white bars along the bottom) */
+.tvk-visualizer {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: none; align-items: flex-end; justify-content: center;
+  height: clamp(52px, 8.5vh, 84px); pointer-events: none; opacity: var(--tvk-vis-opacity, .85); transition: opacity 200ms ease;
+}
+.tvk.tvk-viz .tvk-visualizer { display: flex; }
+.tvk-visualizer canvas { display: block; }
+.tvk.tvk-idle .tvk-visualizer { opacity: calc(var(--tvk-vis-opacity, .85) * .9); }
+
+@media (max-width: 900px) {
+  .tvk-layout { flex-direction: column; padding: 32px 24px; gap: 20px; }
+  .tvk.tvk-nolyrics .tvk-layout { justify-content: center; }
+  .tvk:not(.tvk-nolyrics) .tvk-cover { width: 120px; border-radius: 18px; }
+  .tvk:not(.tvk-nolyrics) .tvk-side { flex-direction: row; text-align: left; }
+  .tvk:not(.tvk-nolyrics) .tvk-controls { display: none; }
+  .tvk-content { width: 100%; }
+}
+/* riff: with no lyrics the cover and title sit centred in the panel */
+.right-panel.ly-none .rp-art-box { margin-top: auto; }
+.right-panel.ly-none .ly-section { margin-bottom: auto; }

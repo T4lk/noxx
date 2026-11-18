@@ -1,0 +1,370 @@
+/* themes: riff's Appearance / Theme settings look + token hooks for the core.
+   Colours come from CSS variables that themes.js sets on <html>. */
+
+/* ---------- global hooks ---------- */
+body { font-family: var(--th-font, "Google Sans", "Google Sans Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif); }
+
+/* Ambient glow follows the accent (core paints a fixed white glow). */
+.organic-bg {
+  background:
+    radial-gradient(520px 520px at 82% 78%, var(--th-glow, #ffffff0b), transparent 70%),
+    radial-gradient(420px 420px at 12% 4%, var(--th-glow, #ffffff08), transparent 70%);
+}
+.th-mesh-on .organic-bg { opacity: 0; }
+/* riff: while the blurred cover background shows, it replaces the ambient glow and the mesh. */
+.cover-bg-on .organic-bg, .cover-bg-on .th-mesh { display: none; }
+
+/* Mesh gradient: two fixed layers that crossfade (riff's bg-mesh-a/b). */
+.th-mesh {
+  position: fixed; inset: -40px; z-index: -1; pointer-events: none;
+  opacity: 0; transition: opacity 200ms var(--ease, cubic-bezier(.2, 0, 0, 1));
+  filter: blur(var(--mesh-blur, 0px));
+  animation: thMeshFloat var(--mesh-speed, 0s) ease-in-out infinite alternate;
+}
+@keyframes thMeshFloat {
+  0% { transform: scale(1) translate(0%, 0%); }
+  50% { transform: scale(1.06) translate(2%, 1.5%); }
+  100% { transform: scale(1.03) translate(-1.5%, 1%); }
+}
+@media (prefers-reduced-motion: reduce) { .th-mesh, .th-mesh-preview-bg { animation: none; } }
+
+/* Highlight buttons: accent-filled primary buttons with a readable label. */
+.th-highlight .btn.primary { background: var(--th-btn-bg, var(--primary)); color: var(--th-btn-fg, var(--on-primary)); }
+.th-highlight .btn.primary:hover { background: var(--th-btn-hover, var(--primary)); }
+html:not(.th-highlight) .btn.primary { background: var(--container-high); color: var(--on-variant); }
+html:not(.th-highlight) .btn.primary:hover { background: var(--container-highest); color: var(--on-surface); }
+
+/* Menus and dialogs stay opaque when Interface opacity is lowered. */
+.menu { background: var(--th-container-high-solid, var(--container-high)); }
+.modal { background: var(--th-container-solid, var(--container)); }
+
+/* Light mode fixes for core colours that assume a dark UI. */
+.th-light .toast.error { background: #f9dedc; color: #410e0b; }
+.th-light .modal-wrap { background: #0006; }
+.th-light .brand-rs { color: var(--on-variant); }
+
+/* ---------- settings groups (riff's m3-group + setting-item) ---------- */
+.th-group { display: flex; flex-direction: column; gap: 3px; margin-bottom: 12px; }
+.th-item {
+  background: var(--container); border-radius: 6px; padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 8px;
+  transition: background-color .18s ease, opacity .18s ease;
+}
+.th-item:hover { background: color-mix(in srgb, var(--on-surface) 4%, var(--container)); }
+.th-group > .th-item:first-child { border-top-left-radius: var(--r-l); border-top-right-radius: var(--r-l); }
+.th-group > .th-item:last-child { border-bottom-left-radius: var(--r-l); border-bottom-right-radius: var(--r-l); }
+.th-item.is-disabled { opacity: .45; pointer-events: none; }
+
+.th-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: calc(13px * var(--fs)); }
+.th-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.th-name { font-weight: 500; color: var(--on-surface); }
+.th-side { display: flex; align-items: center; gap: 8px; }
+.th-val { color: var(--on-variant); font-weight: 500; font-variant-numeric: tabular-nums; }
+.th-desc { font-size: calc(12px * var(--fs)); color: var(--outline); line-height: 1.35; }
+.th-hints { display: flex; justify-content: space-between; font-size: calc(11px * var(--fs)); color: var(--outline); }
+.th-mini {
+  padding: 2px 10px; border-radius: 28px; font-size: calc(12px * var(--fs)); color: var(--on-surface);
+  box-shadow: inset 0 0 0 1px var(--container-highest);
+  transition: background-color .18s ease, border-radius 200ms var(--ease);
+}
+.th-mini:hover { background: var(--container-high); border-radius: 12px; }
+
+/* segmented pill (riff's theme-mode-toggle) */
+.th-seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 9999px; background: var(--container-high); width: fit-content; max-width: 100%; }
+.th-seg-btn {
+  padding: 6px 16px; border-radius: 9999px; font-size: calc(12px * var(--fs)); font-weight: 500;
+  color: var(--on-variant); transition: background-color .18s ease, color .18s ease;
+}
+.th-seg-btn:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.th-seg-btn.active { background: var(--th-secondary-container, var(--container-highest)); color: var(--th-on-secondary-container, var(--on-surface)); font-weight: 700; }
+
+/* M3 expressive slider (riff's .sl): active bar, gap, 6px thumb, inactive bar */
+.th-sl { --v: .5; position: relative; width: 100%; height: 28px; }
+.th-sl-on, .th-sl-off { position: absolute; top: 6px; height: 16px; pointer-events: none; transition: background-color .2s ease; }
+.th-sl-on { left: 0; width: max(0px, calc((100% - 6px) * var(--v) + 3px - 8px)); background: var(--primary); border-radius: 8px 3px 3px 8px; }
+.th-sl-off { right: 0; width: max(0px, calc(100% - ((100% - 6px) * var(--v) + 3px) - 8px)); background: color-mix(in srgb, var(--on-surface) 16%, transparent); border-radius: 3px 8px 8px 3px; }
+.th-sl input[type="range"],
+.modal .th-sl input[type="range"] {
+  position: absolute; inset: 0; width: 100%; height: 28px; margin: 0; padding: 0;
+  background: transparent; border-radius: 0; -webkit-appearance: none; appearance: none; cursor: pointer; z-index: 2; outline: 0;
+}
+.th-sl input[type="range"]::-webkit-slider-runnable-track { height: 28px; background: transparent; }
+.th-sl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 6px; height: 28px; border-radius: 3px;
+  background: var(--primary); border: 0; transition: width .15s ease;
+}
+.th-sl input[type="range"]:active::-webkit-slider-thumb { width: 4px; }
+
+/* segmented hue track with a gap around the knob */
+.th-hue { --kx: calc((100% - 6px) * var(--v) + 3px); }
+.th-hue-track {
+  position: absolute; left: 0; right: 0; top: 6px; height: 16px; display: flex; gap: 4px; pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(var(--kx) - 11px), transparent calc(var(--kx) - 11px), transparent calc(var(--kx) + 11px), #000 calc(var(--kx) + 11px), #000 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(var(--kx) - 11px), transparent calc(var(--kx) - 11px), transparent calc(var(--kx) + 11px), #000 calc(var(--kx) + 11px), #000 100%);
+}
+.th-hue-track i { flex: 1; border-radius: 4px; }
+.th-hue-track i:first-child { border-radius: 8px 4px 4px 8px; }
+.th-hue-track i:last-child { border-radius: 4px 8px 8px 4px; }
+.th-hue input[type="range"]::-webkit-slider-thumb { background: var(--on-surface); }
+
+/* switches use the core .switch component (style.css) */
+
+/* accent swatches */
+.th-swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.th-swatch, .th-custom {
+  width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; position: relative;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: transform .2s var(--ease);
+}
+.th-swatch:hover, .th-custom:hover { transform: scale(1.08); }
+.th-swatch.active { outline: 3px solid var(--on-surface); outline-offset: 3px; }
+.th-custom { background: var(--container-highest); color: var(--on-surface); overflow: hidden; }
+.th-custom svg { width: 14px; height: 14px; pointer-events: none; }
+.th-custom input[type="color"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; padding: 0; border: 0; }
+
+/* palette style dropdown (riff's m3-dropdown) + preview dots */
+.th-dd { position: relative; width: 100%; }
+.th-dd-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  background: var(--container-highest); color: var(--on-surface); padding: 10px 14px; border-radius: var(--r-m);
+  font-size: calc(14px * var(--fs)); font-weight: 500; text-align: left;
+}
+.th-dd-trigger:hover { background: var(--container-high); }
+.th-dd-arrow { width: 18px; height: 18px; color: var(--on-variant); transition: transform 200ms var(--ease); }
+.th-dd.open .th-dd-arrow { transform: rotate(180deg); }
+.th-dd.open .th-dd-trigger { border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+.th-dd-menu {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 20; overflow: hidden;
+  background: var(--th-container-high-solid, var(--container-high)); border-radius: 6px 6px var(--r-m) var(--r-m);
+  box-shadow: 0 8px 24px #0007;
+  opacity: 0; transform: scaleY(.85) translateY(-8px); transform-origin: top center; pointer-events: none;
+  transition: opacity .15s ease, transform 200ms var(--ease);
+}
+.th-dd.open .th-dd-menu { opacity: 1; transform: none; pointer-events: auto; }
+.th-dd-opt {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 10px 16px;
+  color: var(--on-surface); font-size: calc(14px * var(--fs)); text-align: left;
+}
+.th-dd-opt:hover { background: var(--container-highest); }
+.th-dd-opt.selected { color: var(--primary); font-weight: 500; }
+.th-dd-opt.selected::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); flex: none; }
+.th-dots { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding: 4px 2px; min-height: 26px; }
+.th-dot { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--th-outline-variant, #3a3a3a); box-sizing: border-box; }
+
+/* mesh customizer dialog */
+.th-modal { display: flex; flex-direction: column; gap: 12px; }
+.th-modal h3 { margin: 0; }
+.th-modal .th-item { background: var(--th-container-high-solid, var(--container-high)); }
+.th-modal .th-group { margin: 0; }
+.th-mesh-preview {
+  position: relative; align-self: center; width: 100%; max-width: 320px; height: 170px; border-radius: var(--r-m);
+  overflow: hidden; background: var(--bg); box-shadow: inset 0 0 0 1px var(--th-outline-variant, #3a3a3a); touch-action: none;
+}
+.th-mesh-preview-bg { position: absolute; inset: -20px; pointer-events: none; filter: blur(var(--mesh-blur, 0px)); animation: thMeshFloat var(--mesh-speed, 0s) ease-in-out infinite alternate; }
+.th-mesh-dot {
+  position: absolute; z-index: 2; width: 24px; height: 24px; border-radius: 50%; transform: translate(-50%, -50%);
+  display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; cursor: grab;
+  border: 2px solid #fff; box-shadow: 0 2px 8px #0006; touch-action: none;
+}
+.th-mesh-dot:active { cursor: grabbing; }
+.th-mesh-dot[data-p="p1"] { background: var(--primary); color: var(--on-primary); }
+.th-mesh-dot[data-p="p2"] { background: var(--th-secondary, #b0c6ff); color: #111; }
+
+/* ======================================================================
+   Glasshouse (riff's "Glasshouse" custom theme by Talk; the default look):
+   black frosted glass, white type, no colour, Space Grotesk + JetBrains Mono.
+   Ported natively instead of loading riff's file. The frost is cheap: behind the
+   panels there is only the backdrop (a tiny pre-blurred cover canvas plus soft
+   gradients), which is already as smooth as a 28px blur of it would be, so
+   translucent panels give the same look without a backdrop-filter pass per frame.
+   Only short-lived popovers (menus, dialogs) blur what is behind them.
+   ====================================================================== */
+.th-glass {
+  --gh-ink: #0A0A0A;
+  --gh-grad: linear-gradient(160deg, #FFFFFF 0%, #D9D9D9 100%);
+  --gh-glass: rgba(8, 8, 8, .68);
+  --gh-glass-strong: rgba(8, 8, 8, .82);
+  --gh-edge: rgba(255, 255, 255, .08);
+  --gh-edge-hi: rgba(255, 255, 255, .14);
+  --gh-radius: 22px;
+  --gh-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+.th-glass .organic-bg { display: none; }
+
+/* aurora: three soft white glows drifting slowly. riff steps it at ~5 updates/s; here one step every
+   2s, because each step redraws the whole window and the drift is too slow to see the difference. */
+.th-aurora {
+  position: fixed; inset: -25%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(38% 42% at 22% 28%, rgba(255, 255, 255, .07), transparent 70%),
+    radial-gradient(34% 40% at 78% 22%, rgba(255, 255, 255, .05), transparent 70%),
+    radial-gradient(40% 45% at 60% 82%, rgba(255, 255, 255, .05), transparent 70%);
+  animation: gh-aurora 38s steps(19) infinite alternate;
+}
+@keyframes gh-aurora {
+  0% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  50% { transform: translate(4%, -3%) rotate(8deg) scale(1.08); }
+  100% { transform: translate(-3%, 4%) rotate(-6deg) scale(1.03); }
+}
+/* Film grain (Settings > Background, off by default). riff draws it at .05 with mix-blend-mode: overlay,
+   which on near-black panels changes pixels by well under 1%. Overlay would need a full-window blend pass
+   every frame, so this uses normal blending at the opacity that looks the same on dark surfaces. */
+.th-grain {
+  position: fixed; inset: 0; z-index: 2147483000; pointer-events: none;
+  opacity: .012; background-image: var(--th-grain-img); background-size: 160px 160px;
+}
+@media (prefers-reduced-motion: reduce) { .th-aurora { animation: none; } }
+
+/* glass panels */
+.th-glass :is(.rail, .main-content, .right-panel, .playbar, .search-box, .platform-switch) {
+  background: var(--gh-glass);
+  box-shadow: inset 0 0 0 1px var(--gh-edge), inset 0 1px 0 var(--gh-edge-hi), 0 24px 60px -24px rgba(0, 0, 0, .65);
+}
+.th-glass :is(.rail, .main-content, .right-panel) { border-radius: var(--gh-radius); }
+.th-glass .playbar {
+  position: relative; background: var(--gh-glass-strong); border-radius: 26px;
+  box-shadow: inset 0 0 0 1px var(--gh-edge), inset 0 1px 0 var(--gh-edge-hi), 0 0 0 1px rgba(0, 0, 0, .25),
+    0 30px 80px -20px rgba(0, 0, 0, .8), 0 0 60px -30px rgba(255, 255, 255, .5);
+}
+.th-glass .playbar::before {
+  content: ""; position: absolute; top: -1px; left: 12%; right: 12%; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .35), transparent);
+}
+.th-glass .search-box:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .45), inset 0 1px 0 var(--gh-edge-hi), 0 0 0 4px rgba(255, 255, 255, .10), 0 0 40px -10px rgba(255, 255, 255, .45);
+}
+.th-glass .platform-btn.active { background: rgba(255, 255, 255, .10); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 0 0 1px rgba(255, 255, 255, .25); }
+
+/* rail */
+.th-glass .nav-active-ind { background: rgba(255, 255, 255, .22); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35), 0 0 24px -4px rgba(255, 255, 255, .45); }
+.th-glass .nav-item.active .nav-ind { color: #fff; }
+.th-glass .nav-item.active svg { filter: drop-shadow(0 0 6px rgba(255, 255, 255, .6)); }
+.th-glass .nav-badge { background: var(--gh-grad); color: #0B0D12; font-family: var(--gh-mono); }
+
+/* play button, type */
+.th-glass .play-btn { background: #fff; color: var(--gh-ink); box-shadow: 0 6px 20px -6px rgba(0, 0, 0, .7); }
+.th-glass .play-btn:hover { background: #E6E6E6; }
+.th-glass .pb-title { font-weight: 600; letter-spacing: -.01em; }
+.th-glass :is(.time, .tr-dur, .tr-index) { font-family: var(--gh-mono); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.th-glass .rp-art { box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .08); }
+
+/* lists */
+.th-glass .track-row { border-radius: 14px; }
+.th-glass .track-row:hover { background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--gh-edge); }
+.th-glass .track-row.playing { background: linear-gradient(90deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .04) 60%, transparent); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); }
+.th-glass .track-row.playing .tr-index { color: #fff; }
+
+/* settings: translucent tiles instead of solid slabs */
+.th-glass :is(.th-item, .set-card, .th-seg) { background: rgba(255, 255, 255, .035); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), inset 0 1px 0 rgba(255, 255, 255, .07); }
+.th-glass :is(.th-item, .set-card):hover { background: rgba(255, 255, 255, .055); }
+.th-glass .th-dd-trigger { background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.th-glass .th-sl-on { background: var(--gh-grad); box-shadow: 0 0 16px -2px rgba(255, 255, 255, .55); }
+
+/* popovers: real glass, only while they are open */
+.th-glass :is(.menu, .modal, .th-dd-menu) {
+  background: rgba(16, 19, 27, .80); backdrop-filter: blur(36px) saturate(170%);
+  box-shadow: inset 0 0 0 1px var(--gh-edge), inset 0 1px 0 var(--gh-edge-hi), 0 40px 100px -30px rgba(0, 0, 0, .9);
+}
+.th-glass ::selection { background: rgba(255, 255, 255, .30); color: #fff; }
+.th-glass ::-webkit-scrollbar { width: 6px; height: 6px; }
+.th-glass ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .10); border-radius: 6px; }
+.th-glass ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .45); }
+
+/* ======================================================================
+   Custom themes (riff themes). themes.js mirrors every palette value into riff's
+   --md-sys-color-* names; a riff theme overrides those with !important and the
+   rules below feed them back into riff-rs's tokens. Riff's class names that
+   themes target are also present as aliases on the matching riff-rs elements
+   (.sidebar, .track-title, .btn-play-pause, .setting-item, .context-menu, ...).
+   ====================================================================== */
+:root { --ui-alpha: 100%; --text-alpha: 100%; --font-scale: var(--fs); }
+html.th-custom {
+  --bg: var(--md-sys-color-background) !important;
+  --surface: var(--md-sys-color-surface-container-low) !important;
+  --container: var(--md-sys-color-surface-container) !important;
+  --container-high: var(--md-sys-color-surface-container-high) !important;
+  --container-highest: var(--md-sys-color-surface-container-highest) !important;
+  --surface-bright: var(--md-sys-color-surface-bright) !important;
+  --on-surface: var(--md-sys-color-on-surface) !important;
+  --on-variant: var(--md-sys-color-on-surface-variant) !important;
+  --outline: var(--md-sys-color-outline) !important;
+  --outline-variant: var(--md-sys-color-outline-variant) !important;
+  --primary: var(--md-sys-color-primary) !important;
+  --on-primary: var(--md-sys-color-on-primary) !important;
+  --error: var(--md-sys-color-error) !important;
+  --nav-active: var(--md-sys-color-primary-container) !important;
+  --on-nav-active: var(--md-sys-color-on-primary-container) !important;
+  --th-secondary-container: var(--md-sys-color-secondary-container) !important;
+  --th-on-secondary-container: var(--md-sys-color-on-secondary-container) !important;
+  --th-btn-bg: var(--btn-primary-bg) !important;
+  --th-btn-fg: var(--btn-primary-fg) !important;
+  --th-btn-hover: var(--btn-primary-hover) !important;
+  --th-font: var(--font-family) !important;
+}
+#fx-root { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+
+/* Settings > Custom themes */
+.th-ct-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 26px 0 14px; }
+.th-ct-head .section-title { margin: 0 0 4px; }
+.th-ct-head .actions { flex: none; }
+.th-ct-card { display: flex; flex-direction: row !important; align-items: center; gap: 14px; }
+.th-ct-card .th-col { flex: 1; }
+.th-ct-empty { color: var(--on-variant); font-size: calc(12.5px * var(--fs)); }
+
+/* ---------- banner media + banner fit (riff's Banners tab) ---------- */
+/* themes.js puts an <img>/<video> into .art-banner hosts when a banner file is picked or the
+   fit is not Zoom; the core's cover-only canvas is hidden behind it. */
+.art-banner.th-has-bm > canvas { visibility: hidden; }
+.th-bm {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none;
+  object-fit: var(--banner-object-fit, cover); transform: var(--banner-scale, scale(1.06));
+  opacity: var(--banner-opacity, 1); filter: var(--th-bm-filter, none);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(var(--banner-fade-base, 38%) * .55), transparent var(--banner-fade-base, 38%));
+          mask-image: linear-gradient(to bottom, #000 0, #000 calc(var(--banner-fade-base, 38%) * .55), transparent var(--banner-fade-base, 38%));
+}
+.th-bm.th-bm-track { filter: var(--th-bm-filter-track, none); }
+.th-bm.th-bm-hero {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, rgba(0, 0, 0, .45) 55%, transparent 100%);
+          mask-image: linear-gradient(to bottom, #000 0, rgba(0, 0, 0, .45) 55%, transparent 100%);
+}
+
+/* ---------- background media (riff's #custom-bg) ---------- */
+.th-custom-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.th-custom-bg > img, .th-custom-bg > video {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  object-fit: cover; transform-origin: 0 0; display: block;
+}
+/* like riff, a background file replaces the ambient glow and the mesh */
+.th-custom-bg-on .organic-bg, .th-custom-bg-on .th-mesh, .th-custom-bg-on .th-aurora { display: none; }
+
+/* ---------- Clip effects to panels: off (riff's body.no-clip-fx) ---------- */
+.th-no-clip-fx .sidebar, .th-no-clip-fx .main-content { background: transparent !important; }
+.th-no-clip-fx .sidebar { background: color-mix(in srgb, var(--container) 55%, transparent) !important; }
+.th-no-clip-fx .hero.has-banner { overflow: visible; }
+.th-no-clip-fx .hero.has-banner > .art-banner { inset: -24px -24px auto; height: 70vh; border-radius: 0; }
+
+/* ---------- settings rows with buttons ---------- */
+.th-btns { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.th-btns .btn:disabled { opacity: .45; pointer-events: none; }
+
+/* ---------- CSS editor (riff's .css-editor, a textarea instead of monaco) ---------- */
+.th-css-editor {
+  position: fixed; left: 0; right: 0; bottom: 0; top: 40px; z-index: 9000;
+  display: flex; flex-direction: column;
+  background: var(--th-surface-solid, #121212);
+}
+.th-css-editor.hidden { display: none; }
+.th-css-bar {
+  display: flex; align-items: center; gap: 16px; height: 56px; padding: 0 16px; flex-shrink: 0;
+  background: var(--th-container-high-solid, #2b2b2b);
+}
+.th-css-title { font-weight: 700; font-size: calc(16px * var(--fs)); color: var(--on-surface); }
+.th-css-hint { flex: 1; opacity: .7; font-size: calc(12.5px * var(--fs)); color: var(--on-variant); }
+.th-css-actions { display: flex; gap: 8px; }
+.th-css-text {
+  flex: 1; min-height: 0; resize: none; border: 0; outline: none; margin: 0;
+  padding: 12px 16px; tab-size: 2; white-space: pre-wrap;
+  background: transparent; color: var(--on-surface); caret-color: var(--primary);
+  font: 14px/1.55 "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+.th-css-text::selection { background: color-mix(in srgb, var(--primary) 30%, transparent); }

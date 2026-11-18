@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>noxx</title>
+<meta name="description" content="noxx: a fast desktop music player for SoundCloud, YouTube and YouTube Music, written in Rust.">
+<meta property="og:title" content="noxx">
+<meta property="og:description" content="A fast desktop music player for SoundCloud, YouTube and YouTube Music, written in Rust.">
+<meta property="og:image" content="https://t4lk.github.io/noxx/screenshot.png">
+<link rel="icon" href="assets/favicon.png">
+<style>
+  @font-face { font-family: 'noxx-word'; src: url('assets/UnifrakturCook-Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+  :root { --bg: #070707; --panel: #111113; --line: #222226; --text: #ebebee; --muted: #8d8d94; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: inherit; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand img { width: 30px; height: 30px; }
+  .word { font-family: 'noxx-word', serif; font-weight: 700; letter-spacing: .02em; }
+  .brand .word { font-size: 28px; line-height: 1; }
+  nav .links a { color: var(--muted); text-decoration: none; margin-left: 22px; font-size: 15px; }
+  nav .links a:hover { color: var(--text); }
+  header.hero { text-align: center; padding: 64px 0 40px; }
+  .hero img.mark { width: 132px; height: 132px; filter: drop-shadow(0 0 40px rgba(255,255,255,.08)); }
+  .hero h1 { font-family: 'noxx-word', serif; font-weight: 700; font-size: clamp(64px, 12vw, 120px); line-height: 1; margin: 18px 0 10px; }
+  .hero p { color: var(--muted); font-size: 19px; max-width: 560px; margin: 0 auto 30px; }
+  .btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 999px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); }
+  .btn.primary { background: var(--text); color: #0b0b0b; border-color: var(--text); }
+  .btn:hover { opacity: .88; }
+  .small { color: var(--muted); font-size: 13px; margin-top: 12px; }
+  .shot { margin: 30px auto 0; border-radius: 16px; border: 1px solid var(--line); overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  .shot img { display: block; width: 100%; height: auto; }
+  section { padding: 72px 0 0; }
+  h2 { font-size: 28px; margin: 0 0 22px; font-weight: 650; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .stat b { display: block; font-size: 32px; }
+  .stat span { color: var(--muted); font-size: 14px; }
+  footer { color: var(--muted); font-size: 14px; padding: 72px 0 40px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  code { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="./"><img src="assets/noxx-mark.svg" alt=""><span class="word">noxx</span></a>
+    <div class="links"><a href="#features">Features</a><a href="https://github.com/T4lk/noxx">GitHub</a></div>
+  </nav>
+
+  <header class="hero">
+    <img class="mark" src="assets/noxx-mark.svg" alt="noxx logo">
+    <h1>noxx</h1>
+    <p>A fast desktop music player for SoundCloud, YouTube and YouTube Music. Written in Rust.</p>
+    <div class="btns">
+      <a class="btn primary" id="dl" href="https://github.com/T4lk/noxx/releases/latest">Download for Windows</a>
+      <a class="btn" href="https://github.com/T4lk/noxx">View source</a>
+    </div>
+    <div class="small" id="ver">Windows 10 / 11 · free</div>
+    <div class="shot"><img src="screenshot.png" alt="noxx playing music, with the likes list and the player bar"></div>
+  </header>
+
+  <section>
+    <div class="stats">
+      <div class="stat"><b>~230 MB</b><span>total memory, vs ~1.4 GB for the Electron version</span></div>
+      <div class="stat"><b>3 sources</b><span>SoundCloud, YouTube and YouTube Music in one search bar</span></div>
+      <div class="stat"><b>130+</b><span>languages for lyrics translation</span></div>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>Features</h2>
+    <div class="grid">
+      <div class="card"><h3>Your SoundCloud</h3><p>Likes and playlists sync on launch and every 30 minutes, in SoundCloud's order.</p></div>
+      <div class="card"><h3>Playlist imports</h3><p>Paste a Spotify, Apple Music, SoundCloud or YouTube link. Every track gets matched and saved.</p></div>
+      <div class="card"><h3>Lyrics and karaoke</h3><p>Synced lyrics, word highlighting, a full-screen karaoke mode and translation.</p></div>
+      <div class="card"><h3>Sound</h3><p>EQ, effects, tempo and pitch, presets, crossfade and a sleep timer.</p></div>
+      <div class="card"><h3>Make it yours</h3><p>Glasshouse theme, accent colours, custom themes, image or video backgrounds, a CSS editor.</p></div>
+      <div class="card"><h3>Discover</h3><p>Mixes, artist pages, radio from any song, and history.</p></div>
+      <div class="card"><h3>Offline and local</h3><p>Download tracks for offline play, or add your own music folders.</p></div>
+      <div class="card"><h3>Extras</h3><p>Discord Rich Presence, media keys, minimize to tray and JavaScript plugins.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span><span class="word" style="font-size:18px">noxx</span> · built with Rust and Tauri</span>
+    <span>Build it yourself: <code>cargo run --release</code></span>
+  </footer>
+</div>
+<script>
+  // Point the download button straight at the newest installer when the API answers.
+  fetch('https://api.github.com/repos/T4lk/noxx/releases/latest')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((rel) => {
+      if (!rel) return;
+      const exe = (rel.assets || []).find((a) => /setup\.exe$/i.test(a.name));
+      if (exe) document.getElementById('dl').href = exe.browser_download_url;
+      document.getElementById('ver').textContent = `${rel.tag_name} · Windows 10 / 11 · free`;
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

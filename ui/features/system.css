@@ -1,0 +1,24 @@
+/* Settings → Advanced / Storage / Plugins (features/system.js). Rows reuse themes.css .th-group/.th-item. */
+.sys-row .th-top { align-items: center; }
+.sys-row .th-col { flex: 1; }
+.sys-row .th-desc { word-break: break-all; }
+.sys-row .th-side { flex-shrink: 0; }
+.sys-btn { padding: 6px 14px; font-size: calc(12px * var(--fs, 1)); min-height: 0; }
+.sys-click { cursor: pointer; }
+
+.sys-plugins-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 8px 0 12px; }
+.sys-plugins-head .section-title { margin: 0 0 4px; }
+.sys-plugins-head .th-desc { max-width: 560px; line-height: 1.4; }
+.sys-warn { color: var(--error, #ff5449); font-weight: 500; }
+.sys-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.sys-cache { display: flex; flex-direction: column; gap: 10px; min-width: 340px; }
+.sys-cache h3 { margin: 0; }
+.sys-cache p { margin: 0 0 6px; color: var(--on-variant); font-size: calc(13px * var(--fs, 1)); line-height: 1.4; }
+.sys-cache-row {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px;
+  background: var(--container-high); cursor: pointer; font-size: calc(13px * var(--fs, 1));
+}
+.sys-cache-row input { accent-color: var(--primary); width: 16px; height: 16px; margin: 0; }
+.sys-cache-row span:nth-child(2) { flex: 1; }
+.sys-cache-size { color: var(--on-variant); font-variant-numeric: tabular-nums; }
