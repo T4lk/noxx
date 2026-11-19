@@ -7,6 +7,7 @@
 //!   set { key, value }                -> settings (applied live; multiInstance after restart)
 //!   cache_size                        -> { audio, web } in bytes
 //!   clear_cache { audio?, web? }       -> { audio, web } sizes after clearing (+ webError)
+//!   memory                            -> { total, app, web, processes } private working set, bytes
 //!   plugins_list                      -> [{ file, name, author, version, description, enabled, code }]
 //!   plugins_set { file, on }          -> null
 //!   plugins_disable_all               -> null
@@ -83,8 +84,25 @@ fn save(app: &AppHandle) {
 // ------------------------------------------------------------------ window / tray
 
 /// Brings the main window back from the tray / taskbar.
+/// WebView2's memory target: Low while noxx is hidden (tray) or minimized, so the renderer
+/// gives back caches; Normal again when it's shown. Playback keeps going either way.
+#[cfg(windows)]
+pub fn set_low_memory(w: &tauri::WebviewWindow, low: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::*;
+    use windows_core::Interface;
+    let _ = w.with_webview(move |pw| unsafe {
+        let level = if low { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW } else { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL };
+        if let Ok(wv) = pw.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_19>()) {
+            let _ = wv.SetMemoryUsageTargetLevel(level);
+        }
+    });
+}
+#[cfg(not(windows))]
+pub fn set_low_memory(_w: &tauri::WebviewWindow, _low: bool) {}
+
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
+        set_low_memory(&w, false);
         let _ = w.show();
         let _ = w.unminimize();
         let _ = AsRef::<tauri::Webview>::as_ref(&w).show();
@@ -177,6 +195,7 @@ pub fn setup(app: &AppHandle) {
                 if settings().tray_on_close && !QUITTING.load(Ordering::SeqCst) {
                     api.prevent_close();
                     let _ = win.hide();
+                    set_low_memory(&win, true);
                 }
             }
             // Minimized: tell WebView2 it isn't visible so it stops painting.
@@ -186,6 +205,7 @@ pub fn setup(app: &AppHandle) {
                 if hidden.swap(min, Ordering::SeqCst) != min {
                     let wv: &tauri::Webview = win.as_ref();
                     let _ = if min { wv.hide() } else { wv.show() };
+                    set_low_memory(&win, min);
                 }
             }
             _ => {}
@@ -313,6 +333,136 @@ async fn clear_cache(app: &AppHandle, args: &Value) -> super::Out {
     Ok(v)
 }
 
+// ------------------------------------------------------------------ memory
+
+/// Private working set (what Task Manager's Memory column shows) of noxx and
+/// every process under it. Task Manager files the WebView2 processes in their
+/// own "WebView2 Manager" group (WebView2Feedback#5628, tauri#15567), so this
+/// is the only place the whole number shows up.
+#[cfg(windows)]
+mod mem {
+    use std::collections::HashMap;
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    struct ProcessEntry32W {
+        size: u32,
+        usage: u32,
+        pid: u32,
+        heap_id: usize,
+        module_id: u32,
+        threads: u32,
+        parent: u32,
+        pri_base: i32,
+        flags: u32,
+        exe: [u16; 260],
+    }
+
+    /// PROCESS_MEMORY_COUNTERS_EX2.
+    #[repr(C)]
+    #[derive(Default)]
+    struct Counters {
+        cb: u32,
+        page_faults: u32,
+        peak_working_set: usize,
+        working_set: usize,
+        quota_peak_paged: usize,
+        quota_paged: usize,
+        quota_peak_nonpaged: usize,
+        quota_nonpaged: usize,
+        pagefile: usize,
+        peak_pagefile: usize,
+        private_usage: usize,
+        private_working_set: usize,
+        shared_commit: u64,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> *mut c_void;
+        fn Process32FirstW(snap: *mut c_void, e: *mut ProcessEntry32W) -> i32;
+        fn Process32NextW(snap: *mut c_void, e: *mut ProcessEntry32W) -> i32;
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+        fn CloseHandle(h: *mut c_void) -> i32;
+        fn K32GetProcessMemoryInfo(h: *mut c_void, c: *mut Counters, cb: u32) -> i32;
+    }
+
+    const TH32CS_SNAPPROCESS: u32 = 2;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const INVALID: *mut c_void = -1isize as *mut c_void;
+
+    /// (pid, exe) of this process and all its descendants.
+    fn tree() -> Vec<(u32, String)> {
+        let me = std::process::id();
+        let mut kids: HashMap<u32, Vec<(u32, String)>> = HashMap::new();
+        unsafe {
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if !snap.is_null() && snap != INVALID {
+                let mut e: ProcessEntry32W = std::mem::zeroed();
+                e.size = std::mem::size_of::<ProcessEntry32W>() as u32;
+                let mut ok = Process32FirstW(snap, &mut e);
+                while ok != 0 {
+                    let n = e.exe.iter().position(|&c| c == 0).unwrap_or(e.exe.len());
+                    // Idle/System list themselves as parents; skip those loops.
+                    if e.pid != e.parent && e.pid > 4 {
+                        kids.entry(e.parent).or_default().push((e.pid, String::from_utf16_lossy(&e.exe[..n])));
+                    }
+                    ok = Process32NextW(snap, &mut e);
+                }
+                CloseHandle(snap);
+            }
+        }
+        let mut out = vec![(me, "noxx.exe".to_string())];
+        let mut i = 0;
+        while i < out.len() && out.len() < 256 {
+            if let Some(k) = kids.remove(&out[i].0) {
+                out.extend(k);
+            }
+            i += 1;
+        }
+        out
+    }
+
+    fn private_ws(pid: u32) -> u64 {
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                return 0;
+            }
+            let mut c = Counters::default();
+            let full = std::mem::size_of::<Counters>() as u32;
+            c.cb = full;
+            let v = if K32GetProcessMemoryInfo(h, &mut c, full) != 0 {
+                c.private_working_set as u64
+            } else {
+                // Before Windows 10 1809 there's no private working set; use the plain one.
+                let base = (8 + 8 * std::mem::size_of::<usize>()) as u32; // PROCESS_MEMORY_COUNTERS
+                c = Counters { cb: base, ..Default::default() };
+                if K32GetProcessMemoryInfo(h, &mut c, base) != 0 { c.working_set as u64 } else { 0 }
+            };
+            CloseHandle(h);
+            v
+        }
+    }
+
+    pub fn usage() -> serde_json::Value {
+        let (mut app, mut web, mut n) = (0u64, 0u64, 0u32);
+        for (pid, exe) in tree() {
+            let b = private_ws(pid);
+            if exe.eq_ignore_ascii_case("msedgewebview2.exe") { web += b } else { app += b }
+            n += 1;
+        }
+        serde_json::json!({ "total": app + web, "app": app, "web": web, "processes": n })
+    }
+}
+
+#[cfg(not(windows))]
+mod mem {
+    pub fn usage() -> serde_json::Value {
+        serde_json::json!({ "total": 0, "app": 0, "web": 0, "processes": 0 })
+    }
+}
+
 // ------------------------------------------------------------------ plugins
 
 fn safe_name(n: &str) -> bool {
@@ -413,6 +563,7 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             Ok(json!(settings().clone()))
         }
         "cache_size" => Ok(cache_size(app).await),
+        "memory" => Ok(tauri::async_runtime::spawn_blocking(mem::usage).await.unwrap_or_default()),
         "clear_cache" => clear_cache(app, &args).await,
         "plugins_dir" => Ok(json!(plugins_dir(app).to_string_lossy())),
         "plugins_list" => {
@@ -480,6 +631,21 @@ mod tests {
         assert!(!safe_name("x.css"));
         let s: Settings = serde_json::from_str("{\"mediaKeys\":false}").unwrap();
         assert!(s.tray_on_close && !s.media_keys && !s.multi_instance);
+    }
+
+    #[test]
+    fn system_memory_counts_self() {
+        let m = mem::usage();
+        assert!(m["processes"].as_u64().unwrap() >= 1);
+        if cfg!(windows) {
+            assert!(m["total"].as_u64().unwrap() > 0);
+            // A child process is counted too.
+            let mut c = std::process::Command::new("cmd").args(["/c", "ping -n 5 127.0.0.1 >nul"]).spawn().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            let m2 = mem::usage();
+            let _ = c.kill();
+            assert!(m2["processes"].as_u64().unwrap() > m["processes"].as_u64().unwrap(), "{m2}");
+        }
     }
 
     #[test]

@@ -32,6 +32,40 @@
   R.audio.addEventListener('play', () => { lastPlayState = performance.now(); });
   R.audio.addEventListener('pause', () => { lastPlayState = performance.now(); });
   R.on('trackchange', () => { lastTrackChange = performance.now(); });
+  // ------------------------------------------------------------ SoundCloud → YouTube fallback
+
+  // A SoundCloud track with no playable stream (Go+ only, preview-only, encrypted, blocked)
+  // plays the same song from YouTube Music, then YouTube, matched by title, artist and length.
+  // Runs after the downloads / local files resolvers, so offline copies still win.
+  const invoke = window.__TAURI__.core.invoke;
+  const NO_STREAM = /no playable stream|go\+|subscription|preview|snippet|not available|geo|blocked|403|404/i;
+  const alts = new Map(); // SoundCloud id -> YouTube track | null (no match)
+  const isSc = (t) => !t.source || t.source === 'soundcloud';
+  async function resolveAlt(t, fresh) {
+    if (!t || !isSc(t) || !/^\d+$/.test(String(t.id))) return null;
+    let alt = alts.get(t.id);
+    if (alt === undefined) {
+      try { return await invoke('stream_url', { id: t.id, fresh }); } catch (e) {
+        const why = R.errText(e);
+        if (!NO_STREAM.test(why)) throw e;
+        try {
+          alt = await R.call('imports.alt', { title: t.title, artist: t.artist, duration: Math.round(t.duration || 0) });
+        } catch (e2) {
+          R.log('warn', `fallback search for ${t.id}: ${R.errText(e2)}`);
+          throw e;
+        }
+        alts.set(t.id, alt || null);
+        if (!alt) throw new Error(`${why} Not found on YouTube Music or YouTube either.`);
+        R.log('info', `fallback ${t.id} "${t.title}" -> ${alt.source} ${alt.id} "${alt.title}" / ${alt.artist}`);
+        R.toast('Not playable on SoundCloud, playing it from YouTube instead');
+      }
+    }
+    if (!alt) return null; // known miss: let the normal path show SoundCloud's error
+    const r = await R.call('youtube.resolve', { id: alt.id, fresh: !!fresh });
+    return { url: r.url, protocol: 'progressive', preset: `fallback/${alt.source}/${r.method}` };
+  }
+  R.addStreamResolver(resolveAlt);
+
   // Hearts are mirrored to SoundCloud likes in the background; say so when that fails.
   R.listen('sc-like-error', (e) => R.toast(String(e.payload || "Couldn't update the like on SoundCloud")));
   R.listen('media-key', (e) => {
@@ -165,6 +199,25 @@
       else if (a === 'dl-open') dl && dl.reveal('');
     });
   }, 'storage');
+
+  // ------------------------------------------------------------ About: memory
+
+  // Task Manager shows the WebView2 processes in their own "WebView2 Manager" group,
+  // so the noxx entry there looks tiny. This line adds noxx and all its processes up.
+  R.addSettings(() => {
+    const mb = (b) => `${Math.round(b / 1048576)} MB`;
+    const g = R.add(`<div class="th-group">${row('Memory', desc('Measuring…', ' data-sys-mem') + desc('', ' data-sys-mem-parts'))}</div>`);
+    const total = g.querySelector('[data-sys-mem]'), parts = g.querySelector('[data-sys-mem-parts]');
+    const tick = () => {
+      if (!g.isConnected) return;
+      R.call('system.memory').then((m) => {
+        total.textContent = mb(m.total);
+        parts.textContent = `App ${mb(m.app)} · WebView2 ${mb(m.web)} · ${m.processes} ${m.processes === 1 ? 'process' : 'processes'}`;
+      }).catch(() => { total.textContent = 'Unavailable'; });
+      setTimeout(tick, 2000);
+    };
+    tick();
+  }, 'about');
 
   // ------------------------------------------------------------ Plugins
 

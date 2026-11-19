@@ -150,6 +150,8 @@ fn order(prefer: &str) -> [Plat; 2] {
     match prefer {
         "youtube" => [Plat::Yt(Src::Youtube), Plat::Sc],
         "ytmusic" => [Plat::Yt(Src::Music), Plat::Sc],
+        // Stand-in for a SoundCloud track with no playable stream: never SoundCloud again.
+        "alt" => [Plat::Yt(Src::Music), Plat::Yt(Src::Youtube)],
         _ => [Plat::Sc, Plat::Yt(Src::Music)],
     }
 }
@@ -346,6 +348,17 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             Ok(json!(fetch(&sc, &dir, url).await?))
         }
         "run" => run(app, args).await,
+        // Same song on YouTube Music / YouTube, used when SoundCloud has no playable stream.
+        "alt" => {
+            let title = args["title"].as_str().unwrap_or("").to_string();
+            let artist = args["artist"].as_str().unwrap_or("").to_string();
+            let duration = args["duration"].as_u64().unwrap_or(0);
+            if title.trim().is_empty() {
+                return Ok(Value::Null);
+            }
+            let sc = state.sc.clone();
+            Ok(json!(match_one(&sc, "alt", &Item::new(title, artist, duration)).await?))
+        }
         "cancel" => {
             if let Some(c) = JOBS.lock().unwrap().get(args["job"].as_str().unwrap_or("")) {
                 c.store(true, Ordering::Relaxed);

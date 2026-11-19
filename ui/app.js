@@ -1868,7 +1868,7 @@ function attach(s, startAt) {
   if (s.protocol === 'hls') {
     if (!window.Hls || !Hls.isSupported()) { toast('HLS playback is not supported here', 'error'); setLoading(false); return; }
     // Small buffers: 30 s ahead, 10 s behind, at most 12 MB (audio only, so that's plenty).
-    hls = new Hls({ enableWorker: true, startPosition: startAt > 0 ? startAt : -1, maxBufferLength: 60 });
+    hls = new Hls({ enableWorker: true, startPosition: startAt > 0 ? startAt : -1, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 12 * 1000 * 1000, backBufferLength: 10 });
     hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) recover(); });
     hls.loadSource(s.url);
     hls.attachMedia(audio);

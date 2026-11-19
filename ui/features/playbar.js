@@ -7,7 +7,10 @@
 (() => {
   const R = window.riff;
 
-  const DEF = { barWave: true, vizOpacity: 85, vizSmooth: 70, vizSens: 100, wavyProgress: true, progressKnob: true, progressBg: true, crossfade: 0 };
+  // The bottom-bar bars are off by default (they added little); Settings → Interface turns them on.
+  const DEF = { barWave: false, vizOpacity: 85, vizSmooth: 70, vizSens: 100, wavyProgress: true, progressKnob: true, progressBg: true, crossfade: 0 };
+  // One-time: switch it off for anyone who had the old default.
+  if (R.load('barWave.offByDefault', false) !== true) { R.store('barWave', false); R.store('barWave.offByDefault', true); }
   const P = {};
   for (const [k, v] of Object.entries(DEF)) {
     const got = R.load(k, v);
@@ -181,7 +184,9 @@
         log(`playbar visualizer ${ok(drawn && lit > 0 && box.offsetParent !== null)}: ${lit} lit px on ${cv.width}x${cv.height}`);
       } else log('playbar visualizer: skipped (nothing playing)');
       set('barWave', false); applyBarWave();
-      log(`playbar visualizer off ${ok(box.style.display === 'none' && !/\+viz$/.test(R.fx?.routing || ''))}: routing=${R.fx?.routing}`);
+      // Other visualizers (the now playing glow) may still hold the tap: only the bar's own hold must be gone.
+      const others = R.analyserHolders ? R.analyserHolders().filter((k) => k !== 'bar') : [];
+      log(`playbar visualizer off ${ok(box.style.display === 'none' && !(R.analyserHolders ? R.analyserHolders() : []).includes('bar') && (others.length > 0 || !/\+viz$/.test(R.fx?.routing || '')))}: routing=${R.fx?.routing} other holders=${others.join(',') || 'none'}`);
 
       // 3. progress bar prefs -> body classes
       set('wavyProgress', false); set('progressKnob', false); set('progressBg', false); applyProgress();

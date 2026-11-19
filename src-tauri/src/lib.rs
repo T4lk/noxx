@@ -316,7 +316,25 @@ pub(crate) fn portable_dir() -> Option<PathBuf> {
     dir.join("portable").is_file().then(|| dir.join("data"))
 }
 
+/// Startup trace in `<data>/logs/startup.log`, written straight to disk (the normal log needs
+/// AppState, which doesn't exist yet). If a launch ever stalls, the last line shows where.
+fn boot_log(step: &str) {
+    use std::io::Write;
+    let dir = portable_dir().or_else(|| std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("dev.riffrs.player")));
+    let Some(dir) = dir.map(|d| d.join("logs")) else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("startup.log");
+    if std::fs::metadata(&path).map(|m| m.len() > 256 * 1024).unwrap_or(false) {
+        let _ = std::fs::remove_file(&path);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let _ = writeln!(f, "{t} pid {} {step}", std::process::id());
+    }
+}
+
 pub fn run() {
+    boot_log(&format!("start {}", std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()));
     if let Some(dir) = portable_dir() {
         let web = dir.join("webview");
         let _ = std::fs::create_dir_all(&web);
@@ -329,16 +347,25 @@ pub fn run() {
     if !features::system::early_settings().multi_instance && std::env::var_os("RIFF_SELFTEST").is_none() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| features::system::show_main(app)));
     }
+    boot_log("plugins: single-instance checked");
     builder
         .plugin(features::system::shortcut_plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            boot_log("setup: begin");
             let data_dir = match portable_dir() {
                 Some(d) => d,
                 None => app.path().app_data_dir()?,
             };
             std::fs::create_dir_all(&data_dir)?;
+            {
+                let f = |n: &str| match std::fs::read(data_dir.join(n)) {
+                    Ok(b) => format!("{n} {} bytes", b.len()),
+                    Err(e) => format!("{n} unreadable ({e})"),
+                };
+                boot_log(&format!("setup: data dir {} | {} | {}", data_dir.display(), f("soundcloud-session.json"), f("library.json")));
+            }
             let sc = Arc::new(SoundCloud::new(data_dir.clone()));
             let handle = app.handle().clone();
             sc.set_on_expired(move || {
@@ -351,6 +378,7 @@ pub fn run() {
                 sync_lock: tokio::sync::Mutex::new(()),
                 data_dir,
             });
+            boot_log(&format!("setup: state ready (signed in: {})", app.state::<AppState>().sc.is_logged_in()));
 
             // Likes sync on launch, then every 30 minutes.
             let handle = app.handle().clone();
@@ -361,6 +389,7 @@ pub fn run() {
                 }
             });
             features::setup(app.handle());
+            boot_log("setup: features ready");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -29,6 +29,13 @@ It uses about **230 MB** of memory in total, where the Electron version used abo
 - **Looks:** the Glasshouse theme by default, accent colours, Material You palettes, custom themes, banner and background images or videos, a CSS editor.
 - **Also:** Discover (mixes, artist pages, radio), history, downloads for offline play, local files, Discord Rich Presence, media keys, minimize to tray, and plugins.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshot-home.png" width="420" alt="noxx home with trending tracks">
+  <img src="docs/screenshot-settings.png" width="420" alt="noxx settings, theme tab">
+</p>
+
 ## Install
 
 Get either one from the [latest release](https://github.com/T4lk/noxx/releases/latest):

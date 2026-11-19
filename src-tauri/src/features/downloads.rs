@@ -33,7 +33,7 @@ use url::Url;
 
 use crate::soundcloud::{write_json, Track, USER_AGENT};
 
-const PARALLEL: usize = 3;
+const PARALLEL: usize = 2;
 const SEGMENTS_IN_FLIGHT: usize = 6;
 const INDEX_FILE: &str = "downloads.json";
 const EVENT: &str = "download-progress";
