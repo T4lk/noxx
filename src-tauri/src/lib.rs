@@ -363,6 +363,7 @@ pub fn run() {
             builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| features::system::show_main(app)));
         }
         builder = builder.plugin(features::system::shortcut_plugin());
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
     boot_log("plugins: single-instance checked");
     builder

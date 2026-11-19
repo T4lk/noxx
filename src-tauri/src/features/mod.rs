@@ -23,6 +23,7 @@ pub mod lyrics;
 pub mod mixes;
 pub mod system;
 pub mod themes;
+pub mod updater;
 pub mod youtube;
 
 pub type Out = Result<Value, String>;
@@ -41,6 +42,7 @@ pub async fn dispatch(app: &AppHandle, name: &str, args: Value) -> Out {
         "mixes" => mixes::handle(app, cmd, args).await,
         "system" => system::handle(app, cmd, args).await,
         "themes" => themes::handle(app, cmd, args).await,
+        "updater" => updater::handle(app, cmd, args).await,
         "youtube" => youtube::handle(app, cmd, args).await,
         _ => Err(format!("unknown feature: {module}")),
     }

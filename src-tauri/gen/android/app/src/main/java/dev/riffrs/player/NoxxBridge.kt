@@ -24,6 +24,12 @@ class NoxxBridge(private val ctx: Context) {
     a.runOnUiThread { LoginActivity.start(a, force) }
   }
 
+  /** Downloads a release APK and opens the system installer (ApkUpdater). */
+  @JavascriptInterface
+  fun installUpdate(url: String) {
+    ApkUpdater.start(ctx, url)
+  }
+
   @JavascriptInterface
   fun stop() {
     PlaybackService.stop(ctx)

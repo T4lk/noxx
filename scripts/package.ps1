@@ -8,7 +8,12 @@ $version = (Get-Content (Join-Path $tauri 'tauri.conf.json') -Raw | ConvertFrom-
 
 Push-Location $tauri
 try {
-  npx --yes @tauri-apps/cli@^2 build --bundles nsis
+  # With the updater key in the environment (CI secret), also sign the installer for auto-update.
+  if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+    npx --yes @tauri-apps/cli@^2 build --bundles nsis --config tauri.updater.conf.json
+  } else {
+    npx --yes @tauri-apps/cli@^2 build --bundles nsis
+  }
   if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
 } finally { Pop-Location }
 
@@ -18,6 +23,8 @@ New-Item -ItemType Directory -Force $dist | Out-Null
 # Installer
 $setup = Get-ChildItem (Join-Path $target 'release/bundle/nsis') -Filter '*-setup.exe' | Select-Object -First 1
 Copy-Item $setup.FullName (Join-Path $dist "noxx_${version}_x64-setup.exe") -Force
+$sig = "$($setup.FullName).sig"
+if (Test-Path $sig) { Copy-Item $sig (Join-Path $dist "noxx_${version}_x64-setup.exe.sig") -Force }
 
 # Portable: the exe plus a `portable` marker, so data stays in .\data next to it
 $stage = Join-Path $dist 'portable'

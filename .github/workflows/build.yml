@@ -35,6 +35,9 @@ jobs:
 
       - name: Build installer and portable zip
         shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: ./scripts/package.ps1
 
       - uses: actions/upload-artifact@v4
@@ -71,7 +74,15 @@ jobs:
 
       - name: Build AppImage and .deb
         working-directory: src-tauri
-        run: npx --yes @tauri-apps/cli@^2 build --bundles appimage,deb
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            npx --yes @tauri-apps/cli@^2 build --bundles appimage,deb --config tauri.updater.conf.json
+          else
+            npx --yes @tauri-apps/cli@^2 build --bundles appimage,deb
+          fi
 
       - name: Collect
         run: |
@@ -79,6 +90,8 @@ jobs:
           mkdir -p dist
           cp src-tauri/target/release/bundle/appimage/*.AppImage "dist/noxx_${ver}_amd64.AppImage"
           cp src-tauri/target/release/bundle/deb/*.deb "dist/noxx_${ver}_amd64.deb"
+          sig=$(ls src-tauri/target/release/bundle/appimage/*.AppImage.sig 2>/dev/null | head -1)
+          if [ -n "$sig" ]; then cp "$sig" "dist/noxx_${ver}_amd64.AppImage.sig"; fi
           ls -l dist
 
       - uses: actions/upload-artifact@v4
@@ -166,3 +179,32 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
+
+  # Auto-update manifest: latest.json points the Windows installer and the Linux AppImage at this
+  # release's files and carries their signatures (tauri-plugin-updater checks them).
+  updater-manifest:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+          merge-multiple: true
+
+      - name: Write latest.json
+        run: |
+          tag="${GITHUB_REF_NAME}"; ver="${tag#v}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
+          win="art/noxx_${ver}_x64-setup.exe.sig"; lin="art/noxx_${ver}_amd64.AppImage.sig"
+          if [ ! -f "$win" ] || [ ! -f "$lin" ]; then echo "no updater signatures (TAURI_SIGNING_PRIVATE_KEY not set); skipping"; exit 0; fi
+          jq -n --arg v "$ver" --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)"             --arg ws "$(cat "$win")" --arg wu "$base/noxx_${ver}_x64-setup.exe"             --arg ls "$(cat "$lin")" --arg lu "$base/noxx_${ver}_amd64.AppImage"             --arg n "See https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"             '{version: $v, notes: $n, pub_date: $d, platforms: {
+               "windows-x86_64": {signature: $ws, url: $wu},
+               "linux-x86_64": {signature: $ls, url: $lu}}}' > latest.json
+          cat latest.json
+
+      - name: Attach to the release
+        if: hashFiles('latest.json') != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          files: latest.json

@@ -74,6 +74,10 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  fun runJs(code: String) {
+    runOnUiThread { webView?.evaluateJavascript(code, null) }
+  }
+
   /** Sign-in result (null = closed) -> the page. The token is never logged. */
   fun loginDone(token: String?) {
     val arg = if (token == null) "null" else org.json.JSONObject.quote(token)
