@@ -1,0 +1,11 @@
+{
+  "name": "noxx-build",
+  "private": true,
+  "description": "Tauri CLI for the Android build (its Gradle step runs `npm run tauri`).",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

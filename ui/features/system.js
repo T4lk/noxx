@@ -17,7 +17,7 @@
   }
 
   // riff's setting row: name + small description on the left, control on the right.
-  const row = (name, desc, side, attrs = '') => `<div class="th-item setting-item sys-row"${attrs}><div class="th-top">
+  const row = (name, desc, side = '', attrs = '') => `<div class="th-item setting-item sys-row"${attrs}><div class="th-top">
     <div class="th-col"><span class="th-name">${name}</span>${desc}</div><div class="th-side">${side}</div></div></div>`;
   const desc = (text, attrs = '') => `<span class="th-desc"${attrs}>${text}</span>`;
   const btn = (a, label, primary) => `<button type="button" class="btn ${primary ? 'primary' : 'outline'} sys-btn" data-a="${a}">${label}</button>`;

@@ -4,3 +4,5 @@
 /dist/
 /src-tauri/target-pkg/
 /target-*/
+/src-tauri/node_modules/
+/src-tauri/package-lock.json
