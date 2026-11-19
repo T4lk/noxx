@@ -153,6 +153,7 @@ jobs:
           "$bt/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
           "$bt/apksigner" sign --ks "$RUNNER_TEMP/noxx.jks" --ks-pass "pass:$pass" --ks-key-alias "$alias"             --out "dist/noxx_${ver}_android-arm64.apk" "$RUNNER_TEMP/aligned.apk"
           rm -f "$RUNNER_TEMP/noxx.jks"
+          "$bt/apksigner" verify --print-certs "dist/noxx_${ver}_android-arm64.apk" | grep -i "SHA-256"
           ls -l dist
 
       - uses: actions/upload-artifact@v4
