@@ -62,6 +62,14 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  /** Sign-in result (null = closed) -> the page. The token is never logged. */
+  fun loginDone(token: String?) {
+    val arg = if (token == null) "null" else org.json.JSONObject.quote(token)
+    runOnUiThread {
+      webView?.evaluateJavascript("window.__noxxLoginDone && window.__noxxLoginDone($arg)", null)
+    }
+  }
+
   companion object {
     @Volatile
     var instance: MainActivity? = null

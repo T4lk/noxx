@@ -30,6 +30,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+          android:name=".LoginActivity"
+          android:exported="false"
+          android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
+          android:label="SoundCloud sign in" />
+
         <service
           android:name=".PlaybackService"
           android:exported="false"

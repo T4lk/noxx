@@ -922,11 +922,15 @@ function connectDialog(force) {
       <button class="btn primary" data-k="open">Open sign-in</button>
     </div>`);
   m.querySelector('[data-k=cancel]').onclick = closeModal;
+  // Android: the sign-in page opens as its own screen (LoginActivity.kt) and hands the token back.
+  if (window.noxxAndroid) m.querySelector('[data-k=browser]').remove();
   m.querySelector('[data-k=open]').onclick = async () => {
     closeModal();
     toast('Waiting for SoundCloud sign-in…');
     try {
-      const status = await invoke('sc_login', { force });
+      const status = window.noxxAndroid
+        ? await invoke('sc_use_token', { token: await window.noxxLogin(force) })
+        : await invoke('sc_login', { force });
       onStatus(status);
       toast(`Connected as ${displayName(status.username)}`);
     } catch (e) {

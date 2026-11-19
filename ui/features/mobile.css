@@ -37,6 +37,7 @@ html.riff-android .top-nav .search-box {
   flex: 1; min-width: 0; height: 44px; padding: 0 6px 0 4px; gap: 6px;
 }
 html.riff-android .search-box .top-home { display: none; }
+html.riff-android .search-box { transition: none !important; }
 html.riff-android .account-pill .ap-name { display: none; }
 html.riff-android .search-box input { font-size: 16px; } /* 16px stops the zoom-on-focus */
 html.riff-android .nav-right { flex: none; }
@@ -88,3 +89,19 @@ html.riff-android .track-row .tr-index,
 html.riff-android .track-row .tr-actions { display: none !important; }
 html.riff-android .track-row .tr-info { flex: 1 1 auto; min-width: 0; }
 html.riff-android .view .lib-tools { flex-wrap: wrap; row-gap: 8px; }
+
+/* home: first-run card stacks (text, then button); carousels show ~2.3 cards */
+html.riff-android .hm-firstrun-card { flex-wrap: wrap; gap: 12px; }
+html.riff-android .hm-firstrun-text { flex: 1 1 calc(100% - 64px); }
+html.riff-android .hm-firstrun-card > .btn,
+html.riff-android .hm-firstrun-card > .spinner { margin-left: 60px; }
+html.riff-android .hm-row { grid-auto-columns: 148px; gap: 12px; }
+html.riff-android .hm-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* player cover: plain rounded art instead of the desktop's oversized morphing ring */
+html.riff-android .pb-cover-canvas { display: none !important; }
+html.riff-android .pb-cover .pb-art { visibility: visible !important; }
+html.riff-android .pb-cover { filter: none; }
+
+/* the search bar stays readable over scrolled content */
+html.riff-android .top-nav { background: var(--bg); position: relative; z-index: 5; }

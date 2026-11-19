@@ -17,6 +17,13 @@ class NoxxBridge(private val ctx: Context) {
   @JavascriptInterface
   fun insets(): String = "${MainActivity.insetTop},${MainActivity.insetBottom}"
 
+  /** Opens the SoundCloud sign-in screen; the token comes back through window.__noxxLoginDone. */
+  @JavascriptInterface
+  fun login(force: Boolean) {
+    val a = MainActivity.instance ?: return
+    a.runOnUiThread { LoginActivity.start(a, force) }
+  }
+
   @JavascriptInterface
   fun stop() {
     PlaybackService.stop(ctx)

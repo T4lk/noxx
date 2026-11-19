@@ -16,6 +16,18 @@
   };
   try { const [t, b] = String(bridge.insets()).split(','); window.__noxxInsets(t, b); } catch (e) {}
 
+  // SoundCloud sign-in screen (LoginActivity.kt): resolves with the oauth token, rejects when closed.
+  let pendingLogin = null;
+  window.noxxLogin = (force) => new Promise((resolve, reject) => {
+    pendingLogin = { resolve, reject };
+    try { bridge.login(!!force); } catch (e) { pendingLogin = null; reject(e); }
+  });
+  window.__noxxLoginDone = (token) => {
+    const p = pendingLogin; pendingLogin = null;
+    if (!p) return;
+    if (token) p.resolve(token); else p.reject('Sign-in was closed.');
+  };
+
   // Notification / headset buttons arrive here and go through the same handler as desktop media keys.
   window.__noxxMediaKey = (k) => {
     try { window.__TAURI__.event.emit('media-key', k); } catch (e) {}
