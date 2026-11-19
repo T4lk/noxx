@@ -1872,6 +1872,7 @@ async function playTrack(t, startAt = 0, fresh = false) {
 }
 
 function attach(s, startAt) {
+  player.stream = s;
   if (s.protocol === 'hls') {
     if (!window.Hls || !Hls.isSupported()) { toast('HLS playback is not supported here', 'error'); setLoading(false); return; }
     // Small buffers: 30 s ahead, 10 s behind, at most 12 MB (audio only, so that's plenty).
@@ -2485,7 +2486,7 @@ audio.addEventListener('timeupdate', () => {
 });
 audio.addEventListener('durationchange', () => { const d = duration(); if (d) $('#t-dur').textContent = fmt(d); });
 audio.addEventListener('playing', () => {
-  if (xfade.fadeInPending) { xfade.fadeInPending = false; const X = crossfadeSecs(); if (X) rampVolume(1, X / 2); else { xfade.gain = 1; applyVolume(); } }
+  if (xfade.fadeInPending) { xfade.fadeInPending = false; const X = xfade.fadeInSecs || crossfadeSecs() / 2; xfade.fadeInSecs = 0; if (X) rampVolume(1, X); else { xfade.gain = 1; applyVolume(); } }
 });
 audio.addEventListener('playing', () => { setLoading(false); player.errorStreak = 0; log('info', `audio playing at ${audio.currentTime.toFixed(1)}s`); });
 audio.addEventListener('waiting', () => setLoading(true));
@@ -2542,14 +2543,63 @@ function xfadeCancel() {
 }
 audio.addEventListener('pause', () => { if (!audio.ended) xfadeCancel(); });
 audio.addEventListener('seeking', () => { if (xfade.nextTimer && audio.currentTime < duration() - crossfadeSecs()) { xfadeCancel(); xfade.triggered = false; } });
+// Real overlap: the last X seconds of this song keep playing on a second, plain <audio> (the
+// "tail") while the next song starts on the main one. The tail fades out, the next song fades in.
+function startTail(s, at) {
+  const el = new Audio();
+  el.preload = 'auto';
+  let h = null;
+  if (s.protocol === 'hls') {
+    if (!window.Hls || !Hls.isSupported()) return null;
+    h = new Hls({ enableWorker: true, startPosition: at, maxBufferLength: 15, backBufferLength: 0 });
+    h.loadSource(s.url);
+    h.attachMedia(el);
+  } else {
+    el.src = s.url;
+    el.addEventListener('loadedmetadata', () => { el.currentTime = at; }, { once: true });
+  }
+  el.volume = audio.volume;
+  el.play().catch(() => {});
+  return { el, stop() { try { el.pause(); } catch (e) {} if (h) { try { h.destroy(); } catch (e) {} } el.removeAttribute('src'); try { el.load(); } catch (e) {} } };
+}
+function fadeTail(tail, secs) {
+  const v0 = tail.el.volume, t0 = performance.now(), ms = Math.max(1, secs * 1000);
+  const iv = setInterval(() => {
+    const k = Math.min(1, (performance.now() - t0) / ms);
+    tail.el.volume = Math.max(0, v0 * (1 - k) * (1 - k));
+    if (k >= 1 || tail.el.ended) { clearInterval(iv); tail.stop(); }
+  }, 50);
+}
 function xfadeCheck() {
   const X = crossfadeSecs(), d = duration(), cur = audio.currentTime;
   if (!X || xfade.triggered || audio.paused || player.repeat === 'one' || !player.current || !(d > X) || cur < d - X) return;
   if (!peekNext()) return;
   xfade.triggered = true;
-  xfade.fadeInPending = true;
-  rampVolume(0, X / 2);
-  xfade.nextTimer = setTimeout(xfadeAdvance, (X / 2) * 1000);
+  const s = player.stream;
+  const tail = s && !s.local ? startTail(s, cur) : null;
+  if (!tail) { // no second stream possible: the old fade-out, then the next song
+    xfade.fadeInPending = true;
+    rampVolume(0, X / 2);
+    xfade.nextTimer = setTimeout(xfadeAdvance, (X / 2) * 1000);
+    return;
+  }
+  // Switch once the tail is audible (or after 1.5 s), so there's no gap.
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    if (player.current == null || audio.paused) { tail.stop(); return; }
+    tail.el.currentTime = Math.max(tail.el.currentTime, audio.currentTime);
+    tail.el.volume = audio.volume;
+    xfade.fadeInPending = true;
+    xfade.fadeInSecs = X;
+    xfade.gain = 0; applyVolume();
+    fadeTail(tail, X);
+    emit('ended', player.current);
+    next(true);
+  };
+  tail.el.addEventListener('playing', go, { once: true });
+  setTimeout(go, 1500);
 }
 function xfadeAdvance() {
   if (!xfade.nextTimer) return;
