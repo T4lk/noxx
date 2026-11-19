@@ -279,6 +279,29 @@ impl SoundCloud {
         }
     }
 
+    /// True when SoundCloud still accepts `token` on /me. Positive answers are remembered for
+    /// 10 minutes so a burst of 401s from one endpoint costs one check.
+    async fn token_still_valid(&self, token: &str, client_id: &str) -> bool {
+        static OK: StdMutex<Option<(String, Instant)>> = StdMutex::new(None);
+        if let Some((t, at)) = OK.lock().unwrap().as_ref() {
+            if t == token && at.elapsed() < Duration::from_secs(600) {
+                return true;
+            }
+        }
+        let Ok(mut url) = Url::parse(&format!("{API_BASE}/me")) else { return true };
+        url.query_pairs_mut().append_pair("client_id", client_id);
+        let res = self.http.get(url).header(ACCEPT, "application/json").header(AUTHORIZATION, format!("OAuth {token}")).send().await;
+        match res {
+            Ok(r) if r.status().is_success() => {
+                *OK.lock().unwrap() = Some((token.to_string(), Instant::now()));
+                true
+            }
+            Ok(r) => r.status().as_u16() != 401,
+            // Network trouble is not a dead login.
+            Err(_) => true,
+        }
+    }
+
     fn reject_token(&self, token: &str) {
         let mut rejected = self.rejected_token.write().unwrap();
         if rejected.as_str() != token {
@@ -434,10 +457,14 @@ impl SoundCloud {
             }
             // Still 401 with a fresh client_id: the saved login is dead. Flag it
             // and go anonymous so public requests keep working.
+            // Some endpoints answer 401 for scopes this login doesn't have, so a 401 alone
+            // doesn't mean the login is dead: ask /me before flagging the session expired.
             if status == 401 && !dropped_token {
                 if let Some(t) = token.take() {
                     dropped_token = true;
-                    self.reject_token(&t);
+                    if !self.token_still_valid(&t, &client_id).await {
+                        self.reject_token(&t);
+                    }
                     continue;
                 }
             }
