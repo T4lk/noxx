@@ -8,9 +8,14 @@
   const R = window.riff;
 
   // The bottom-bar bars are off by default (they added little); Settings → Interface turns them on.
-  const DEF = { barWave: false, vizOpacity: 85, vizSmooth: 70, vizSens: 100, wavyProgress: true, progressKnob: true, progressBg: true, crossfade: 0 };
+  const DEF = { barWave: false, vizOpacity: 85, vizSmooth: 70, vizSens: 100, wavyProgress: true, progressKnob: true, progressBg: true, crossfade: 4 };
   // One-time: switch it off for anyone who had the old default.
   if (R.load('barWave.offByDefault', false) !== true) { R.store('barWave', false); R.store('barWave.offByDefault', true); }
+  // One-time: songs blend into each other (4 s crossfade) unless a crossfade was already chosen.
+  if (R.load('crossfade.onByDefault', false) !== true) {
+    if (!(Number(R.load('crossfade', 0)) > 0)) R.store('crossfade', 4);
+    R.store('crossfade.onByDefault', true);
+  }
   const P = {};
   for (const [k, v] of Object.entries(DEF)) {
     const got = R.load(k, v);
@@ -152,6 +157,18 @@
       sliderRow('crossfade', 'Crossfade', '', 0, 12, 1, (v) => (v > 0 ? `${v}s` : 'Off'), ['Off', '6s', '12s'], () => {}),
     );
   }, 'tracks');
+
+  // ------------------------------------------------------------ track change: cover and title glide in
+
+  const swap = () => {
+    for (const el of document.querySelectorAll('#pb-cover, .pb-text, .tvk-cover, .tvk-meta')) {
+      el.classList.remove('track-swap');
+      void el.offsetWidth; // restart the animation
+      el.classList.add('track-swap');
+    }
+  };
+  R.on('trackchange', swap);
+  document.addEventListener('animationend', (e) => { if (e.animationName === 'track-swap') e.target.classList.remove('track-swap'); });
 
   applyProgress();
   applyVizVars();

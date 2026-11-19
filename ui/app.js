@@ -2514,7 +2514,7 @@ function applyVolume() { audio.volume = Math.max(0, Math.min(1, volBase * xfade.
 // riff has one <audio> element and fades a gain node; here the element volume is faded the same way and the
 // next track starts once the fade-out has finished (riff switches right away and lets the load time cover it).
 const xfade = { gain: 1, triggered: false, fadeInPending: false, nextTimer: 0, ramp: 0 };
-const crossfadeSecs = () => Math.max(0, Math.min(12, Number(load('crossfade', 0)) || 0));
+const crossfadeSecs = () => Math.max(0, Math.min(12, Number(load('crossfade', 4)) || 0));
 // A plain 30 ms timer, not a frame loop: the fade has to keep going while the window is minimized.
 function rampVolume(to, secs) {
   clearInterval(xfade.ramp);

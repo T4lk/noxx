@@ -29,3 +29,10 @@
 .likes-src-btn span { font-size: .85em; opacity: .7; }
 .likes-src-btn:hover { color: var(--on-surface); }
 .likes-src-btn.on { background: var(--container-highest); color: var(--on-surface); }
+
+/* Song change: the new cover and title fade and glide in (player bar, mini player, now playing). */
+@keyframes track-swap { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+.track-swap { animation: track-swap 320ms cubic-bezier(.2, .8, .2, 1) both; }
+#pb-cover.track-swap, .tvk-cover.track-swap { animation-name: track-swap-cover; }
+@keyframes track-swap-cover { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+body.reduce-motion .track-swap { animation: none !important; }
