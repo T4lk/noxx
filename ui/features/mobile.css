@@ -105,3 +105,9 @@ html.riff-android .pb-cover { filter: none; }
 
 /* the search bar stays readable over scrolled content */
 html.riff-android .top-nav { background: var(--bg); position: relative; z-index: 5; }
+
+/* mini player like phones do it: cover, title / artist, play, next */
+html.riff-android #pb-heart,
+html.riff-android #btn-prev { display: none !important; }
+html.riff-android .pb-text { min-width: 0; flex: 1; }
+html.riff-android .play-btn { width: 44px; height: 44px; }
