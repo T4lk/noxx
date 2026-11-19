@@ -96,12 +96,13 @@
   // YouTube, for the user's top genre mixes. Falls back to the global chart with no genres yet.
   async function loadTrendingFor() {
     const genres = (H.list?.mixes || []).filter((m) => m.kind === 'genre').map((m) => String(m.title || '').replace(/\s*Mix$/i, '').trim()).filter(Boolean).slice(0, 3);
-    const key = genres.join('|');
+    const key = genres.join('|') + '|' + R.pref('musicSources', 'both');
     if (!genres.length) { H.trendRows = null; return; }
     if (H.trendKey === key && H.trendRows && Date.now() - (H.trendAt || 0) < 30 * 60 * 1000) return;
     const [sc, yt] = await Promise.all([
-      R.call('discover.trending_for', { genres, limit: 18 }).catch(() => []),
-      R.call('youtube.trending_for', { genres, limit: 12 }).catch(() => []),
+      // Follows Settings > Music sources (SoundCloud + YouTube by default).
+      R.pref('musicSources', 'both') !== 'yt' ? R.call('discover.trending_for', { genres, limit: 18 }).catch(() => []) : [],
+      R.pref('musicSources', 'both') !== 'sc' ? R.call('youtube.trending_for', { genres, limit: 12 }).catch(() => []) : [],
     ]);
     const liked = R.state.favIds || new Set();
     H.trendRows = genres.map((g) => {
@@ -587,6 +588,7 @@
       log(`home: genre mixes ${ok(!enough || (by.genre || []).length > 0)} (${(by.genre || []).join(', ') || 'none'})`);
       log(`home: daily mixes ${ok(!enough || (by.daily || []).length > 0)} (${(by.daily || []).length}), on repeat ${(by.repeat || []).length ? 'made' : 'not enough repeat plays yet'}, era ${(by.era || []).join(', ') || 'none'}`);
       log(`home: sizes ${ok(list.mixes.every((m) => m.trackCount >= 8 && m.trackCount <= 50))} (${list.mixes.map((m) => m.trackCount).join(',')}), artists row ${(list.artists || []).length}`);
+      { const src = (await R.call('mixes.sources')).value; const dm = list.mixes.filter((m) => ['daily', 'genre', 'artist'].includes(m.kind)); const both = dm.filter((m) => (m.sources || []).includes('sc') && (m.sources || []).includes('youtube')).length; log(`home: mix sources ${ok(src === list.sources && (src !== 'both' || both > 0))} (${src}; ${both}/${dm.length} daily/genre/artist mixes mix SoundCloud and YouTube)`); }
       const first = list.mixes[0];
       if (first) {
         t0 = performance.now();

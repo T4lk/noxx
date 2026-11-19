@@ -15,7 +15,8 @@
 //!
 //! For the mixes feature: `Yt::related` (watch-next radio), `Yt::video_years` and
 //! `Yt::song_years` (release years from YouTube Music albums, cached forever in
-//! `youtube-years.json` in the data folder).
+//! `youtube-years.json` in the data folder), and `Yt::song_twins` (the YouTube Music
+//! video of a SoundCloud song, so its radio can seed YouTube top-ups; same file).
 //!
 //! Playback: InnerTube player (VISIONOS client, then ANDROID_VR: plain audio URLs, no
 //! cipher / JS runtime) first, yt-dlp as fallback. Links are cached until googlevideo's
@@ -53,6 +54,8 @@ const YEARS_FILE: &str = "youtube-years.json";
 const YEAR_PARALLEL: usize = 5;
 /// Years noted from radio rows stop here (looked-up seeds are always kept).
 const YEARS_MAX: usize = 30_000;
+/// Length tolerance (s) for a song's YouTube Music twin.
+const TWIN_TOL: u64 = 8;
 
 /// Release years from YouTube Music, cached forever. 0 = looked up, unknown.
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -66,6 +69,9 @@ struct YearFile {
     /// caller's key (e.g. a SoundCloud id) -> year of the matching YouTube Music song
     #[serde(default)]
     songs: HashMap<String, u16>,
+    /// caller's key (a SoundCloud id) -> videoId of the same song on YouTube Music ("" = none)
+    #[serde(default)]
+    twins: HashMap<String, String>,
     #[serde(skip)]
     dirty: bool,
 }
@@ -582,6 +588,89 @@ impl Yt {
         self.years_batch(dir, YearKind::Song, items, max_new, budget).await
     }
 
+    /// The YouTube video of the same song: YouTube Music songs searches for title + artist,
+    /// then a plain YouTube search (many uploads are not on YouTube Music as songs); length
+    /// within ±8 s, no edits unless the song is one. None = no match.
+    async fn find_twin(&self, title: &str, artist: &str, duration: u64) -> Result<Option<String>, String> {
+        let queries = music::twin_queries(title, artist);
+        if queries.is_empty() || duration == 0 {
+            return Ok(None);
+        }
+        let is_twin = |t: &Track| music::twin_of(title, artist, duration, t, TWIN_TOL);
+        for q in &queries {
+            let visitor = lock(&self.visitor).0.clone();
+            let body = json!({ "context": innertube::ytm_context(&visitor), "query": q, "params": innertube::YTM_SONGS_PARAMS });
+            let v = self.post("music.youtube.com", "search", &body, None).await?;
+            self.note_visitor(&v);
+            if let Some(hit) = innertube::parse_ytm_songs(&v).into_iter().take(10).find(|t| is_twin(t)) {
+                return Ok(Some(hit.id[3..].to_string()));
+            }
+        }
+        let q = queries.last().cloned().unwrap_or_default();
+        let hit = self.search(Src::Youtube, &q, 0).await?.into_iter().take(10).find(|t| {
+            let mut t = t.clone();
+            if let Some(a) = t.artist.strip_suffix(" - Topic") {
+                t.artist = a.to_string();
+            }
+            is_twin(&t)
+        });
+        Ok(hit.map(|t| t.id[3..].to_string()))
+    }
+
+    /// YouTube Music twins of other tracks (e.g. SoundCloud seeds): items are (key, title,
+    /// artist, duration s), most important first. Cached forever in `youtube-years.json`
+    /// (misses too); at most `max_new` searches until `budget` runs out, failed searches
+    /// are retried next time. Returns (key -> videoId, number of new searches).
+    pub async fn song_twins(&self, dir: &Path, items: &[(String, String, String, u64)], max_new: usize, budget: Duration) -> (HashMap<String, String>, usize) {
+        self.years_load(dir);
+        let mut out = HashMap::new();
+        let mut todo = Vec::new();
+        {
+            let g = lock(&self.years);
+            let f = g.as_ref().map(|(_, f)| f);
+            for (key, title, artist, dur) in items {
+                match f.and_then(|f| f.twins.get(key)) {
+                    Some(v) => {
+                        if !v.is_empty() {
+                            out.insert(key.clone(), v.clone());
+                        }
+                    }
+                    None if todo.len() < max_new => todo.push((key, title, artist, *dur)),
+                    None => {}
+                }
+            }
+        }
+        let deadline = Instant::now() + budget;
+        let mut n = 0;
+        for group in todo.chunks(YEAR_PARALLEL) {
+            if Instant::now() >= deadline {
+                break;
+            }
+            let found = join_all(group.iter().map(|(key, title, artist, dur)| async move {
+                match self.find_twin(title, artist, *dur).await {
+                    Ok(v) => Some(((*key).clone(), v.unwrap_or_default())),
+                    Err(e) => {
+                        eprintln!("[youtube] twin {key}: {e}");
+                        None
+                    }
+                }
+            }))
+            .await;
+            for (key, vid) in found.into_iter().flatten() {
+                n += 1;
+                if let Some((_, f)) = lock(&self.years).as_mut() {
+                    f.twins.insert(key.clone(), vid.clone());
+                    f.dirty = true;
+                }
+                if !vid.is_empty() {
+                    out.insert(key, vid);
+                }
+            }
+        }
+        self.years_save();
+        (out, n)
+    }
+
     // ------------------------------------------------------------ links
 
     pub async fn link(&self, text: &str) -> Result<Vec<Track>, String> {
@@ -1050,6 +1139,12 @@ mod tests {
             let (sy, n) = yt.song_years(&dir, &songs, 200, Duration::from_secs(30)).await;
             println!("song years: {sy:?} ({n} lookups) in {}ms", ms(t));
             assert!(!sy.contains_key("sc3"));
+            let t = Instant::now();
+            let (tw, n) = yt.song_twins(&dir, &songs, 50, Duration::from_secs(30)).await;
+            println!("song twins: {tw:?} ({n} searches) in {}ms", ms(t));
+            assert!(!tw.contains_key("sc3"));
+            let (again, n) = yt.song_twins(&dir, &songs, 50, Duration::from_secs(30)).await;
+            assert_eq!((again.len(), n), (tw.len(), 0), "twins are cached");
             let _ = std::fs::remove_dir_all(&dir);
         });
     }

@@ -83,11 +83,16 @@ function errText(e) { return typeof e === 'string' ? e : (e && e.message) || 'So
 function plural(n, word) { return `${n} ${word}${n === 1 ? '' : 's'}`; }
 
 function toast(text, kind) {
+  const box = $('#toasts');
+  const ms = kind === 'error' ? 5000 : 3000;
+  // The same message again while it's still showing: keep one and restart its timer instead of stacking copies.
+  const same = [...box.children].find((n) => n.textContent === text && !n.dataset.leaving);
+  if (same) { clearTimeout(same._t); same._t = setTimeout(() => same.remove(), ms); return; }
   const el = document.createElement('div');
   el.className = 'toast' + (kind === 'error' ? ' error' : '');
   el.textContent = text;
-  $('#toasts').append(el);
-  setTimeout(() => el.remove(), kind === 'error' ? 5000 : 3000);
+  box.append(el);
+  el._t = setTimeout(() => el.remove(), ms);
 }
 
 /** SoundCloud artwork at the smallest size that is still sharp at `px` CSS pixels (other URLs pass through). */

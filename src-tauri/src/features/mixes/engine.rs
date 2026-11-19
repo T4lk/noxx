@@ -560,7 +560,7 @@ pub struct Plan {
 }
 
 impl Plan {
-    fn new(id: String, kind: &str, title: String) -> Self {
+    pub fn new(id: String, kind: &str, title: String) -> Self {
         Plan {
             id,
             kind: kind.into(),
@@ -838,6 +838,7 @@ pub fn finish(plan: &Plan, fresh: &[(Track, Vec<String>)], now: u64) -> Option<M
             continue;
         }
         *n += 1;
+        seen_key.extend(song_keys(t));
         own.push(t.clone());
     }
     let mut new = Vec::new();
@@ -847,9 +848,11 @@ pub fn finish(plan: &Plan, fresh: &[(Track, Vec<String>)], now: u64) -> Option<M
                 continue;
             }
         }
-        if !seen_id.insert(t.id.clone()) || !seen_key.insert(song_key(t)) {
+        let keys = song_keys(t);
+        if keys.iter().any(|k| seen_key.contains(k)) || !seen_id.insert(t.id.clone()) {
             continue;
         }
+        seen_key.extend(keys);
         new.push(t.clone());
     }
     // Interleave: `own_run` own tracks, then `new_run` fresh ones, until MAX_TRACKS.
@@ -922,7 +925,7 @@ pub fn rank_related(lists: &[(f64, Vec<Track>)], skip: &HashSet<String>, skip_so
         let n = list.len().max(1) as f64;
         let mut seen_here = HashSet::new();
         for (pos, t) in list.iter().enumerate() {
-            if skip.contains(&t.id) || skip_songs.contains(&song_key(t)) || !seen_here.insert(t.id.clone()) {
+            if skip.contains(&t.id) || song_keys(t).iter().any(|k| skip_songs.contains(k)) || !seen_here.insert(t.id.clone()) {
                 continue;
             }
             let score = w * (1.0 - 0.5 * pos as f64 / n);
@@ -966,6 +969,63 @@ pub fn admit_related(plan: &Plan, families: Vec<String>, hits: usize, artist_kno
         return Some(vec![f.clone()]);
     }
     None
+}
+
+/// Where new songs in mixes come from (the user's own tracks are always kept).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Sources {
+    #[default]
+    Both,
+    Sc,
+    Yt,
+}
+
+impl Sources {
+    /// "both" | "sc" | "yt" (also "soundcloud" / "youtube"), any case.
+    pub fn parse(s: &str) -> Option<Sources> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "both" | "all" | "mixed" => Some(Sources::Both),
+            "sc" | "soundcloud" => Some(Sources::Sc),
+            "yt" | "youtube" | "ytm" => Some(Sources::Yt),
+            _ => None,
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Sources::Both => "both",
+            Sources::Sc => "sc",
+            Sources::Yt => "yt",
+        }
+    }
+}
+
+/// Least share of new songs each platform gets when sources are "both".
+pub const MIN_SIDE: f64 = 0.35;
+
+/// YouTube share of a plan's new songs: about half and half ("both"), tilted towards the
+/// plan's own taste but never under `MIN_SIDE` for either platform; all one platform otherwise.
+pub fn new_share(sources: Sources, own_yt_share: f64) -> f64 {
+    match sources {
+        Sources::Sc => 0.0,
+        Sources::Yt => 1.0,
+        Sources::Both => (0.5 + (own_yt_share.clamp(0.0, 1.0) - 0.5) * (1.0 - 2.0 * MIN_SIDE)).clamp(MIN_SIDE, 1.0 - MIN_SIDE),
+    }
+}
+
+/// Song keys of a track: `song_key`, plus "Artist - Title" read from the title
+/// (SoundCloud uploads), so the same song on another platform is recognised.
+pub fn song_keys(t: &Track) -> Vec<String> {
+    let mut v = vec![song_key(t)];
+    if let Some((a, title)) = t.title.split_once(" - ") {
+        let mut alt = t.clone();
+        alt.artist = a.trim().to_string();
+        alt.title = title.trim().to_string();
+        let k = song_key(&alt);
+        if !v.contains(&k) {
+            v.push(k);
+        }
+    }
+    v
 }
 
 /// Interleaves SoundCloud and YouTube new songs so about `yt_share` of the start is YouTube;
@@ -1375,6 +1435,55 @@ mod tests {
         assert_eq!(blend(sc.clone(), yt.clone(), 0.0)[..10], sc[..]);
         assert_eq!(blend(sc.clone(), yt.clone(), 1.0)[..10], yt[..]);
         assert_eq!(blend(sc[..2].to_vec(), yt.clone(), 0.0).len(), 12, "leftovers follow");
+    }
+
+    #[test]
+    fn sources_parse() {
+        assert_eq!(Sources::parse("both"), Some(Sources::Both));
+        assert_eq!(Sources::parse(" SC "), Some(Sources::Sc));
+        assert_eq!(Sources::parse("soundcloud"), Some(Sources::Sc));
+        assert_eq!(Sources::parse("yt"), Some(Sources::Yt));
+        assert_eq!(Sources::parse("YouTube"), Some(Sources::Yt));
+        assert_eq!(Sources::parse("spotify"), None);
+        assert_eq!(Sources::parse(""), None);
+        assert_eq!(Sources::default(), Sources::Both);
+        for s in [Sources::Both, Sources::Sc, Sources::Yt] {
+            assert_eq!(Sources::parse(s.as_str()), Some(s));
+        }
+    }
+
+    #[test]
+    fn both_sources_keep_a_minimum_per_side() {
+        assert_eq!(new_share(Sources::Both, 0.5), 0.5);
+        assert_eq!(new_share(Sources::Both, 0.0), MIN_SIDE, "all-SoundCloud taste still gets YouTube");
+        assert_eq!(new_share(Sources::Both, 1.0), 1.0 - MIN_SIDE, "all-YouTube taste still gets SoundCloud");
+        let tilt = new_share(Sources::Both, 0.6);
+        assert!(tilt > 0.5 && tilt < 1.0 - MIN_SIDE, "{tilt}");
+        assert_eq!(new_share(Sources::Sc, 0.9), 0.0);
+        assert_eq!(new_share(Sources::Yt, 0.1), 1.0);
+        // Blended at the minimum, both sides fill at least 35% of the first 20 new songs.
+        let sc: Vec<u32> = (0..40).collect();
+        let yt: Vec<u32> = (100..140).collect();
+        for own in [0.0, 0.2, 0.5, 0.8, 1.0] {
+            let b = blend(sc.clone(), yt.clone(), new_share(Sources::Both, own));
+            let n_yt = b[..20].iter().filter(|x| **x >= 100).count();
+            assert!((7..=13).contains(&n_yt), "own {own}: {n_yt}/20 YouTube");
+        }
+    }
+
+    #[test]
+    fn song_keys_read_artist_from_soundcloud_titles() {
+        let sc = tr("1", "someuploader", "Kanye West - Stronger (Official Audio)", "");
+        let y = yt("dp000000009", "Kanye West", "Stronger");
+        let keys = song_keys(&sc);
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&song_key(&y)));
+        assert_eq!(song_keys(&y), vec![song_key(&y)]);
+        // A YouTube top-up of a song the user has on SoundCloud is skipped.
+        let skip: HashSet<String> = keys.into_iter().collect();
+        let r = rank_related(&[(1.0, vec![y.clone(), yt("dp000000010", "Kanye West", "Heartless")])], &HashSet::new(), &skip, 10);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].0.title, "Heartless");
     }
 
     #[test]

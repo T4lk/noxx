@@ -105,7 +105,9 @@
       ok('activity', a.type === 2 && a.details === 'Selftest Song' && a.state === 'by riff' && span === 180000 && !!(a.assets && a.assets.large_image));
       ok('button', !!a.buttons && a.buttons[0].label === 'Listen on SoundCloud' && a.buttons[0].url === 'https://soundcloud.com/riff/selftest');
       const local = await riff.call('discord.preview', { track: { title: 'x', artwork: 'http://asset.localhost/C%3A/a.jpg', source: 'local' } });
-      ok('local track', !local.assets && !local.buttons);
+      // Local files: never a file-path cover (Discord can't load those; the noxx logo stands in) and no button.
+      const big = (local.assets && local.assets.large_image) || '';
+      ok('local track', !/asset\.localhost|^file:|^[a-z]:[\\/]/i.test(big) && !local.buttons);
       const again = await riff.call('discord.setEnabled', { enabled: s.enabled }); // round-trip, same value
       ok('setEnabled', again.enabled === s.enabled);
       const t0 = performance.now();

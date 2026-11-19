@@ -178,7 +178,71 @@ pub fn song_query(title: &str, artist: &str) -> String {
 /// Is `cand` (a YouTube Music song) the same recording as title / artist / duration?
 /// Needs the length within 3 s, the title inside the other title, and the artist named.
 pub fn same_song(title: &str, artist: &str, duration: u64, cand: &Track) -> bool {
-    if duration == 0 || cand.duration == 0 || duration.abs_diff(cand.duration) > 3 {
+    same_song_within(title, artist, duration, cand, 3)
+}
+
+/// Words that mark an edit of a song rather than the song itself.
+const EDIT_WORDS: &[&str] = &[
+    "sped up", "speed up", "slowed", "reverb", "nightcore", "daycore", "8d", "bass boosted", "edit", "bootleg", "flip", "mashup",
+    "remix", "rmx", "vip", "cover", "karaoke", "instrumental", "acapella", "live", "extended", "1 hour",
+];
+
+/// Does the title (brackets included) name an edit, remix, cover or live version?
+pub fn is_edit(title: &str) -> bool {
+    let t: String = title.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    EDIT_WORDS.iter().any(|w| has_words(&t, w))
+}
+
+/// Search texts for a song's twin: `song_query`, then artist + title when that differs
+/// (SoundCloud "Title - Genre" uploads by the artist).
+pub fn twin_queries(title: &str, artist: &str) -> Vec<String> {
+    let mut v = vec![song_query(title, artist)];
+    let (t, a) = (norm(title), norm(artist));
+    if !a.is_empty() && !has_words(&t, &a) {
+        let q = format!("{a} {t}");
+        if !v.contains(&q) {
+            v.push(q);
+        }
+    }
+    v.retain(|q| !q.is_empty());
+    v
+}
+
+/// The twin of a song on YouTube (Music): `same_song` within `tol` seconds, and not an
+/// edit unless the song itself is one. "A - B" titles on either side are also matched by
+/// their parts ("kyoto - Song" == "Song - HardTekk" by kyoto), one side always whole.
+pub fn twin_of(title: &str, artist: &str, duration: u64, cand: &Track, tol: u64) -> bool {
+    if is_edit(&cand.title) && !is_edit(title) {
+        return false;
+    }
+    if same_song_within(title, artist, duration, cand, tol) {
+        return true;
+    }
+    let parts = |s: &str| -> Vec<String> {
+        s.split_once(" - ").map(|(a, b)| vec![a.trim().to_string(), b.trim().to_string()]).unwrap_or_default()
+    };
+    // The artist named in the whole title still counts.
+    let named = format!("{artist} {title}");
+    let long = |s: &str| norm(s).chars().filter(|c| !c.is_whitespace()).count() >= 4;
+    for st in parts(title).into_iter().filter(|s| long(s)) {
+        if same_song_within(&st, &named, duration, cand, tol) {
+            return true;
+        }
+    }
+    let mut c = cand.clone();
+    for ct in parts(&cand.title).into_iter().filter(|s| long(s)) {
+        c.title = ct;
+        if same_song_within(title, &named, duration, &c, tol) {
+            return true;
+        }
+    }
+    false
+}
+
+/// `same_song` with the length tolerance in seconds.
+pub fn same_song_within(title: &str, artist: &str, duration: u64, cand: &Track, tol: u64) -> bool {
+    if duration == 0 || cand.duration == 0 || duration.abs_diff(cand.duration) > tol {
         return false;
     }
     let want = norm(title);
@@ -292,5 +356,28 @@ mod tests {
         assert!(!same_song("Stronger", "Kelly Clarkson", 312, &c), "other artist");
         assert!(!same_song("Heartless", "Kanye West", 312, &c), "other song");
         assert!(same_song("Dilemma", "Nelly", 289, &cand("Dilemma (feat. Kelly Rowland)", "Nelly & Kelly Rowland", 290)));
+        assert!(twin_of("Stronger", "Kanye West", 320, &c, 8), "±8 s for twins");
+        assert!(!twin_of("Stronger", "Kanye West", 321, &c, 8));
+        assert!(!twin_of("Stronger", "Kanye West", 312, &cand("Stronger (Sped Up)", "Kanye West", 312), 8), "edits are not twins");
+        assert!(twin_of("Stronger (Remix)", "Kanye West", 312, &cand("Stronger (Remix)", "Kanye West", 312), 8));
+        // "Title - Genre" on SoundCloud vs "Artist - Title" on YouTube
+        let k = cand("kyoto - Mir wird schwindelig (Official Audio)", "kyoto", 140);
+        assert!(twin_of("Mir wird schwindelig - HardTekk (OUT ON SPOTIFY!!!)", "kyoto", 136, &k, 8));
+        assert!(!twin_of("Ganz anderer Song - HardTekk", "kyoto", 136, &k, 8));
+        assert!(!twin_of("Mir wird schwindelig - HardTekk", "someone else", 136, &k, 8), "artist must be named");
+        assert_eq!(twin_queries("Stronger", "Kanye West"), vec!["kanye west stronger"]);
+        assert_eq!(twin_queries("Song - HardTekk", "kyoto"), vec!["song hardtekk", "kyoto song hardtekk"]);
+        assert_eq!(twin_queries("Kanye West - Stronger", "Kanye West"), vec!["kanye west stronger"]);
+    }
+
+    #[test]
+    fn youtube_edit_titles() {
+        assert!(is_edit("Stronger (Sped Up)"));
+        assert!(is_edit("Stronger - slowed + reverb"));
+        assert!(is_edit("Stronger [Nightcore]"));
+        assert!(is_edit("Stronger (XYZ Remix)"));
+        assert!(!is_edit("Stronger"));
+        assert!(!is_edit("Alive"), "whole words only");
+        assert!(!is_edit("Edith"));
     }
 }

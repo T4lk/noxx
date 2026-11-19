@@ -28,6 +28,10 @@
   };
 
   const isSc = (t) => !!t && !t.source && /^\d+$/.test(String(t.id || ''));
+  // Where new songs come from (radio, My Wave, mixes, trending): 'both' (default), 'sc' or 'yt'.
+  const sources = () => { const v = R.pref ? R.pref('musicSources', 'both') : 'both'; return ['both', 'sc', 'yt'].includes(v) ? v : 'both'; };
+  const useSc = () => sources() !== 'yt';
+  const useYt = () => sources() !== 'sc';
   const hasArtist = (t) => !!t && (!!t.artist_id || !!t.artist_url || (!!t.artist && !/^unknown artist$/i.test(t.artist)));
   const compact = (n) => { try { return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n || 0); } catch (e) { return String(n || 0); } };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -678,8 +682,8 @@
   // ---------------------------------------------------------------- My Wave
 
   function noteRecent(t) {
-    if (!isSc(t)) return;
-    const slim = { id: t.id, title: t.title, artist: t.artist, artist_id: t.artist_id || '', artwork: t.artwork || '' };
+    if (!isSc(t) && !(t && t.source === 'youtube')) return;
+    const slim = { id: t.id, title: t.title, artist: t.artist, artist_id: t.artist_id || '', artwork: t.artwork || '', source: t.source || '', duration: t.duration || 0 };
     D.recent = [slim, ...D.recent.filter((x) => x.id !== t.id)].slice(0, 60);
     clearTimeout(noteRecent.timer);
     noteRecent.timer = setTimeout(() => store('discover.recent', D.recent), 1500);
@@ -690,7 +694,7 @@
     const seeds = new Map();
     const favs = (R.state.library.favorites || []).filter(isSc);
     favs.slice(0, 40).forEach((t, i) => seeds.set(t.id, { id: t.id, weight: i < 10 ? 3 : 2 }));
-    D.recent.slice(0, 20).forEach((t, i) => {
+    D.recent.filter(isSc).slice(0, 20).forEach((t, i) => {
       const w = Math.max(0.6, 2 * Math.pow(0.9, i));
       const s = seeds.get(t.id);
       if (s) s.weight += 1; else if (!D.skipped.has(t.id)) seeds.set(t.id, { id: t.id, weight: w });
@@ -706,13 +710,43 @@
     return (R.state.library.favorites || []).slice(0, 400).map((t) => t.id).concat(D.recent.map((t) => t.id));
   }
 
+  async function waveYouTube(limit, avoid = []) {
+    const heard = new Set([...heardIds(), ...avoid]);
+    const seeds = D.recent.filter((t) => t.source === 'youtube').slice(0, 3);
+    for (const t of (R.state.library.favorites || []).filter(isSc).slice(0, 8)) {
+      if (seeds.length >= 5) break;
+      const tw = await twinOf(t);
+      if (tw) seeds.push(tw);
+    }
+    if (!seeds.length) return [];
+    const fams = new Set();
+    for (const t of seeds) (await familiesOf(`${t.title} ${t.artist} ${t.genre || ''}`)).forEach((f) => fams.add(f));
+    const lists = await Promise.all(seeds.map((t) => R.call('youtube.related', { id: t.id, limit: 15 }).catch(() => [])));
+    const out = [], seen = new Set();
+    for (let i = 0; out.length < limit && lists.some((l) => i < l.length); i++) {
+      for (const l of lists) {
+        const t = l[i];
+        if (!t || heard.has(t.id) || seen.has(t.id)) continue;
+        seen.add(t.id);
+        if (fams.size) { const f = await familiesOf(`${t.title} ${t.artist}`); if (f.length && !f.some((x) => fams.has(x))) continue; }
+        out.push(t);
+        if (out.length >= limit) break;
+      }
+    }
+    return out;
+  }
+  const interleave = (a, b, limit) => { const out = []; for (let i = 0; out.length < limit && (i < a.length || i < b.length); i++) { if (a[i]) out.push(a[i]); if (b[i] && out.length < limit) out.push(b[i]); } return out; };
+
   function loadWave(refresh) {
     if (D.waveLoading) return D.waveLoading;
     if (D.wave && !refresh) return Promise.resolve(D.wave);
     const seeds = waveSeeds();
     if (!seeds.length) { D.waveErr = 'Save at least 5 tracks to tune My Wave'; return Promise.resolve(D.wave || []); }
-    D.waveLoading = R.call('discover.wave', { seeds, heard: heardIds(), refresh: !!refresh, limit: 30 })
-      .then((list) => { D.wave = list || []; D.waveErr = ''; D.waveFocus = 0; D.waveBasis = waveBasis(); return D.wave; })
+    D.waveLoading = Promise.all([
+      useSc() ? R.call('discover.wave', { seeds, heard: heardIds(), refresh: !!refresh, limit: 30 }) : [],
+      useYt() ? waveYouTube(useSc() ? 15 : 30).catch(() => []) : [],
+    ])
+      .then(([sc, yt]) => { D.wave = interleave(sc || [], yt || [], 30); D.waveErr = ''; D.waveFocus = 0; D.waveBasis = waveBasis(); return D.wave; })
       .catch((e) => { D.waveErr = errText(e); return D.wave || []; })
       .finally(() => { D.waveLoading = null; });
     return D.waveLoading;
@@ -932,14 +966,84 @@
     topUp();
   }
 
+  // Radio for any song: SoundCloud uses its related tracks (genre-filtered), YouTube uses
+  // YouTube Music's radio, and anything else (local files…) is first matched to the same song
+  // on SoundCloud or YouTube by title + artist + length, then uses that song's radio.
+  const isYt = (t) => !!t && t.source === 'youtube' && /^yt:/.test(String(t.id || ''));
+  const radioSeeds = new Map(); // local / other track id -> matched SC or YT track
+  async function matchSeed(t) {
+    if (isSc(t) || isYt(t)) return t;
+    if (radioSeeds.has(t.id)) return radioSeeds.get(t.id);
+    const q = `${t.artist && !/^unknown/i.test(t.artist) ? t.artist + ' ' : ''}${t.title || ''}`.trim();
+    if (!q) return null;
+    const close = (c) => c && (!t.duration || !c.duration || Math.abs(c.duration - t.duration) <= 8);
+    let hit = null;
+    try { hit = ((await R.invoke('search', { query: q, offset: 0 })) || []).find(close); } catch (e) {}
+    if (!hit) { try { hit = ((await R.call('youtube.search', { source: 'ytmusic', query: q, offset: 0 })) || []).find(close); } catch (e) {} }
+    radioSeeds.set(t.id, hit || null);
+    return hit;
+  }
+  // The same song on the other platform (SoundCloud <-> YouTube Music), matched by title + artist + length.
+  const twins = new Map();
+  async function twinOf(t) {
+    const key = `${isYt(t) ? 'sc' : 'yt'}|${t.id}`;
+    if (twins.has(key)) return twins.get(key);
+    const q = `${t.artist && !/^unknown/i.test(t.artist) ? t.artist + ' ' : ''}${t.title || ''}`.replace(/\[[^\]]*\]|\((?:free|official)[^)]*\)/gi, '').trim();
+    const close = (c) => c && (!t.duration || !c.duration || Math.abs(c.duration - t.duration) <= 8);
+    let hit = null;
+    try {
+      const list = isYt(t) ? await R.invoke('search', { query: q, offset: 0 }) : await R.call('youtube.search', { source: 'ytmusic', query: q, offset: 0 });
+      hit = (list || []).slice(0, 6).find(close) || null;
+    } catch (e) {}
+    twins.set(key, hit);
+    return hit;
+  }
+  const familiesOf = async (text) => { try { return Object.keys((await R.call('discover.style', { text })).families || {}); } catch (e) { return []; } };
+
+  // Radio mixes SoundCloud and YouTube: each side's own "songs like this", kept to the seed's
+  // genre (YouTube results usually carry no genre, so they're checked by title/artist words;
+  // with no genre known for the seed, both sides pass), then interleaved.
+  async function radioRecs(seed, opts = {}) {
+    const s = await matchSeed(seed);
+    if (!s) return [];
+    const limit = opts.limit || 12;
+    const avoid = new Set(opts.avoid || []);
+    const twin = await twinOf(s);
+    const sc = useSc() ? (isYt(s) ? twin : s) : null;
+    const yt = useYt() ? (isYt(s) ? s : twin) : null;
+    const [scList, ytList] = await Promise.all([
+      sc ? R.call('discover.radio', { seed: sc, played: opts.played || [], avoid: [...avoid], limit }).catch(() => []) : [],
+      yt ? R.call('youtube.related', { id: yt.id, limit: Math.min(50, limit + 15) }).catch(() => []) : [],
+    ]);
+    const seedFams = await familiesOf(`${s.title} ${s.genre || ''} ${s.style || ''} ${twin ? `${twin.title} ${twin.genre || ''}` : ''}`);
+    let ytKeep = (ytList || []).filter((t) => !avoid.has(t.id));
+    if (seedFams.length && ytKeep.length) {
+      const checked = await Promise.all(ytKeep.map(async (t) => {
+        const f = await familiesOf(`${t.title} ${t.artist}`);
+        return !f.length || f.some((x) => seedFams.includes(x)) ? t : null; // no genre words = trust YouTube's own radio
+      }));
+      ytKeep = checked.filter(Boolean);
+    }
+    const scKeep = (scList || []).filter((t) => !avoid.has(t.id));
+    const out = [], seen = new Set([s.id, ...(twin ? [twin.id] : [])]);
+    const key = (t) => `${(t.artist || '').toLowerCase()}|${(t.title || '').toLowerCase().replace(/\s*[[(].*$/, '')}`;
+    const seenKey = new Set([key(s)]);
+    for (let i = 0; out.length < limit && (i < scKeep.length || i < ytKeep.length); i++) {
+      for (const t of [scKeep[i], ytKeep[i]]) {
+        if (!t || seen.has(t.id) || seenKey.has(key(t)) || out.length >= limit) continue;
+        seen.add(t.id); seenKey.add(key(t)); out.push(t);
+      }
+    }
+    return out;
+  }
+
   async function startRadio(track) {
     if (!track || D.starting) return;
-    if (!isSc(track)) { R.toast('Song radio works with SoundCloud tracks'); return; }
     D.starting = true;
     updatePill();
     R.toast(`Starting radio from ${track.title || 'this song'}…`);
     try {
-      const recs = (await R.call('discover.radio', { seed: track, avoid: [track.id], limit: 12 })) || [];
+      const recs = await radioRecs(track, { avoid: [track.id], limit: 12 });
       const seen = new Set([track.id]);
       const list = [track, ...recs.filter((t) => !seen.has(t.id) && seen.add(t.id))];
       if (list.length < 2) { R.toast(`Couldn't find songs like ${track.title || 'this one'}`, 'error'); return; }
@@ -971,9 +1075,13 @@
           const t = p.context[p.order[i]];
           if (t && t.id !== a.seed.id && !D.skipped.has(t.id)) played.push(t.id);
         }
-        more = await R.call('discover.radio', { seed: a.seed, played: played.slice(-2), avoid, limit: 10 });
+        more = await radioRecs(a.seed, { played: played.slice(-2).filter((id) => /^\d+$/.test(id)), avoid, limit: 10 });
       } else {
-        more = await R.call('discover.wave', { seeds: waveSeeds(), heard: heardIds(), avoid, refresh: true, limit: 15 });
+        const [scMore, ytMore] = await Promise.all([
+          useSc() ? R.call('discover.wave', { seeds: waveSeeds(), heard: heardIds(), avoid, refresh: true, limit: 15 }) : [],
+          useYt() ? waveYouTube(useSc() ? 8 : 15, avoid).catch(() => []) : [],
+        ]);
+        more = interleave(scMore || [], ytMore || [], 15);
       }
       if (D.auto !== a || p.context !== a.ctx) return 0;
       const have = new Set(p.context.map((t) => t.id));
@@ -1010,7 +1118,7 @@
 
   R.addTrackMenu((t) => {
     const items = [];
-    if (isSc(t)) items.push({ label: 'Start radio', run: () => startRadio(t) });
+    items.push({ label: 'Start radio', run: () => startRadio(t) });
     if (hasArtist(t)) items.push({ label: 'Go to artist', run: () => openArtist(t) });
     return items;
   });
@@ -1032,6 +1140,29 @@
   });
 
   // ---------------------------------------------------------------- selftest (no user input, audio muted)
+
+  // ---------------------------------------------------------------- settings: where new songs come from
+
+  function syncSourcesToMixes() { R.call('mixes.sources', { value: sources() }).catch(() => {}); }
+  R.addSettings(() => {
+    const S = R.settingsRow;
+    if (!S) return;
+    S.group([
+      S.select({
+        name: 'Music sources',
+        desc: 'Where radio, My Wave, your mixes and trending find new songs. Same genre either way',
+        options: [['both', 'SoundCloud + YouTube'], ['sc', 'SoundCloud only'], ['yt', 'YouTube only']],
+        value: sources(),
+        onChange: (v) => {
+          R.setPref('musicSources', v);
+          D.wave = null; // My Wave refills from the new sources
+          syncSourcesToMixes();
+          R.toast(v === 'both' ? 'New songs from SoundCloud and YouTube' : v === 'sc' ? 'New songs from SoundCloud only' : 'New songs from YouTube only');
+        },
+      }),
+    ], 'music-sources');
+  }, 'interface');
+  R.on('ready', syncSourcesToMixes);
 
   R.addSelftest(async (log) => {
     const ms = (t0) => `${Math.round(performance.now() - t0)}ms`;
@@ -1119,8 +1250,23 @@
     t0 = performance.now();
     try {
       const r = await R.call('discover.radio', { seed, avoid: [seed.id], limit: 10 });
+      const mixed = await radioRecs(seed, { avoid: [seed.id], limit: 12 });
+      log(`discover radio mixed ${ok(mixed.length > 0)}: ${mixed.length} songs (${mixed.filter(isSc).length} SoundCloud, ${mixed.filter(isYt).length} YouTube)`);
       log(`discover radio ${ok(r.length > 0)}: ${r.length} songs like "${seed.title}" [${seed.genre}] (${ms(t0)}); first: ${r.slice(0, 3).map((t) => `${t.title} / ${t.genre}`).join(' | ')}`);
     } catch (e) { log(`discover radio FAILED: ${errText(e)}`); }
+
+    // Radio for YouTube songs and for songs from elsewhere (local file stand-in) too.
+    t0 = performance.now();
+    try {
+      const yt = ((await R.call('youtube.search', { source: 'ytmusic', query: 'daft punk one more time', offset: 0 })) || [])[0];
+      const r = yt ? await radioRecs(yt, { avoid: [yt.id], limit: 10 }) : [];
+      log(`discover radio youtube ${ok(r.length > 0 && r.every((t) => t.id !== yt.id))}: ${r.length} songs like "${yt && yt.title}" (${r.filter(isYt).length} YouTube, ${r.filter(isSc).length} SoundCloud, ${ms(t0)}); first: ${r.slice(0, 4).map((t) => `${t.title} / ${t.artist}`).join(' | ')}`);
+      t0 = performance.now();
+      const local = { id: 'local:selftest-radio', source: 'local', title: 'One More Time', artist: 'Daft Punk', duration: yt ? yt.duration : 0 };
+      const r2 = await radioRecs(local, { avoid: [], limit: 10 });
+      const m = radioSeeds.get(local.id);
+      log(`discover radio other ${ok(r2.length > 0)}: matched to ${m ? `${m.source || 'soundcloud'} "${m.title}"` : 'nothing'}, ${r2.length} songs (${ms(t0)})`);
+    } catch (e) { log(`discover radio youtube/other FAILED: ${errText(e)}`); }
 
     t0 = performance.now();
     const w = await loadWave(true);
