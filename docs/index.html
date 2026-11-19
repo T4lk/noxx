@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>noxx</title>
-<meta name="description" content="noxx: a fast desktop music player for SoundCloud, YouTube and YouTube Music, written in Rust.">
+<meta name="description" content="noxx: a fast music player for SoundCloud, YouTube and YouTube Music, written in Rust.">
 <meta property="og:title" content="noxx">
 <meta property="og:description" content="A fast desktop music player for SoundCloud, YouTube and YouTube Music, written in Rust.">
 <meta property="og:image" content="https://t4lk.github.io/noxx/screenshot.png">
@@ -58,13 +58,15 @@
   <header class="hero">
     <img class="mark" src="assets/noxx-mark.svg" alt="noxx logo">
     <h1>noxx</h1>
-    <p>A fast desktop music player for SoundCloud, YouTube and YouTube Music. Written in Rust.</p>
+    <p>A fast music player for SoundCloud, YouTube and YouTube Music, on Windows, Linux and Android. Written in Rust.</p>
     <div class="btns">
       <a class="btn primary" id="dl" href="https://github.com/T4lk/noxx/releases/latest">Download installer</a>
       <a class="btn" id="dl-portable" href="https://github.com/T4lk/noxx/releases/latest">Portable (.zip)</a>
+      <a class="btn" id="dl-linux" href="https://github.com/T4lk/noxx/releases/latest">Linux (AppImage)</a>
+      <a class="btn" id="dl-android" href="https://github.com/T4lk/noxx/releases/latest">Android (.apk)</a>
       <a class="btn" href="https://github.com/T4lk/noxx">View source</a>
     </div>
-    <div class="small" id="ver">Windows 10 / 11 · free</div>
+    <div class="small" id="ver">Windows · Linux · Android · free</div>
     <div class="shot"><img src="screenshot.png" alt="noxx playing a song: home with trending tracks, now playing and about the artist"></div>
   </header>
 
@@ -93,6 +95,7 @@
       <div class="card"><h3>Make it yours</h3><p>Glasshouse theme, accent colours, custom themes, image or video backgrounds, a CSS editor.</p></div>
       <div class="card"><h3>Discover</h3><p>Mixes, artist pages, radio from any song, and history.</p></div>
       <div class="card"><h3>Offline and local</h3><p>Download tracks for offline play, or add your own music folders.</p></div>
+      <div class="card"><h3>On your phone</h3><p>The Android app has a phone layout, full-screen now playing, background playback and lock-screen controls.</p></div>
       <div class="card"><h3>Extras</h3><p>Discord Rich Presence, media keys, minimize to tray and JavaScript plugins.</p></div>
     </div>
   </section>
@@ -112,7 +115,11 @@
       if (exe) document.getElementById('dl').href = exe.browser_download_url;
       const zip = (rel.assets || []).find((a) => /portable\.zip$/i.test(a.name));
       if (zip) document.getElementById('dl-portable').href = zip.browser_download_url;
-      document.getElementById('ver').textContent = `${rel.tag_name} · Windows 10 / 11 · free`;
+      const appimage = (rel.assets || []).find((a) => /\.AppImage$/i.test(a.name));
+      if (appimage) document.getElementById('dl-linux').href = appimage.browser_download_url;
+      const apk = (rel.assets || []).find((a) => /\.apk$/i.test(a.name));
+      if (apk) document.getElementById('dl-android').href = apk.browser_download_url;
+      document.getElementById('ver').textContent = `${rel.tag_name} · Windows · Linux · Android · free`;
     })
     .catch(() => {});
 </script>

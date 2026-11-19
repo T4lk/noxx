@@ -5,8 +5,8 @@
 <h1 align="center">noxx</h1>
 
 <p align="center">
-  A fast desktop music player for SoundCloud, YouTube and YouTube Music, written in Rust.<br>
-  <a href="https://github.com/T4lk/noxx/releases/latest"><b>Download for Windows</b></a> ·
+  A fast music player for SoundCloud, YouTube and YouTube Music, written in Rust.<br>
+  <a href="https://github.com/T4lk/noxx/releases/latest"><b>Download for Windows, Linux and Android</b></a> ·
   <a href="https://t4lk.github.io/noxx/">Website</a>
 </p>
 
@@ -27,6 +27,7 @@ It uses about **200 MB** of memory in total, where the Electron version used abo
 - **Lyrics:** synced lyrics with karaoke word highlighting, a full-screen karaoke mode and translation into 130+ languages.
 - **Sound:** EQ, effects, tempo and pitch, presets, crossfade, sleep timer.
 - **Looks:** the Glasshouse theme by default, accent colours, Material You palettes, custom themes, banner and background images or videos, a CSS editor.
+- **Android:** the same app on your phone, with a phone layout, full-screen now playing, background playback and lock-screen controls.
 - **Also:** Discover (mixes, artist pages, radio), history, downloads for offline play, local files, Discord Rich Presence, media keys, minimize to tray, and plugins.
 
 ## Screenshots
@@ -38,14 +39,25 @@ It uses about **200 MB** of memory in total, where the Electron version used abo
 
 ## Install
 
-Get either one from the [latest release](https://github.com/T4lk/noxx/releases/latest):
+Everything is on the [latest release](https://github.com/T4lk/noxx/releases/latest).
+
+**Windows**
 
 - **Installer:** `noxx_x.y.z_x64-setup.exe` installs noxx and adds Start menu and desktop shortcuts.
 - **Portable:** `noxx_x.y.z_x64-portable.zip` needs no install. Unzip it anywhere (even a USB stick) and run `noxx.exe`. Your library, login and settings stay in the `data` folder next to it. To use the normal `%APPDATA%` location instead, delete the `portable` file.
 
 Both need Windows 10 or 11 with the WebView2 runtime, which Windows 11 already has.
 
-Every push to `main` is built by GitHub Actions; the builds are under the run's artifacts. Pushing a `v*` tag publishes a release.
+**Linux**
+
+- **AppImage:** `noxx_x.y.z_amd64.AppImage` runs on most distros. Make it executable (`chmod +x`) and run it.
+- **Debian / Ubuntu:** `sudo apt install ./noxx_x.y.z_amd64.deb`.
+
+**Android**
+
+- `noxx_x.y.z_android-arm64.apk`: open it on your phone and allow installing from your browser when Android asks. Needs a 64-bit phone running Android 7 or newer.
+
+Every push to `main` is built for Windows, Linux and Android by GitHub Actions; the builds are under the run's artifacts. Pushing a `v*` tag publishes a release.
 
 ## Build from source
 
