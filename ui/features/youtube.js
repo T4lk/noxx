@@ -101,7 +101,6 @@
     if (!isYt(t)) return [];
     const items = [];
     if (t.artist && !/^unknown artist$/i.test(t.artist)) items.push({ label: `Search “${t.artist}” on YouTube`, run: () => searchYoutube(t.artist) });
-    if (t.artist_url) items.push({ label: 'Open channel in browser', run: () => open(t.artist_url) });
     items.push({ label: /music\.youtube/.test(t.url) ? 'Open on YouTube Music' : 'Open on YouTube', run: () => open(t.url || `https://www.youtube.com/watch?v=${vid(t)}`) });
     return items;
   });

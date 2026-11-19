@@ -248,7 +248,14 @@
     t0 = performance.now();
     R.playTrack(t);
     const playOk = await until(() => R.player.current === t && R.audio.currentTime > 0.3, 8000);
-    log(`localfiles playback ${playOk ? 'OK' : 'FAILED'}: t=${R.audio.currentTime.toFixed(1)}s in ${Math.round(performance.now() - t0)}ms`);
+    let why = '';
+    if (!playOk) {
+      const me = R.audio.error;
+      let fetchInfo = '';
+      try { const r = await fetch(s.url, { method: 'GET' }); fetchInfo = `fetch ${r.status} ${r.headers.get('content-type') || ''} acao=${r.headers.get('access-control-allow-origin') || '-'}`; } catch (e) { fetchInfo = `fetch error ${R.errText(e)}`; }
+      why = `; media error ${me ? me.code : '-'} ${me && me.message ? me.message : ''}; src=${(R.audio.currentSrc || '').slice(0, 60)}; crossOrigin=${R.audio.crossOrigin}; ${fetchInfo}`;
+    }
+    log(`localfiles playback ${playOk ? 'OK' : 'FAILED'}: t=${R.audio.currentTime.toFixed(1)}s in ${Math.round(performance.now() - t0)}ms${why}`);
     R.audio.pause();
 
     R.go('files');

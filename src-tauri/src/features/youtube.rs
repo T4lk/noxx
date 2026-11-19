@@ -9,6 +9,13 @@
 //!   tools                                                  -> { ytdlp, status, percent, error }
 //!   install                                                -> starts the yt-dlp download (events: "youtube-tools")
 //!   open    { url }                                        -> opens a youtube.com / music.youtube.com page in the browser
+//!   related { id, limit? }                                 -> Track[]   (YouTube Music radio for a video, cached 6 h)
+//!   trending_for { genres, limit? }                        -> [{ genre, tracks }]   (most viewed uploads of the
+//!            last month per genre on www.youtube.com, songs only (1-15 min, no mixes / albums), cached 1 h)
+//!
+//! For the mixes feature: `Yt::related` (watch-next radio), `Yt::video_years` and
+//! `Yt::song_years` (release years from YouTube Music albums, cached forever in
+//! `youtube-years.json` in the data folder).
 //!
 //! Playback: InnerTube player (VISIONOS client, then ANDROID_VR: plain audio URLs, no
 //! cipher / JS runtime) first, yt-dlp as fallback. Links are cached until googlevideo's
@@ -16,15 +23,18 @@
 //! for our origin (see proxy.rs).
 
 mod innertube;
+mod music;
 mod proxy;
 pub(crate) mod sha256;
 mod ytdlp;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use futures::future::join_all;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -33,6 +43,38 @@ pub use innertube::Src;
 
 const PAGE: usize = 20;
 const SEARCH_TTL: Duration = Duration::from_secs(300);
+const RADIO_TTL: Duration = Duration::from_secs(6 * 3600);
+const TREND_TTL: Duration = Duration::from_secs(3600);
+/// Genres searched at once / at most per call.
+const TREND_PARALLEL: usize = 4;
+const TREND_GENRES: usize = 12;
+const YEARS_FILE: &str = "youtube-years.json";
+/// Year lookups running at once.
+const YEAR_PARALLEL: usize = 5;
+/// Years noted from radio rows stop here (looked-up seeds are always kept).
+const YEARS_MAX: usize = 30_000;
+
+/// Release years from YouTube Music, cached forever. 0 = looked up, unknown.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct YearFile {
+    /// videoId -> year
+    #[serde(default)]
+    videos: HashMap<String, u16>,
+    /// album browse id (MPREb_…) -> year
+    #[serde(default)]
+    albums: HashMap<String, u16>,
+    /// caller's key (e.g. a SoundCloud id) -> year of the matching YouTube Music song
+    #[serde(default)]
+    songs: HashMap<String, u16>,
+    #[serde(skip)]
+    dirty: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum YearKind {
+    Video,
+    Song,
+}
 
 #[derive(Clone, Debug)]
 pub struct Stream {
@@ -76,6 +118,9 @@ pub struct Yt {
     no_direct: Mutex<HashSet<String>>,
     conts: Mutex<HashMap<String, String>>,
     cache: Mutex<HashMap<String, (Instant, Vec<Track>)>>,
+    radio: Mutex<HashMap<String, (Instant, Arc<Vec<music::Row>>)>>,
+    trend: Mutex<HashMap<String, (Instant, Vec<Track>)>>,
+    years: Mutex<Option<(PathBuf, YearFile)>>,
     app_bin: Mutex<Option<PathBuf>>,
     tools: Mutex<Value>,
     proxy: OnceLock<(u16, String)>,
@@ -110,6 +155,9 @@ impl Yt {
             no_direct: Mutex::new(HashSet::new()),
             conts: Mutex::new(HashMap::new()),
             cache: Mutex::new(HashMap::new()),
+            radio: Mutex::new(HashMap::new()),
+            trend: Mutex::new(HashMap::new()),
+            years: Mutex::new(None),
             app_bin: Mutex::new(None),
             tools: Mutex::new(json!({ "status": "idle", "percent": 0, "error": "" })),
             proxy: OnceLock::new(),
@@ -262,6 +310,276 @@ impl Yt {
         }
         c.insert(key(offset), (Instant::now(), out.clone()));
         Ok(out)
+    }
+
+    // ------------------------------------------------------------ trending per genre
+
+    /// Most viewed songs uploaded this month for one genre (one search page, cached 1 h).
+    pub async fn trending(&self, genre: &str) -> Result<Vec<Track>, String> {
+        let g = genre.trim().to_lowercase();
+        if g.is_empty() {
+            return Ok(vec![]);
+        }
+        if let Some((at, t)) = lock(&self.trend).get(&g) {
+            if at.elapsed() < TREND_TTL {
+                return Ok(t.clone());
+            }
+        }
+        let started = Instant::now();
+        let visitor = lock(&self.visitor).0.clone();
+        let body = json!({ "context": innertube::web_context(&visitor), "query": g, "params": innertube::YT_TRENDING_PARAMS });
+        let v = self.post("www.youtube.com", "search", &body, None).await?;
+        self.note_visitor(&v);
+        // YouTube's search is loose ("hard dance" also returns unrelated regional "DJ song" uploads),
+        // so a pick must actually name the genre in its title or channel (spaces/dashes ignored).
+        let squash = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+        let key = squash(&g);
+        let out: Vec<Track> = innertube::parse_yt_videos(&v)
+            .into_iter()
+            .filter(innertube::trending_song)
+            .filter(|t| key.is_empty() || squash(&format!("{} {}", t.title, t.artist)).contains(&key))
+            .collect();
+        println!("[youtube] trending \"{g}\": {} songs in {}ms", out.len(), ms(started));
+        let mut c = lock(&self.trend);
+        if c.len() > 100 {
+            c.retain(|_, (at, _)| at.elapsed() < TREND_TTL);
+        }
+        c.insert(g, (Instant::now(), out.clone()));
+        Ok(out)
+    }
+
+    /// `trending` for several genres (4 at a time): [{ genre, tracks }]. Fails only when every genre failed.
+    pub async fn trending_for(&self, genres: &[String], limit: usize) -> Result<Value, String> {
+        let mut list: Vec<String> = Vec::new();
+        for g in genres {
+            let g = g.trim().to_string();
+            if !g.is_empty() && !list.iter().any(|x| x.eq_ignore_ascii_case(&g)) && list.len() < TREND_GENRES {
+                list.push(g);
+            }
+        }
+        let mut out = Vec::new();
+        let mut last_err = None;
+        for group in list.chunks(TREND_PARALLEL) {
+            let res = join_all(group.iter().map(|g| self.trending(g))).await;
+            for (g, r) in group.iter().zip(res) {
+                match r {
+                    Ok(t) => out.push(json!({ "genre": g, "tracks": t.into_iter().take(limit).collect::<Vec<_>>() })),
+                    Err(e) => {
+                        eprintln!("[youtube] trending {g}: {e}");
+                        last_err = Some(e);
+                        out.push(json!({ "genre": g, "tracks": [] }));
+                    }
+                }
+            }
+        }
+        match last_err {
+            Some(e) if out.iter().all(|x| x["tracks"].as_array().is_none_or(|a| a.is_empty())) => Err(e),
+            _ => Ok(json!(out)),
+        }
+    }
+
+    // ------------------------------------------------------------ YouTube Music radio + release years
+
+    /// Watch-next rows for a video (the seed first), cached for 6 h. Years of album
+    /// tracks in the radio go into the year cache when it is loaded.
+    async fn watch(&self, vid: &str) -> Result<Arc<Vec<music::Row>>, String> {
+        if let Some((at, rows)) = lock(&self.radio).get(vid) {
+            if at.elapsed() < RADIO_TTL {
+                return Ok(rows.clone());
+            }
+        }
+        let visitor = lock(&self.visitor).0.clone();
+        let v = self.post("music.youtube.com", "next", &music::watch_body(vid, &visitor), None).await?;
+        self.note_visitor(&v);
+        let rows = Arc::new(music::parse_watch(&v));
+        if let Some((_, f)) = lock(&self.years).as_mut() {
+            for r in rows.iter() {
+                if let Some(y) = r.year {
+                    let id = &r.track.id[3..];
+                    if f.videos.len() < YEARS_MAX && f.videos.get(id).copied().unwrap_or(0) == 0 {
+                        f.videos.insert(id.to_string(), y);
+                        f.dirty = true;
+                    }
+                }
+            }
+        }
+        let mut c = lock(&self.radio);
+        if c.len() > 400 {
+            c.retain(|_, (at, _)| at.elapsed() < RADIO_TTL);
+            if c.len() > 400 {
+                c.clear();
+            }
+        }
+        c.insert(vid.to_string(), (Instant::now(), rows.clone()));
+        Ok(rows)
+    }
+
+    /// Related songs for a video (YouTube Music's radio for it), radio order, without the seed.
+    pub async fn related(&self, vid: &str, limit: usize) -> Result<Vec<Track>, String> {
+        let vid = vid.strip_prefix("yt:").unwrap_or(vid);
+        if !innertube::valid_id(vid) {
+            return Err(format!("youtube: bad video id {vid:?}"));
+        }
+        let rows = self.watch(vid).await?;
+        Ok(rows.iter().filter(|r| r.track.id[3..] != *vid).take(limit).map(|r| r.track.clone()).collect())
+    }
+
+    /// Loads `youtube-years.json` from `dir` once (switching folders reloads).
+    fn years_load(&self, dir: &Path) {
+        let path = dir.join(YEARS_FILE);
+        let mut g = lock(&self.years);
+        if g.as_ref().is_some_and(|(p, _)| *p == path) {
+            return;
+        }
+        let f: YearFile = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        *g = Some((path, f));
+    }
+
+    fn years_save(&self) {
+        let out = {
+            let mut g = lock(&self.years);
+            match g.as_mut() {
+                Some((p, f)) if f.dirty => {
+                    f.dirty = false;
+                    serde_json::to_vec(&*f).ok().map(|b| (p.clone(), b))
+                }
+                _ => None,
+            }
+        };
+        if let Some((path, bytes)) = out {
+            let tmp = path.with_extension("tmp");
+            if std::fs::write(&tmp, bytes).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
+        }
+    }
+
+    fn year_cached(&self, kind: YearKind, key: &str) -> Option<u16> {
+        let g = lock(&self.years);
+        let f = &g.as_ref()?.1;
+        match kind {
+            YearKind::Video => f.videos.get(key).copied(),
+            YearKind::Song => f.songs.get(key).copied(),
+        }
+    }
+
+    fn year_store(&self, kind: YearKind, key: &str, y: u16) {
+        if let Some((_, f)) = lock(&self.years).as_mut() {
+            match kind {
+                YearKind::Video => f.videos.insert(key.to_string(), y),
+                YearKind::Song => f.songs.insert(key.to_string(), y),
+            };
+            f.dirty = true;
+        }
+    }
+
+    async fn album_year(&self, album: &str) -> Result<u16, String> {
+        if let Some(y) = lock(&self.years).as_ref().and_then(|(_, f)| f.albums.get(album).copied()) {
+            return Ok(y);
+        }
+        let visitor = lock(&self.visitor).0.clone();
+        let body = json!({ "context": innertube::ytm_context(&visitor), "browseId": album });
+        let v = self.post("music.youtube.com", "browse", &body, None).await?;
+        let y = music::parse_album_year(&v).unwrap_or(0);
+        if let Some((_, f)) = lock(&self.years).as_mut() {
+            f.albums.insert(album.to_string(), y);
+            f.dirty = true;
+        }
+        Ok(y)
+    }
+
+    /// Year of the YouTube Music song matching title / artist / length (±3 s), 0 = no match.
+    /// `skip` = a video id that is known to have no year (the caller's own video).
+    async fn match_year(&self, title: &str, artist: &str, duration: u64, skip: &str) -> Result<u16, String> {
+        let q = music::song_query(title, artist);
+        if q.is_empty() || duration == 0 {
+            return Ok(0);
+        }
+        let visitor = lock(&self.visitor).0.clone();
+        let body = json!({ "context": innertube::ytm_context(&visitor), "query": q, "params": innertube::YTM_SONGS_PARAMS });
+        let v = self.post("music.youtube.com", "search", &body, None).await?;
+        self.note_visitor(&v);
+        let albums = music::song_albums(&v);
+        let Some(hit) = innertube::parse_ytm_songs(&v).into_iter().take(10).find(|t| t.id[3..] != *skip && music::same_song(title, artist, duration, t)) else {
+            return Ok(0);
+        };
+        let vid = &hit.id[3..];
+        if let Some(y) = self.year_cached(YearKind::Video, vid).filter(|y| *y > 0) {
+            return Ok(y);
+        }
+        match albums.get(vid) {
+            Some(a) => self.album_year(a).await,
+            None => Ok(self.watch(vid).await?.iter().find(|r| r.track.id[3..] == *vid).and_then(|r| r.year).unwrap_or(0)),
+        }
+    }
+
+    /// One lookup: a video's own watch-next row first (album tracks), then a song search.
+    async fn year_lookup(&self, kind: YearKind, key: &str, title: &str, artist: &str, duration: u64) -> Result<u16, String> {
+        if kind == YearKind::Video {
+            let rows = self.watch(key).await?;
+            if let Some(y) = rows.iter().find(|r| r.track.id[3..] == *key).and_then(|r| r.year) {
+                return Ok(y);
+            }
+            return self.match_year(title, artist, duration, key).await;
+        }
+        self.match_year(title, artist, duration, "").await
+    }
+
+    /// Batch of year lookups: cache hits for all, at most `max_new` network lookups
+    /// (in order, a few at a time) until `budget` runs out. Unknown years are left out.
+    async fn years_batch(&self, dir: &Path, kind: YearKind, items: &[(String, String, String, u64)], max_new: usize, budget: Duration) -> (HashMap<String, u16>, usize) {
+        self.years_load(dir);
+        let mut out = HashMap::new();
+        let mut todo = Vec::new();
+        for (key, title, artist, dur) in items {
+            match self.year_cached(kind, key) {
+                Some(y) => {
+                    if y > 0 {
+                        out.insert(key.clone(), y);
+                    }
+                }
+                None if todo.len() < max_new => todo.push((key, title, artist, *dur)),
+                None => {}
+            }
+        }
+        let deadline = Instant::now() + budget;
+        let mut n = 0;
+        for group in todo.chunks(YEAR_PARALLEL) {
+            if Instant::now() >= deadline {
+                break;
+            }
+            let looked = join_all(group.iter().map(|(key, title, artist, dur)| async move {
+                match self.year_lookup(kind, key, title, artist, *dur).await {
+                    Ok(y) => Some(((*key).clone(), y)),
+                    Err(e) => {
+                        eprintln!("[youtube] year {key}: {e}");
+                        None
+                    }
+                }
+            }))
+            .await;
+            for (key, y) in looked.into_iter().flatten() {
+                n += 1;
+                self.year_store(kind, &key, y);
+                if y > 0 {
+                    out.insert(key, y);
+                }
+            }
+        }
+        self.years_save();
+        (out, n)
+    }
+
+    /// Release years for YouTube videos: items are (videoId, title, artist, duration s),
+    /// most important first. Returns (videoId -> year, number of new lookups).
+    pub async fn video_years(&self, dir: &Path, items: &[(String, String, String, u64)], max_new: usize, budget: Duration) -> (HashMap<String, u16>, usize) {
+        self.years_batch(dir, YearKind::Video, items, max_new, budget).await
+    }
+
+    /// Release years of the YouTube Music songs matching other tracks: items are
+    /// (key, title, artist, duration s). Returns (key -> year, number of new lookups).
+    pub async fn song_years(&self, dir: &Path, items: &[(String, String, String, u64)], max_new: usize, budget: Duration) -> (HashMap<String, u16>, usize) {
+        self.years_batch(dir, YearKind::Song, items, max_new, budget).await
     }
 
     // ------------------------------------------------------------ links
@@ -542,6 +860,16 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             Ok(json!(yt.search(src, query, offset).await?))
         }
         "link" => Ok(json!(yt.link(args["text"].as_str().unwrap_or("")).await?)),
+        "trending_for" => {
+            let genres: Vec<String> = args["genres"].as_array().map(|a| a.iter().filter_map(|g| g.as_str().map(String::from)).collect()).unwrap_or_default();
+            let limit = args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize;
+            yt.trending_for(&genres, limit).await
+        }
+        "related" => {
+            let vid = vid_of(&args)?;
+            let limit = args["limit"].as_u64().unwrap_or(25).clamp(1, 50) as usize;
+            Ok(json!(yt.related(&vid, limit).await?))
+        }
         "resolve" => {
             let vid = vid_of(&args)?;
             let fresh = args["fresh"].as_bool().unwrap_or(false);
@@ -658,6 +986,71 @@ mod tests {
                 let r3 = yt.search(src, "lofi beats", 0).await.unwrap();
                 println!("{} warm search: {} tracks in {}ms", src.key(), r3.len(), ms(t));
             }
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn youtube_live_trending_for() {
+        rt().block_on(async {
+            let yt = Yt::global();
+            let genres: Vec<String> = ["hardtekk", "frenchcore", "hip hop", "techno", "phonk"].iter().map(|s| s.to_string()).collect();
+            let t = Instant::now();
+            let v = yt.trending_for(&genres, 20).await.unwrap();
+            println!("trending_for {} genres in {}ms", genres.len(), ms(t));
+            for g in v.as_array().unwrap() {
+                let tracks = g["tracks"].as_array().unwrap();
+                println!("  {}: {} songs; first: {} - {} ({}s)", g["genre"], tracks.len(), tracks.first().map(|x| x["artist"].as_str().unwrap_or("")).unwrap_or(""), tracks.first().map(|x| x["title"].as_str().unwrap_or("")).unwrap_or(""), tracks.first().map(|x| x["duration"].as_u64().unwrap_or(0)).unwrap_or(0));
+                assert!(tracks.iter().all(|x| (60..=900).contains(&x["duration"].as_u64().unwrap_or(0))));
+            }
+            assert!(v.as_array().unwrap().iter().any(|g| !g["tracks"].as_array().unwrap().is_empty()));
+            let t = Instant::now();
+            yt.trending_for(&genres, 20).await.unwrap();
+            println!("cached in {}us", t.elapsed().as_micros());
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn youtube_live_related_and_years() {
+        rt().block_on(async {
+            let yt = Yt::global();
+            let dir = std::env::temp_dir().join(format!("noxx-yt-years-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            for vid in ["hqvcww4ydh8", "kJQP7kiw5Fk"] {
+                let t = Instant::now();
+                let r = yt.related(vid, 50).await.unwrap();
+                println!("related {vid}: {} tracks in {}ms; first: {:?}", r.len(), ms(t), r.first().map(|x| (&x.id, &x.title, &x.artist, x.duration, &x.artwork)));
+                assert!(r.len() >= 20, "too few related");
+                assert!(r.iter().all(|x| x.id.starts_with("yt:") && x.source == "youtube" && x.duration >= 30 && x.id != format!("yt:{vid}")));
+                let t = Instant::now();
+                yt.related(vid, 50).await.unwrap();
+                println!("related {vid} cached in {}us", t.elapsed().as_micros());
+            }
+            // album track, music video (needs the search fallback), unknown upload
+            let items: Vec<(String, String, String, u64)> = vec![
+                ("hqvcww4ydh8".into(), "Can't Tell Me Nothing".into(), "Kanye West".into(), 272),
+                ("kJQP7kiw5Fk".into(), "Luis Fonsi - Despacito ft. Daddy Yankee".into(), "Luis Fonsi".into(), 282),
+                ("uUL8a7eJCk8".into(), "Low (feat. T-Pain)".into(), "Flo Rida".into(), 232),
+            ];
+            let t = Instant::now();
+            let (years, n) = yt.video_years(&dir, &items, 200, Duration::from_secs(30)).await;
+            println!("video years: {years:?} ({n} lookups) in {}ms", ms(t));
+            assert_eq!(years.get("hqvcww4ydh8"), Some(&2007));
+            let t = Instant::now();
+            let (again, n) = yt.video_years(&dir, &items, 200, Duration::from_secs(30)).await;
+            println!("video years cached: {} ({n} lookups) in {}us", again.len(), t.elapsed().as_micros());
+            assert_eq!(n, 0);
+            let songs: Vec<(String, String, String, u64)> = vec![
+                ("sc1".into(), "Kanye West - Stronger".into(), "some uploader".into(), 312),
+                ("sc2".into(), "Hey Ya!".into(), "OutKast".into(), 249),
+                ("sc3".into(), "zzqx nonsense track".into(), "nobody".into(), 200),
+            ];
+            let t = Instant::now();
+            let (sy, n) = yt.song_years(&dir, &songs, 200, Duration::from_secs(30)).await;
+            println!("song years: {sy:?} ({n} lookups) in {}ms", ms(t));
+            assert!(!sy.contains_key("sc3"));
+            let _ = std::fs::remove_dir_all(&dir);
         });
     }
 

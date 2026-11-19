@@ -2,6 +2,10 @@
 //!
 //! Commands (JS: `riff.call('discover.<cmd>', args)`):
 //! - `artist {id?, url?, trackId?, name?, refresh?}` → profile, popular tracks, latest uploads, albums, playlists
+//!   (+ `banners`, `plays {trackId: count}`, `tracksNext`, `related` artists, `following` true/false/null)
+//! - `artist_tracks {id, next?}` → one page of an artist's uploads `{tracks, plays, next}` (hydrated)
+//! - `follow_state {id}` → `{loggedIn, following: bool|null}` for the signed-in account
+//! - `follow {id, on}` → follows / unfollows an artist (needs login) → `{following}`
 //! - `set {id}` → one album / playlist with hydrated tracks (order kept)
 //! - `for_you {refresh?}` → SoundCloud system playlists (needs login)
 //! - `system_playlist {urn}` → tracks of one system playlist (hydrated, order kept)
@@ -34,18 +38,72 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
     let sc: Arc<SoundCloud> = app.state::<crate::AppState>().sc.clone();
     match cmd {
         "artist" => artist(&sc, &args).await,
+        "artist_tracks" => artist_tracks(&sc, &args).await,
+        "follow_state" => follow_state(&sc, &arg_str(&args, "id")).await,
+        "follow" => follow(&sc, &arg_str(&args, "id"), args["on"].as_bool().unwrap_or(true)).await,
         "set" => set_tracks(&sc, &arg_str(&args, "id")).await,
         "for_you" => for_you(&sc, args["refresh"].as_bool().unwrap_or(false)).await,
         "system_playlist" => system_playlist(&sc, &arg_str(&args, "urn")).await,
         "radio" => radio(&sc, &args).await,
         "wave" => wave(&sc, &args).await,
         "search_extras" => search_extras(&sc, &args).await,
+        "trending_for" => trending_for(&sc, &args).await,
         "style" => {
             let text = arg_str(&args, "text");
             Ok(json!({ "families": detect_families(&text), "edit": is_edit(&text), "notASong": is_not_a_song(&text) }))
         }
         _ => Err(format!("discover: unknown command {cmd}")),
     }
+}
+
+// ------------------------------------------------------------------
+// trending in the user's own genres
+// ------------------------------------------------------------------
+
+static TREND_CACHE: LazyLock<Mutex<HashMap<String, (Instant, Vec<Track>)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+const TREND_TTL: Duration = Duration::from_secs(60 * 60);
+
+/// `trending_for {genres: ["hardtekk", "frenchcore", …], limit?}` → `[{genre, tracks}]`.
+/// SoundCloud's global chart is mostly mainstream, so for each genre this searches tracks
+/// uploaded in the last month and ranks them by plays (ties: likes). Cached for an hour.
+async fn trending_for(sc: &SoundCloud, args: &Value) -> super::Out {
+    let limit = args["limit"].as_u64().unwrap_or(24).clamp(5, 50) as usize;
+    let genres: Vec<String> = args["genres"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|g| g.as_str()).map(|g| g.trim().to_string()).filter(|g| !g.is_empty()).take(4).collect())
+        .unwrap_or_default();
+    let rows = join_all(genres.iter().map(|g| async move {
+        let key = g.to_lowercase();
+        if let Some((at, list)) = TREND_CACHE.lock().unwrap().get(&key) {
+            if at.elapsed() < TREND_TTL {
+                return json!({ "genre": g, "tracks": list });
+            }
+        }
+        let params = [
+            ("q", g.clone()),
+            ("filter.created_at", "last_month".to_string()),
+            ("limit", "100".to_string()),
+        ];
+        let mut raw: Vec<Value> = match sc.api("/search/tracks", &params).await {
+            Ok(v) => collection(&v).iter().map(|i| unwrap_item(i, "track").clone()).filter(|t| playable(t)).collect(),
+            Err(_) => Vec::new(),
+        };
+        let score = |t: &Value| (t["playback_count"].as_u64().unwrap_or(0), t["likes_count"].as_u64().unwrap_or(0));
+        raw.sort_by(|a, b| score(b).cmp(&score(a)));
+        let mut seen = HashSet::new();
+        let list: Vec<Track> = raw
+            .iter()
+            .map(map_track)
+            .filter(|t| t.duration >= 60 && seen.insert(format!("{}|{}", t.artist.to_lowercase(), t.title.to_lowercase())))
+            .take(limit)
+            .collect();
+        if !list.is_empty() {
+            TREND_CACHE.lock().unwrap().insert(key, (Instant::now(), list.clone()));
+        }
+        json!({ "genre": g, "tracks": list })
+    }))
+    .await;
+    Ok(Value::Array(rows))
 }
 
 // ------------------------------------------------------------------
@@ -240,14 +298,54 @@ fn release_of(pl: &Value) -> Option<Value> {
         "year": date.get(..4).unwrap_or(""),
         "kind": kind,
         "url": str_of(pl, "permalink_url").unwrap_or_default(),
+        "likes": pl["likes_count"].as_u64().unwrap_or(0),
     }))
 }
 
-fn tracks_of(v: &Result<Value, String>) -> Vec<Track> {
-    match v {
-        Ok(data) => collection(data).iter().map(|i| unwrap_item(i, "track")).filter(|t| listable(t)).map(map_track).collect(),
-        Err(_) => Vec::new(),
+/// Raw track objects of a list answer, stubs hydrated, order kept, unplayable ones dropped.
+async fn raw_tracks_of(sc: &SoundCloud, v: &Result<Value, String>) -> Vec<Value> {
+    let Ok(data) = v else { return Vec::new() };
+    let items: Vec<Value> = collection(data).iter().map(|i| unwrap_item(i, "track").clone()).collect();
+    if items.is_empty() {
+        return Vec::new();
     }
+    sc.hydrate(&Value::Array(items)).await.into_iter().filter(listable).collect()
+}
+
+/// Play counts by track id (riff's "plays" column on Popular).
+fn plays_of(raw: &[Value], into: &mut serde_json::Map<String, Value>) {
+    for t in raw {
+        if let (Some(id), Some(n)) = (id_of(t), t["playback_count"].as_u64()) {
+            into.insert(id, json!(n));
+        }
+    }
+}
+
+/// Round artist card (search rows, "Fans also like").
+fn artist_card(u: &Value) -> Option<Value> {
+    let id = id_of(u)?;
+    let avatar = artwork(&str_of(u, "avatar_url").unwrap_or_default(), "t300x300");
+    Some(json!({
+        "id": id,
+        "name": str_of(u, "username").unwrap_or_else(|| "Artist".into()),
+        "avatar": if avatar.contains("default_avatar") { String::new() } else { avatar },
+        "followers": u["followers_count"].as_u64().unwrap_or(0),
+        "verified": u["verified"].as_bool().unwrap_or(false) || u["badges"]["verified"].as_bool().unwrap_or(false),
+        "url": str_of(u, "permalink_url").unwrap_or_default(),
+    }))
+}
+
+/// Every banner image of a profile (riff's banner carousel), first one = main banner.
+fn banners_of(user: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for v in user["visuals"]["visuals"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+        if let Some(u) = str_of(v, "visual_url") {
+            if !out.contains(&u) {
+                out.push(u);
+            }
+        }
+    }
+    out
 }
 
 /// Artists and albums for a search query (riff's "Show artists in search" / "Albums").
@@ -292,7 +390,22 @@ async fn search_extras(sc: &SoundCloud, args: &Value) -> super::Out {
     Ok(out)
 }
 
+/// The artist page plus `following` (true / false for the signed-in account,
+/// null when logged out or unknown). The page is cached; the flag has its own
+/// short cache that `follow` updates.
 async fn artist(sc: &SoundCloud, args: &Value) -> super::Out {
+    let mut out = artist_page(sc, args).await?;
+    let uid = out["id"].as_str().unwrap_or_default().to_string();
+    let following = if sc.token().is_some() && is_num_id(&uid) {
+        follow_state(sc, &uid).await.map(|s| s["following"].clone()).unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
+    out["following"] = following;
+    Ok(out)
+}
+
+async fn artist_page(sc: &SoundCloud, args: &Value) -> super::Out {
     let uid = resolve_user_id(sc, args).await?;
     let key = format!("artist:{uid}");
     if !args["refresh"].as_bool().unwrap_or(false) {
@@ -307,32 +420,43 @@ async fn artist(sc: &SoundCloud, args: &Value) -> super::Out {
         format!("/users/{uid}/albums"),
         format!("/users/{uid}/playlists_without_albums"),
     );
+    let p_related = format!("/users/{uid}/relatedartists");
     let q10 = [("limit", "10".to_string())];
-    let q50 = [("limit", "50".to_string())];
+    let q50 = [("limit", "50".to_string()), ("linked_partitioning", "1".to_string())];
     let q30 = [("limit", "30".to_string())];
-    let (user, top, latest, albums, playlists) = futures::join!(
+    let q_rel = [("limit", "12".to_string()), ("page_items", "12".to_string()), ("creators_only", "false".to_string())];
+    let (user, top, latest, albums, playlists, related) = futures::join!(
         sc.api(&p_user, &[]),
         sc.api(&p_top, &q10),
         sc.api(&p_tracks, &q50),
         sc.api(&p_albums, &q30),
         sc.api(&p_lists, &q30),
+        sc.api(&p_related, &q_rel),
     );
     let user = user.map_err(|err| format!("Couldn't load this artist ({err})"))?;
     let (top, latest, albums, playlists) = (top.map_err(e), latest.map_err(e), albums.map_err(e), playlists.map_err(e));
 
-    let latest_tracks = tracks_of(&latest);
-    let mut top_tracks = tracks_of(&top);
-    if top_tracks.is_empty() {
+    let (raw_latest, mut raw_top) = futures::join!(raw_tracks_of(sc, &latest), raw_tracks_of(sc, &top));
+    if raw_top.is_empty() {
         // No "top tracks" for small artists: rank their uploads by plays instead.
-        if let Ok(data) = &latest {
-            let mut raw: Vec<&Value> = collection(data).iter().filter(|t| listable(t)).collect();
-            raw.sort_by_key(|t| std::cmp::Reverse(t["playback_count"].as_u64().unwrap_or(0)));
-            top_tracks = raw.into_iter().take(10).map(map_track).collect();
-        }
+        raw_top = raw_latest.clone();
+        raw_top.sort_by_key(|t| std::cmp::Reverse(t["playback_count"].as_u64().unwrap_or(0)));
+        raw_top.truncate(10);
     }
+    let mut plays = serde_json::Map::new();
+    plays_of(&raw_latest, &mut plays);
+    plays_of(&raw_top, &mut plays);
+    let latest_tracks: Vec<Track> = raw_latest.iter().map(map_track).collect();
+    let top_tracks: Vec<Track> = raw_top.iter().map(map_track).collect();
+    let tracks_next = latest.as_ref().ok().and_then(|d| str_of(d, "next_href")).unwrap_or_default();
+    let related: Vec<Value> = related
+        .as_ref()
+        .map(|d| collection(d).iter().map(|i| unwrap_item(i, "user")).filter(|u| id_of(u).as_deref() != Some(uid.as_str())).filter_map(artist_card).collect())
+        .unwrap_or_default();
     let releases =
         |r: &Result<Value, String>| -> Vec<Value> { r.as_ref().map(|d| collection(d).iter().filter_map(release_of).collect()).unwrap_or_default() };
-    let banner = user["visuals"]["visuals"].as_array().and_then(|v| v.iter().find_map(|x| str_of(x, "visual_url"))).unwrap_or_default();
+    let banners = banners_of(&user);
+    let banner = banners.first().cloned().unwrap_or_default();
     let avatar = artwork(&str_of(&user, "avatar_url").unwrap_or_default(), "t500x500");
     let out = json!({
         "id": uid,
@@ -351,9 +475,140 @@ async fn artist(sc: &SoundCloud, args: &Value) -> super::Out {
         "tracks": latest_tracks,
         "albums": releases(&albums),
         "playlists": releases(&playlists),
+        "banners": banners,
+        "plays": plays,
+        "tracksNext": tracks_next,
+        "related": related,
+        "likes": user["likes_count"].as_u64().unwrap_or(0),
+        "followings": user["followings_count"].as_u64().unwrap_or(0),
     });
     remember(&key, &out);
     Ok(out)
+}
+
+/// One page of an artist's uploads (the "All tracks" category). `next` is the
+/// cursor from the previous page (`tracksNext` / `next`); it must point at this user's tracks.
+async fn artist_tracks(sc: &SoundCloud, args: &Value) -> super::Out {
+    let uid = arg_str(args, "id");
+    if !is_num_id(&uid) {
+        return Err("Not a SoundCloud artist id".into());
+    }
+    let next = arg_str(args, "next");
+    let own = format!("api-v2.soundcloud.com/users/{uid}/tracks");
+    let endpoint = if !next.is_empty() && next.contains(&own) { next } else { format!("/users/{uid}/tracks") };
+    let key = format!("atracks:{endpoint}");
+    if let Some(v) = cached(&key) {
+        return Ok(v);
+    }
+    let page: Result<Value, String> =
+        Ok(sc.api(&endpoint, &[("limit", "50".to_string()), ("linked_partitioning", "1".to_string())]).await.map_err(e)?);
+    let raw = raw_tracks_of(sc, &page).await;
+    let mut plays = serde_json::Map::new();
+    plays_of(&raw, &mut plays);
+    let tracks: Vec<Track> = raw.iter().map(map_track).collect();
+    let next = page.as_ref().ok().and_then(|d| str_of(d, "next_href")).unwrap_or_default();
+    let out = json!({ "tracks": tracks, "plays": plays, "next": next });
+    remember(&key, &out);
+    Ok(out)
+}
+
+// ---------------- follow / unfollow ----------------
+//
+// Own requests (not `sc.api`): a 401 here can mean "this token may not do
+// that", which must not mark the whole session expired.
+
+const API_V2: &str = "https://api-v2.soundcloud.com";
+
+async fn me_request(sc: &SoundCloud, method: reqwest::Method, endpoint: &str) -> Result<(u16, Value), String> {
+    let token = sc.token().ok_or("Connect SoundCloud first.")?;
+    let client_id = sc.client_id(false).await.map_err(e)?;
+    let sep = if endpoint.contains('?') { '&' } else { '?' };
+    let url = format!("{API_V2}{endpoint}{sep}client_id={client_id}");
+    let res = sc
+        .http
+        .request(method, url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(reqwest::header::AUTHORIZATION, format!("OAuth {token}"))
+        .header(reqwest::header::ORIGIN, "https://soundcloud.com")
+        .header(reqwest::header::REFERER, "https://soundcloud.com/")
+        .send()
+        .await
+        .map_err(|err| format!("SoundCloud request failed: {err}"))?;
+    let status = res.status().as_u16();
+    let body = res.json::<Value>().await.unwrap_or(Value::Null);
+    Ok((status, body))
+}
+
+fn follow_key(uid: &str) -> String {
+    format!("follow:{uid}")
+}
+
+/// Whether the signed-in account follows `uid`. `following` is null when it can't tell.
+async fn follow_state(sc: &SoundCloud, uid: &str) -> super::Out {
+    if !is_num_id(uid) {
+        return Err("Not a SoundCloud artist id".into());
+    }
+    let (Some(_), Ok(me)) = (sc.token(), sc.user_id()) else {
+        return Ok(json!({ "loggedIn": false, "following": null }));
+    };
+    if me == uid {
+        return Ok(json!({ "loggedIn": true, "following": null, "self": true }));
+    }
+    if let Some(v) = cached(&follow_key(uid)) {
+        return Ok(v);
+    }
+    // Direct check first: 200 = following, 404 = not.
+    let mut following: Option<bool> = None;
+    let mut via = "me/followings";
+    if let Ok((status, _)) = me_request(sc, reqwest::Method::GET, &format!("/me/followings/{uid}")).await {
+        if (200..300).contains(&status) {
+            following = Some(true);
+        } else if status == 404 {
+            following = Some(false);
+        }
+    }
+    if following.is_none() {
+        // Fall back to the id list of everyone the account follows.
+        via = "followings/ids";
+        if let Ok((200, body)) = me_request(sc, reqwest::Method::GET, &format!("/users/{me}/followings/ids?limit=5000")).await {
+            following = Some(ids_of(&body["collection"]).contains(uid));
+        }
+    }
+    let out = json!({ "loggedIn": true, "following": following, "via": via });
+    if following.is_some() {
+        remember(&follow_key(uid), &out);
+    }
+    Ok(out)
+}
+
+async fn follow(sc: &SoundCloud, uid: &str, on: bool) -> super::Out {
+    if !is_num_id(uid) {
+        return Err("Not a SoundCloud artist id".into());
+    }
+    if sc.token().is_none() {
+        return Err("Connect SoundCloud to follow artists.".into());
+    }
+    let path = format!("/me/followings/{uid}");
+    let mut status = 0u16;
+    // PUT / DELETE /me/followings/{uid}; POST is the web player's older verb, tried if PUT isn't accepted.
+    let methods: &[reqwest::Method] =
+        if on { &[reqwest::Method::PUT, reqwest::Method::POST] } else { &[reqwest::Method::DELETE] };
+    for m in methods {
+        status = me_request(sc, m.clone(), &path).await?.0;
+        if (200..300).contains(&status) || (!on && status == 404) || !(status == 404 || status == 405) {
+            break;
+        }
+    }
+    if (200..300).contains(&status) || (!on && status == 404) {
+        let out = json!({ "loggedIn": true, "following": on, "via": "set" });
+        remember(&follow_key(uid), &out);
+        return Ok(json!({ "following": on }));
+    }
+    Err(match status {
+        401 | 403 => "SoundCloud didn't allow that. Reconnect your account and try again.".to_string(),
+        429 => "SoundCloud is rate limiting. Try again in a minute.".to_string(),
+        s => format!("SoundCloud answered {s}"),
+    })
 }
 
 async fn set_tracks(sc: &SoundCloud, id: &str) -> super::Out {
@@ -1061,6 +1316,23 @@ mod tests {
         assert_eq!(r["kind"], "album");
         assert_eq!(r["trackCount"], 2);
         assert_eq!(r["artwork"], "https://i1.sndcdn.com/artworks-x-t300x300.jpg");
+    }
+
+    #[test]
+    fn artist_page_parts() {
+        let user = json!({ "visuals": { "visuals": [{ "visual_url": "https://a/1.jpg" }, { "visual_url": "https://a/2.jpg" }, { "visual_url": "https://a/1.jpg" }] } });
+        assert_eq!(banners_of(&user), vec!["https://a/1.jpg", "https://a/2.jpg"]);
+        assert!(banners_of(&json!({})).is_empty());
+        let c = artist_card(&json!({ "id": 5, "username": "Fan", "avatar_url": "https://i1.sndcdn.com/default_avatar_large.png",
+            "followers_count": 12, "badges": { "verified": true } }))
+        .unwrap();
+        assert_eq!(c["name"], "Fan");
+        assert_eq!(c["avatar"], "");
+        assert_eq!(c["verified"], true);
+        let mut plays = serde_json::Map::new();
+        plays_of(&[json!({ "id": 1, "playback_count": 900 }), json!({ "id": 2 })], &mut plays);
+        assert_eq!(plays.get("1"), Some(&json!(900)));
+        assert!(plays.get("2").is_none());
     }
 
     #[tokio::test(flavor = "multi_thread")]

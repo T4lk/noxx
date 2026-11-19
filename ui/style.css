@@ -525,7 +525,7 @@ body.no-home-ambient .dc-wave-ambient { display: none; }
 /* ---------- UI pass (approved mockup, items 1-10) ---------- */
 /* 1. player bar: the title gets the room; radio / download live in the ⋯ menu (their pills only show while active) */
 .pb-text { flex: 1 1 auto; }
-.pb-left .pill-btn:not(#pb-heart):not(#pb-more):not(.on) { display: none; }
+.pb-left .pill-btn:not(#pb-heart):not(#pb-more):not(.dc-radio-pill):not(.on) { display: none; } /* radio always shows; download lives in the ⋯ menu */
 /* 2. Likes: search, sort and download on one row; sync is a small icon next to "synced" */
 .list-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .list-tools > .lib-tools { flex: 1; margin-bottom: 0; width: auto; }
@@ -598,3 +598,275 @@ body.no-home-ambient .dc-wave-ambient { display: none; }
 .noxx-word { font-family: 'noxx-word', serif; font-weight: 700; font-size: 19px; line-height: 1; letter-spacing: .02em; color: var(--on-surface, #ebebee); pointer-events: none; transform: translateY(-1px); }
 .about-logo .noxx-logo-img { width: 28px; height: 28px; display: block; filter: invert(0); }
 .th-light .about-logo .noxx-logo-img { filter: invert(1); }
+
+/* ---------- a proper top: one panel that matches the player bar ---------- */
+body:has(.top-panel) { grid-template-rows: auto minmax(0, 1fr) auto; }
+.top-nav.top-panel {
+  margin: 16px 16px 14px; height: 64px; padding: 0 12px 0 20px; justify-content: space-between;
+  background: var(--container); border-radius: var(--r-xl);
+}
+.top-panel .brand { flex: none; height: auto; }
+.top-panel .nav-right { gap: 14px; }
+.top-panel .win-btns { align-self: center; }
+.th-glass .top-nav.top-panel {
+  position: relative; background: var(--gh-glass-strong); border-radius: 26px;
+  box-shadow: inset 0 0 0 1px var(--gh-edge), inset 0 1px 0 var(--gh-edge-hi), 0 0 0 1px rgba(0, 0, 0, .25), 0 24px 60px -24px rgba(0, 0, 0, .7);
+}
+/* thin highlight along the bottom edge, mirroring the player bar's top edge */
+.th-glass .top-nav.top-panel::after {
+  content: ""; position: absolute; bottom: -1px; left: 12%; right: 12%; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .22), transparent);
+}
+/* the search field sits inside the panel, so it's a slightly lighter well rather than its own floating card */
+.top-panel .search-box { height: 42px; }
+.th-glass .top-panel .search-box { background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--gh-edge); }
+
+/* ---------- menus: solid, compact, never scrolls under the player bar ---------- */
+.menu, .th-glass .menu {
+  background: #141416 !important; max-height: calc(100vh / var(--app-zoom, 1) - 24px); padding: 5px; min-width: 220px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 18px 50px -10px rgba(0, 0, 0, .9);
+}
+.menu button { padding: 7px 12px; border-radius: 8px; font-size: calc(12.5px * var(--fs)); color: var(--on-surface); }
+.menu button:hover { background: rgba(255, 255, 255, .08); }
+.menu .sep { margin: 4px 8px; background: rgba(255, 255, 255, .07); }
+
+/* ======================================================================
+   APP SHELL: docked side bar + player bar, "Your Library", pins,
+   Back / Forward + Home in the top bar, fast staggered motion.
+   (app.js: buildRailLibrary, setRailWidth, navHistory, applyShellPrefs)
+   Every animation / transition here is 200ms or less.
+   ====================================================================== */
+:root {
+  --transition-hover: 40ms cubic-bezier(.1, .9, .2, 1);
+  --transition-fast: 60ms cubic-bezier(.2, 0, 0, 1);
+  --transition-normal: 90ms cubic-bezier(.2, 0, 0, 1);
+  --transition-emphasized: 120ms cubic-bezier(.2, 0, 0, 1);
+  --transition-jelly: 120ms cubic-bezier(.34, 1.56, .64, 1);
+  --page-bg: var(--bg);
+  --panel-bg: color-mix(in srgb, var(--bg) 96%, white 4%);
+  --pb-h: 96px;
+  --rail-w: 184px;
+}
+.th-glass { --panel-bg: var(--gh-glass-strong); --page-bg: transparent; }
+
+/* --- side bar width (drag edge). Floating layout: a grid column; docked: the fixed bar's width. --- */
+.app-layout.rail-sized { grid-template-columns: var(--rail-w) minmax(0, 1fr) 340px; }
+@media (max-width: 1100px) { .app-layout.rail-sized { grid-template-columns: var(--rail-w) minmax(0, 1fr); } }
+body:not(.rail-resizing) .app-layout.rail-sized { transition: grid-template-columns 160ms var(--ease), margin-left 160ms var(--ease); }
+body:not(.rail-resizing) .rail { transition: width 160ms var(--ease); }
+body:not(.rail-resizing) .top-nav.top-panel { transition: margin-left 160ms var(--ease); }
+
+.rail-resize-edge { position: absolute; top: 0; bottom: 0; right: -5px; width: 10px; cursor: col-resize; z-index: 5; touch-action: none; }
+.rail-resize-edge::after {
+  content: ""; position: absolute; top: 15%; bottom: 15%; left: 4px; width: 2px; border-radius: 2px;
+  background: var(--primary); opacity: 0; transition: opacity 150ms ease;
+}
+.rail-resize-edge:hover::after, body.rail-resizing .rail-resize-edge::after { opacity: .6; }
+body.rail-resizing, body.rail-resizing * { cursor: col-resize !important; user-select: none; }
+
+/* --- icons only (dragged under ~120px) --- */
+.rail.rail-icons .nav-label { display: none; }
+.rail.rail-icons .nav-item { justify-content: center; padding: 0; }
+.rail.rail-icons .nav-active-ind { left: 50%; right: auto; width: 48px; margin-left: -24px; }
+.rail.rail-icons .rl-pins-head, .rail.rail-icons .sb-pin-row .rl-name { display: none; }
+.rail.rail-icons .sb-pin-row { justify-content: center; padding: 0; }
+.rail.rail-icons .sb-pin-row .rl-cover { width: 40px; height: 40px; border-radius: 10px; }
+
+/* --- pinned shortcuts (labelled / icon side bar) --- */
+.rail-lib { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; margin-top: 4px; }
+.rail-lib.empty { display: none; }
+.rl-pins-head {
+  padding: 8px 12px 4px; font-size: calc(10.5px * var(--fs)); font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--outline);
+}
+.rl-wide-head { display: none; }
+.rl-list { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.rl-list::-webkit-scrollbar { display: none; }
+.rl-cover {
+  flex: none; display: grid; place-items: center; overflow: hidden;
+  background: var(--container-high) center / cover no-repeat; color: var(--on-variant);
+}
+.rl-cover svg { width: 16px; height: 16px; }
+.rl-cover.likes { background: linear-gradient(135deg, #4a22d8 0%, #8b7cf0 55%, #c6ecdc 100%); color: #fff; }
+.sb-pin-row {
+  display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px; border-radius: 16px; cursor: pointer;
+  color: var(--on-variant); transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+.sb-pin-row .rl-cover { width: 30px; height: 30px; border-radius: 8px; }
+.sb-pin-row .rl-name { min-width: 0; font-size: calc(13px * var(--fs)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-pin-row:hover, .sb-pin-row.active { background: var(--container-high); color: var(--on-surface); }
+
+/* --- "Your Library" (dragged past ~240px: 280-380px) --- */
+.rail.rail-wide .rail-lib { display: flex; flex: 1 1 0; margin-top: 10px; }
+.rail.rail-wide .rl-pins-head { display: none; }
+.rail.rail-wide .rl-wide-head { display: block; }
+.rail.rail-wide .rl-list {
+  padding: 2px 0 12px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+.rl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 40px; padding: 0 2px 0 10px; }
+.rl-title { font-size: calc(14px * var(--fs)); font-weight: 700; color: var(--on-surface); white-space: nowrap; }
+.rl-create {
+  display: flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px 0 8px; border-radius: 9999px;
+  background: var(--container-high); color: var(--on-surface); font-size: calc(12px * var(--fs)); font-weight: 600;
+  transition: background-color var(--transition-normal), transform var(--transition-fast);
+}
+.rl-create:hover { background: var(--container-highest); }
+.rl-create:active { transform: scale(.96); }
+.rl-create svg { width: 16px; height: 16px; }
+.rl-chips { display: flex; gap: 6px; padding: 6px 2px 8px; overflow-x: auto; scrollbar-width: none; }
+.rl-chips::-webkit-scrollbar { display: none; }
+.rl-chip {
+  flex: none; height: 30px; padding: 0 12px; border-radius: 9999px; background: var(--container-high); color: var(--on-surface);
+  font-size: calc(12px * var(--fs)); font-weight: 500; white-space: nowrap; transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+.rl-chip:hover { background: var(--container-highest); }
+.rl-chip.on { background: var(--primary); color: var(--on-primary); }
+.rl-chip.clear { width: 30px; padding: 0; display: grid; place-items: center; }
+.rl-chip.clear svg { width: 14px; height: 14px; }
+.rl-tools { display: flex; align-items: center; gap: 6px; padding: 0 0 6px; }
+.rl-filter {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 9999px;
+  color: var(--on-variant); cursor: text; transition: background-color var(--transition-normal);
+}
+.rl-filter:hover, .rl-filter:focus-within { background: var(--container-high); }
+.rl-filter svg { width: 15px; height: 15px; }
+.rl-filter input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--on-surface); font-size: calc(12.5px * var(--fs)); user-select: text; }
+.rl-filter input::placeholder { color: var(--on-variant); opacity: .8; }
+.rl-sort {
+  flex: none; display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 8px 0 10px; border-radius: 9999px;
+  color: var(--on-variant); font-size: calc(12.5px * var(--fs)); font-weight: 500; transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+.rl-sort:hover { background: var(--container-high); color: var(--on-surface); }
+.rl-sort svg { width: 14px; height: 14px; }
+.sb-lib-row {
+  position: relative; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 7px 8px; border-radius: 12px; cursor: pointer;
+  transition: background-color var(--transition-normal);
+}
+.sb-lib-row:hover { background: var(--container-high); }
+.sb-lib-row.active { background: var(--nav-active); }
+.sb-lib-row .rl-cover { width: 40px; height: 40px; border-radius: 8px; }
+.rl-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sb-lib-row .rl-name { font-size: calc(13.5px * var(--fs)); font-weight: 500; color: var(--on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-lib-row.active .rl-name { color: var(--on-nav-active); }
+.rl-sub { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: calc(11.5px * var(--fs)); color: var(--on-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rl-pinned { display: inline-grid; place-items: center; color: var(--primary); font-style: normal; }
+.rl-pinned svg { width: 12px; height: 12px; }
+.rl-pin {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--on-variant);
+  opacity: 0; transition: opacity var(--transition-normal), background-color var(--transition-normal);
+}
+.sb-lib-row:hover .rl-pin, .rl-pin:focus-visible { opacity: 1; }
+.rl-pin:hover { background: var(--container-highest); color: var(--on-surface); }
+.rl-pin.on { color: var(--primary); }
+.rl-pin svg { width: 15px; height: 15px; }
+.rl-empty { padding: 16px 10px; color: var(--outline); font-size: calc(12.5px * var(--fs)); }
+
+/* small windows: the side bar is always icons */
+@media (max-width: 860px) {
+  body { --rail-w: 80px; }
+  .rail .rl-pins-head, .rail .sb-pin-row .rl-name, .rail.rail-wide .rail-lib, .rail-resize-edge { display: none; }
+  .rail .sb-pin-row { justify-content: center; padding: 0; }
+}
+
+/* --- top bar: Back / Forward after the logo, round Home left of the search pill --- */
+.nav-history { display: flex; align-items: center; gap: 6px; margin: 0 auto 0 16px; }
+.hist-btn {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--container); color: var(--on-surface);
+  transition: background-color var(--transition-normal), opacity var(--transition-normal), transform var(--transition-fast);
+}
+.hist-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
+.hist-btn:hover:not(:disabled) { background: var(--container-high); }
+.hist-btn:active:not(:disabled) { transform: scale(.92); }
+.hist-btn:disabled { opacity: .3; cursor: default; }
+.top-home {
+  position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--container); color: var(--on-variant);
+  transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+.top-home svg { width: 22px; height: 22px; }
+.top-home:hover, .top-home.active { background: var(--container-high); color: var(--on-surface); }
+.top-home:active { transform: translateY(-50%) scale(.94); }
+.th-glass :is(.hist-btn, .top-home) { background: var(--gh-glass); box-shadow: inset 0 0 0 1px var(--gh-edge); }
+.th-glass .top-home.active { background: rgba(255, 255, 255, .12); color: #fff; }
+/* search bar position left / right: clear of the logo + Back / Forward (+ Home: 44px and two 8px gaps) and of the right group */
+.top-nav.top-panel.search-pos-left .search-box {
+  left: calc(var(--top-left-w, 0px) + 60px);
+  width: min(560px, calc(100% - var(--top-left-w, 0px) - 60px - var(--nav-right-w, 160px) - 24px));
+}
+.top-nav.top-panel.search-pos-right .search-box {
+  left: calc(100% - var(--nav-right-w, 160px) - 24px); transform: translate(-100%, -50%);
+  width: min(560px, calc(100% - var(--top-left-w, 0px) - 60px - var(--nav-right-w, 160px) - 24px));
+}
+
+/* --- docked layout (default; Settings > Interface > Docked layout): side bar and player bar flush on
+   one panel colour, the page carved out of them with concave corners (top-left, bottom-left, bottom-right). --- */
+body.docked .rail {
+  position: fixed; left: 0; top: 0; bottom: var(--pb-h); width: var(--rail-w); z-index: 30; margin: 0;
+  padding: 14px 10px 12px; border-radius: 0 !important; background: var(--panel-bg) !important; box-shadow: none !important;
+}
+body.docked .rail::before, body.docked .rail::after {
+  content: ""; position: absolute; right: -28px; width: 28px; height: 28px; pointer-events: none;
+}
+body.docked .rail::before { top: 0; background: radial-gradient(circle 28px at 100% 100%, transparent 27.5px, var(--panel-bg) 28px); }
+body.docked .rail::after { bottom: 0; background: radial-gradient(circle 28px at 100% 0, transparent 27.5px, var(--panel-bg) 28px); }
+body.docked .top-nav.top-panel {
+  margin: 0 0 0 var(--rail-w); height: 64px; padding: 0 12px 0 20px;
+  background: transparent; border-radius: 0; box-shadow: none;
+}
+body.docked .top-nav.top-panel::after { display: none; }
+body.docked .app-layout.rail-sized { margin-left: var(--rail-w); grid-template-columns: minmax(0, 1fr) 340px; gap: 8px; padding: 0 10px 0 0; }
+@media (max-width: 1100px) { body.docked .app-layout.rail-sized { grid-template-columns: minmax(0, 1fr); } }
+body.docked .main-content { background: transparent; border-radius: 0; box-shadow: none; }
+body.docked .view { padding-left: 32px; }
+body.docked .right-panel { border-radius: 24px; margin-bottom: 10px; }
+body.docked .playbar {
+  position: relative; margin: 0; height: var(--pb-h); padding: 4px 24px 8px 12px;
+  border-radius: 0; background: var(--panel-bg); box-shadow: none;
+}
+body.docked .playbar::before { display: none; }
+body.docked .playbar::after {
+  content: ""; position: absolute; top: -28px; right: 0; width: 28px; height: 28px; pointer-events: none;
+  background: radial-gradient(circle 28px at 0 0, transparent 27.5px, var(--panel-bg) 28px);
+}
+body.docked .toasts { bottom: calc(var(--pb-h) + 16px); }
+
+/* --- motion: pages fade up 4px in 110ms; rows and cards cascade 20ms apart, done within 200ms --- */
+@keyframes noxx-view-in { from { opacity: 0; translate: 0 4px; } }
+@keyframes noxx-cascade { from { opacity: 0; translate: 0 6px; } }
+@keyframes noxx-slide-in { from { opacity: 0; translate: -12px 0; } }
+.view.enter { animation: noxx-view-in 110ms ease-out both; }
+.tracks.intro .track-row { animation: noxx-cascade 110ms var(--ease) backwards; }
+.view.enter :is(.tile, .card) { animation: noxx-cascade 110ms var(--ease) both; animation-delay: 0ms; }
+.view.enter :is(.tile, .card):nth-child(2) { animation-delay: 20ms; }
+.view.enter :is(.tile, .card):nth-child(3) { animation-delay: 40ms; }
+.view.enter :is(.tile, .card):nth-child(4) { animation-delay: 60ms; }
+.view.enter :is(.tile, .card):nth-child(5) { animation-delay: 80ms; }
+.view.enter :is(.tile, .card):nth-child(n+6) { animation-delay: 90ms; }
+.rl-list.rl-intro > * { animation: noxx-slide-in 120ms var(--ease) backwards; }
+body.perf :is(.view.enter, .tracks.intro .track-row, .view.enter .tile, .view.enter .card, .rl-list.rl-intro > *) { animation: none !important; }
+body.perf :is(.app-layout, .rail, .top-nav, .rail-resize-edge::after) { transition: none !important; }
+body.reduce-motion :is(.rl-list.rl-intro > *, .app-layout, .rail, .top-nav) { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .view.enter, .tracks.intro .track-row, .view.enter .tile, .view.enter .card, .rl-list.rl-intro > * { animation: none !important; }
+  .app-layout, .rail, .top-nav { transition: none !important; }
+}
+
+/* ---------- volume slider: slim track, round knob that appears on hover (same language as the new sliders) ---------- */
+.vol-range { width: 110px; height: 20px; }
+.vol-range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--on-surface) var(--p, 80%), rgba(255, 255, 255, .16) var(--p, 80%));
+  transition: height 120ms var(--ease);
+}
+.vol-range:hover::-webkit-slider-runnable-track, .vol-range:active::-webkit-slider-runnable-track {
+  height: 6px; background: linear-gradient(90deg, var(--primary) var(--p, 80%), rgba(255, 255, 255, .2) var(--p, 80%));
+}
+.vol-range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%;
+  background: var(--on-surface); box-shadow: 0 1px 4px rgba(0, 0, 0, .5); transform: scale(0); transition: transform 120ms var(--ease), margin-top 120ms var(--ease);
+}
+.vol-range:hover::-webkit-slider-thumb { transform: scale(1); margin-top: -3px; }
+.vol-range:active::-webkit-slider-thumb { transform: scale(1.2); margin-top: -3px; box-shadow: 0 0 0 5px rgba(255, 255, 255, .12), 0 1px 4px rgba(0, 0, 0, .5); }
+.vol-range:focus-visible::-webkit-slider-thumb { transform: scale(1); box-shadow: 0 0 0 3px rgba(255, 255, 255, .35); }

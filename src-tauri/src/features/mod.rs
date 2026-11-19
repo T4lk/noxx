@@ -20,6 +20,7 @@ pub mod history;
 pub mod imports;
 pub mod localfiles;
 pub mod lyrics;
+pub mod mixes;
 pub mod system;
 pub mod themes;
 pub mod youtube;
@@ -37,6 +38,7 @@ pub async fn dispatch(app: &AppHandle, name: &str, args: Value) -> Out {
         "imports" => imports::handle(app, cmd, args).await,
         "localfiles" => localfiles::handle(app, cmd, args).await,
         "lyrics" => lyrics::handle(app, cmd, args).await,
+        "mixes" => mixes::handle(app, cmd, args).await,
         "system" => system::handle(app, cmd, args).await,
         "themes" => themes::handle(app, cmd, args).await,
         "youtube" => youtube::handle(app, cmd, args).await,
@@ -53,6 +55,7 @@ pub fn setup(app: &AppHandle) {
     imports::setup(app);
     localfiles::setup(app);
     lyrics::setup(app);
+    mixes::setup(app);
     system::setup(app);
     themes::setup(app);
     youtube::setup(app);

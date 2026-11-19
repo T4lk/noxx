@@ -12,6 +12,8 @@ pub const YTM_VERSION: &str = "1.20250101.01.00";
 pub const YTM_SONGS_PARAMS: &str = "EgWKAQIIAWoMEA4QChADEAQQCRAF";
 /// "Type: Video" filter on www.youtube.com.
 pub const YT_VIDEOS_PARAMS: &str = "EgIQAQ==";
+/// www.youtube.com search: sort by view count (1: 3), upload date this month (2.1: 4), type video (2.2: 1).
+pub const YT_TRENDING_PARAMS: &str = "CAMSBAgEEAE=";
 
 pub const VISIONOS_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
 pub const ANDROID_VR_UA: &str = "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
@@ -124,7 +126,7 @@ pub fn parse_duration(text: &str) -> u64 {
     parts.iter().fold(0, |a, n| a * 60 + n)
 }
 
-fn text_of(v: &Value) -> String {
+pub(super) fn text_of(v: &Value) -> String {
     if let Some(s) = v["simpleText"].as_str() {
         return s.to_string();
     }
@@ -142,7 +144,7 @@ pub fn clean_artist(a: &str) -> String {
 }
 
 /// Collects every object under `key` anywhere in `v` (depth-first, document order).
-fn collect<'a>(v: &'a Value, key: &str, out: &mut Vec<&'a Value>) {
+pub(super) fn collect<'a>(v: &'a Value, key: &str, out: &mut Vec<&'a Value>) {
     match v {
         Value::Object(m) => {
             for (k, x) in m {
@@ -177,7 +179,7 @@ pub fn yt_thumb(id: &str) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn track(id: &str, title: String, artist: String, duration: u64, artwork: String, url: String, channel: &str, channel_url: String) -> Track {
+pub(super) fn track(id: &str, title: String, artist: String, duration: u64, artwork: String, url: String, channel: &str, channel_url: String) -> Track {
     Track {
         id: format!("yt:{id}"),
         title: if title.is_empty() { "untitled".into() } else { title },
@@ -216,6 +218,31 @@ pub fn parse_yt_videos(v: &Value) -> Vec<Track> {
         out.push(track(id, text_of(&r["title"]), artist, duration, yt_thumb(id), format!("https://www.youtube.com/watch?v={id}"), channel, channel_url));
     }
     out
+}
+
+/// YouTube Music artwork: square album art upscaled like riff (=w544-h544), else the video thumbnail.
+pub(super) fn ytm_art(url: &str, id: &str) -> String {
+    if url.is_empty() || url.contains("i.ytimg.com/vi/") {
+        yt_thumb(id)
+    } else if let Some(p) = url.find("=w") {
+        format!("{}=w544-h544-l90-rj", &url[..p])
+    } else {
+        url.to_string()
+    }
+}
+
+/// Trending picks: songs only (1 to 15 minutes), no full albums / DJ mixes / compilations.
+pub fn trending_song(t: &Track) -> bool {
+    if t.duration < 60 || t.duration > 15 * 60 {
+        return false;
+    }
+    let words: Vec<String> = t.title.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(String::from).collect();
+    let has = |w: &str| words.iter().any(|x| x == w);
+    let pair = |a: &str, b: &str| words.windows(2).any(|p| p[0] == a && p[1] == b);
+    // "dj" in a trending title is almost always a regional "DJ song / DJ remix" upload, not the genre.
+    !(has("mix") || has("megamix") || has("mashup") || has("medley") || has("mixtape") || has("compilation") || has("playlist") || has("nonstop") || has("dj")
+        || pair("full", "album") || pair("full", "ep") || pair("dj", "set") || pair("live", "set")
+        || words.windows(2).any(|p| p[0].chars().all(|c| c.is_ascii_digit()) && matches!(p[1].as_str(), "hour" | "hours" | "hr")))
 }
 
 // ---------------------------------------------------------------- music.youtube.com search (riff's parseYtmSongs)
@@ -278,15 +305,7 @@ pub fn parse_ytm_songs(v: &Value) -> Vec<Track> {
         }
         let artist = clean_artist(clean.first().map(String::as_str).unwrap_or(""));
         let thumbs = r["thumbnail"]["musicThumbnailRenderer"]["thumbnail"]["thumbnails"].as_array();
-        let mut art = thumbs.and_then(|t| t.last()).and_then(|t| t["url"].as_str()).unwrap_or("").to_string();
-        if art.is_empty() {
-            art = yt_thumb(id);
-        } else if let Some(p) = art.find("=w") {
-            // square album art, upscaled like riff (=w544-h544)
-            art = format!("{}=w544-h544-l90-rj", &art[..p]);
-        } else if art.contains("i.ytimg.com/vi/") {
-            art = yt_thumb(id);
-        }
+        let art = ytm_art(thumbs.and_then(|t| t.last()).and_then(|t| t["url"].as_str()).unwrap_or(""), id);
         let channel_url = if channel.is_empty() { String::new() } else { format!("https://music.youtube.com/channel/{channel}") };
         out.push(track(id, title, artist, duration, art, format!("https://music.youtube.com/watch?v={id}"), &channel, channel_url));
     }
@@ -519,6 +538,30 @@ mod tests {
         assert_eq!(t[0].url, "https://music.youtube.com/watch?v=mqgEYRtWMJU");
         assert_eq!(t[0].artist_id, "UCRr1xG_2WIDs18a6cIiCxeA");
         assert_eq!(continuation(&ytm).as_deref(), Some("CTOK"));
+    }
+
+    #[test]
+    fn youtube_parse_trending() {
+        let v = |id: &str, title: &str, len: &str| json!({ "videoRenderer": { "videoId": id, "title": { "runs": [{ "text": title }] },
+            "ownerText": { "runs": [{ "text": "Some Channel", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCabc" } } }] },
+            "lengthText": { "simpleText": len }, "viewCountText": { "simpleText": "2,345,227 views" } } });
+        let page = json!({ "contents": { "twoColumnSearchResultsRenderer": { "primaryContents": { "sectionListRenderer": { "contents": [
+            { "itemSectionRenderer": { "contents": [
+                v("rkg946FdrWA", "1 Nacht auf einer Hardtekk-Party", "36:27"),
+                v("l3J6cYVBleM", "Riogeovn - AINSI BAS LA VIDA HARDTEKK", "2:05"),
+                v("c1l2d-Oc4xs", "INSTINCT.404 (Hardtekk)", "0:58"),
+                v("aaaaaaaaaaa", "Hardtekk Mix 2025 | Best Of", "9:00"),
+                v("bbbbbbbbbbb", "Song (Hardtekk Remix)", "3:10"),
+                v("ccccccccccc", "Artist - Full Album", "12:00"),
+                v("ddddddddddd", "1 Hour Hardtekk", "14:00"),
+                v("eeeeeeeeeee", "New Tiktok Mashup 2026 Party Music", "8:00")
+            ] } }
+        ] } } } } });
+        let t: Vec<Track> = parse_yt_videos(&page).into_iter().filter(trending_song).collect();
+        let ids: Vec<&str> = t.iter().map(|x| x.id.as_str()).collect();
+        assert_eq!(ids, vec!["yt:l3J6cYVBleM", "yt:bbbbbbbbbbb"]);
+        assert_eq!((t[0].artist.as_str(), t[0].duration, t[0].source.as_str()), ("Some Channel", 125, "youtube"));
+        assert_eq!(t[0].url, "https://www.youtube.com/watch?v=l3J6cYVBleM");
     }
 
     #[test]

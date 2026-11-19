@@ -273,6 +273,20 @@ const RAIL_ICONS = {
   discover: svg('<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>'),
   playlists: svg('<line x1="3" y1="6" x2="15" y2="6"/><line x1="3" y1="11" x2="15" y2="11"/><line x1="3" y1="16" x2="10" y2="16"/><path d="M19 7v9.5"/><circle cx="16.5" cy="17" r="2.5"/>'),
 };
+// One top panel that mirrors the player bar: logo on the left, search in the middle,
+// account and window buttons on the right (the old thin title strip is folded into it).
+function buildTopPanel() {
+  const nav = $('.top-nav'), bar = $('.titlebar');
+  if (!nav || !bar || nav.classList.contains('top-panel')) return;
+  const brand = bar.querySelector('.brand'), btns = bar.querySelector('.win-btns');
+  if (brand) nav.prepend(brand);
+  if (btns) $('.nav-right').append(btns);
+  bar.hidden = true;
+  nav.classList.add('top-panel');
+  buildHistoryButtons(nav);
+  fitSearchBox();
+}
+
 function organizeRail() {
   const rail = $('.rail');
   const items = new Map([...rail.querySelectorAll('.nav-item')].map((b) => [b.dataset.view, b]));
@@ -290,7 +304,360 @@ function organizeRail() {
     if (!b.querySelector('.nav-label')) b.append(el(`<span class="nav-label">${esc(b.title || v)}</span>`));
   }
   rail.classList.add('labelled');
+  buildRailLibrary(rail);
   updateNavIndicator(false);
+}
+
+// ---------------------------------------------------------------- navigation history (Back / Forward)
+// A real history over go(view, arg): Back / Forward buttons, mouse buttons 4 / 5, Alt+Left / Alt+Right.
+// Each entry keeps the page's scroll so going back lands where you were.
+const navHist = { list: [], pos: -1, moving: false };
+let histScroll = 0;
+function histPush(v, arg) {
+  if (navHist.moving) return;
+  const cur = navHist.list[navHist.pos];
+  if (cur && cur.v === v && cur.arg === arg) return;
+  if (cur) cur.scroll = view.scrollTop;
+  navHist.list.splice(navHist.pos + 1);
+  navHist.list.push({ v, arg, scroll: 0 });
+  if (navHist.list.length > 100) navHist.list.shift();
+  navHist.pos = navHist.list.length - 1;
+  updateHistButtons();
+}
+/** step -1 = back, 1 = forward. Returns false when there is nowhere to go. */
+function navHistory(step) {
+  const target = navHist.list[navHist.pos + step];
+  if (!target) return false;
+  const cur = navHist.list[navHist.pos];
+  if (cur) cur.scroll = view.scrollTop;
+  navHist.pos += step;
+  navHist.moving = true;
+  histScroll = target.scroll || 0;
+  try { go(target.v, target.arg); } finally { navHist.moving = false; }
+  updateHistButtons();
+  return true;
+}
+function updateHistButtons() {
+  const b = $('#nav-back'), f = $('#nav-fwd');
+  if (b) b.disabled = navHist.pos <= 0;
+  if (f) f.disabled = navHist.pos >= navHist.list.length - 1;
+}
+const CHEVRON_L = svg('<polyline points="15 18 9 12 15 6"/>'), CHEVRON_R = svg('<polyline points="9 18 15 12 9 6"/>');
+function buildHistoryButtons(nav) {
+  if ($('.nav-history')) return;
+  const box = el(`<div class="nav-history">
+    <button class="hist-btn" id="nav-back" title="Back (Alt+←)" aria-label="Back" disabled>${CHEVRON_L}</button>
+    <button class="hist-btn" id="nav-fwd" title="Forward (Alt+→)" aria-label="Forward" disabled>${CHEVRON_R}</button></div>`);
+  const brand = nav.querySelector('.brand');
+  if (brand) brand.after(box); else nav.prepend(box);
+  box.querySelector('#nav-back').onclick = () => navHistory(-1);
+  box.querySelector('#nav-fwd').onclick = () => navHistory(1);
+  // Round Home button just left of the search field (it rides along with the search box's position).
+  const home = el(`<button class="top-home" id="nav-home" title="Home" aria-label="Home">${RAIL_ICONS.home}</button>`);
+  home.addEventListener('mousedown', (e) => e.preventDefault()); // don't light up the search field
+  home.onclick = () => go('home');
+  $('.search-box').append(home);
+  updateHistButtons();
+}
+// Mouse buttons 4 / 5 (button 3 / 4). mousedown is cancelled too so WebView2 doesn't act on them itself.
+window.addEventListener('mousedown', (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); });
+window.addEventListener('mouseup', (e) => {
+  if (e.button !== 3 && e.button !== 4) return;
+  e.preventDefault();
+  navHistory(e.button === 3 ? -1 : 1);
+});
+
+// ---------------------------------------------------------------- side bar: drag wider into "Your Library", pins
+// Drag the side bar's right edge: below ~120px it folds to icons, the labelled bar (default) in the middle,
+// and past ~240px it opens "Your Library" (280-380px): nav on top, every playlist / mix underneath.
+// Double-click the edge to toggle. Width and pins are prefs (railWidth, railWideWidth, railPins, railSort).
+const RAIL_W = { icons: 80, normal: 184, wideMin: 280, wideMax: 380 };
+const LIB_SORTS = [['recent', 'Recents'], ['alpha', 'Alphabetical'], ['creator', 'Creator']];
+const PIN_ICON = svg('<path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V16H5v-.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76z"/><path d="M8 2h8"/>');
+const railLib = { mode: 'normal', px: RAIL_W.normal, filter: '', mixes: [], mixesAt: 0, el: null, introTimer: 0 };
+function railModeFor(w) { return w < 120 ? 'icons' : w < 240 ? 'normal' : 'wide'; }
+function railPx(w) {
+  const m = railModeFor(w);
+  return m === 'icons' ? RAIL_W.icons : m === 'normal' ? RAIL_W.normal : Math.round(Math.max(RAIL_W.wideMin, Math.min(RAIL_W.wideMax, w)));
+}
+/** Sets the side bar width (snapped to its three modes); save stores it as the railWidth pref. */
+function setRailWidth(w, save) {
+  const px = railPx(Number(w) || RAIL_W.normal), mode = railModeFor(px);
+  const rail = $('.rail'), layout = $('.app-layout');
+  layout.classList.add('rail-sized');
+  document.documentElement.style.setProperty('--rail-w', px + 'px'); // the top bar lines up with it too
+  const changed = mode !== railLib.mode;
+  railLib.mode = mode; railLib.px = px;
+  rail.classList.toggle('rail-wide', mode === 'wide');
+  rail.classList.toggle('rail-icons', mode === 'icons');
+  document.body.classList.toggle('sidebar-expanded', mode === 'wide');
+  document.body.classList.toggle('sidebar-icons', mode === 'icons');
+  if (changed) { renderRailLib(true); if (mode === 'wide') loadRailMixes(); }
+  if (save) { setPref('railWidth', px); if (mode === 'wide') setPref('railWideWidth', px); }
+  requestAnimationFrame(() => updateNavIndicator(false));
+  return mode;
+}
+function toggleRailWide() {
+  return setRailWidth(railLib.mode === 'wide' ? RAIL_W.normal : pref('railWideWidth', 320), true);
+}
+// Docked layout (default): side bar and player bar flush on one panel colour, the page carved out
+// of them with concave corners. Off = the older floating cards.
+function applyShellPrefs() {
+  document.body.classList.toggle('docked', !!pref('dockedShell', true));
+  requestAnimationFrame(() => { updateNavIndicator(false); fitSearchBox(); redrawLists(); });
+}
+// Your Library filter chips (one at a time, click again to clear).
+const LIB_CHIPS = [['playlists', 'Playlists', (it) => it.kind !== 'mix'], ['mine', 'By you', (it) => it.kind === 'local' || it.kind === 'likes'],
+  ['sc', 'SoundCloud', (it) => it.kind === 'sc'], ['mixes', 'Mixes', (it) => it.kind === 'mix']];
+
+function railPins() { const p = pref('railPins', []); return Array.isArray(p) ? p : []; }
+function isPinned(key) { return railPins().includes(key); }
+function togglePin(key, on = !isPinned(key)) {
+  const pins = railPins().filter((k) => k !== key);
+  if (on) pins.push(key);
+  setPref('railPins', pins);
+  renderRailLib();
+  return on;
+}
+function pinMenuItem(key) { return { label: isPinned(key) ? 'Unpin from side bar' : 'Pin to side bar', run: () => togglePin(key) }; }
+
+// Last time each list was opened, for the "Recents" sort.
+const libRecents = load('railRecents', {});
+function libKeyFor(v, arg) {
+  if (v === 'likes') return 'likes';
+  if ((v === 'sc' || v === 'local') && arg != null) return `${v}:${arg}`;
+  if ((v === 'mix' || v === 'mixes') && arg != null && typeof arg !== 'object') return `mix:${arg}`;
+  return '';
+}
+function shellAfterGo(v, arg) {
+  const key = libKeyFor(v, arg);
+  if (key) { libRecents[key] = Date.now(); store('railRecents', libRecents); }
+  const home = $('#nav-home');
+  if (home) home.classList.toggle('active', v === 'home');
+  if (railLib.el) railLib.el.querySelectorAll('[data-key]').forEach((r) => r.classList.toggle('active', r.dataset.key === key));
+}
+
+function mixList(res) {
+  const list = Array.isArray(res) ? res : (res && (res.mixes || res.items || res.list)) || [];
+  return list.filter(Boolean).map((m) => {
+    const id = m.id ?? m.urn ?? m.key;
+    const n = m.trackCount ?? m.track_count ?? (Array.isArray(m.tracks) ? m.tracks.length : null);
+    return { key: `mix:${id}`, kind: 'mix', id, raw: m, title: String(m.title || m.name || 'Mix'), cover: m.artwork || m.cover || (Array.isArray(m.tracks) && m.tracks[0]?.artwork) || '',
+      sub: m.subtitle || m.description || (n != null ? `Mix · ${plural(n, 'track')}` : 'Mix'), creator: String(m.creator || m.by || 'noxx') };
+  }).filter((m) => m.id != null);
+}
+// mixes.list is another feature's work in progress; any error just means no mixes yet.
+async function loadRailMixes() {
+  if (Date.now() - railLib.mixesAt < 60000) return;
+  railLib.mixesAt = Date.now();
+  try { railLib.mixes = mixList(await window.riff.call('mixes.list')); } catch (e) { railLib.mixes = []; }
+  renderRailLib();
+}
+function openMix(m) {
+  if (ext.views.mix) go('mix', m.id);
+  else if (ext.views.mixes) go('mixes', m.id);
+  else toast('Mixes are not available yet');
+}
+
+function libItems() {
+  const favs = state.library.favorites || [];
+  const out = [{ key: 'likes', kind: 'likes', title: 'Liked Songs', sub: `Playlist · ${plural(favs.length, 'song')}`, cover: '', icon: ICON.heartFill, creator: 'You', order: 0 }];
+  (state.scPlaylists || []).forEach((p, i) => out.push({ key: `sc:${p.id}`, kind: 'sc', id: p.id, title: p.title, sub: `SoundCloud · ${plural(p.trackCount, 'track')}`, cover: p.artwork, icon: ICON.cloud, creator: 'SoundCloud', order: 100 + i }));
+  (state.library.playlists || []).forEach((p, i) => out.push({ key: `local:${p.id}`, kind: 'local', id: p.id, title: p.name, sub: `Playlist · ${plural(p.tracks.length, 'track')}`, cover: p.tracks[0]?.artwork, icon: ICON.music, creator: 'You', order: 10 + i }));
+  railLib.mixes.forEach((m, i) => out.push({ ...m, icon: ICON.fire, order: 1000 + i }));
+  return out;
+}
+function sortLib(items) {
+  const s = pref('railSort', 'recent');
+  const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+  const by = s === 'alpha' ? byTitle
+    : s === 'creator' ? (a, b) => a.creator.localeCompare(b.creator) || byTitle(a, b)
+    : (a, b) => (libRecents[b.key] || 0) - (libRecents[a.key] || 0) || a.order - b.order;
+  // Liked Songs stays first.
+  return items.slice().sort((a, b) => (a.key === 'likes' ? -1 : b.key === 'likes' ? 1 : by(a, b)));
+}
+function openLibItem(it) {
+  if (it.kind === 'likes') go('likes');
+  else if (it.kind === 'mix') openMix(it);
+  else go(it.kind, it.id);
+}
+function libCoverHtml(it, px) {
+  const url = it.kind === 'local' ? small(it.cover) : art(it.cover, px);
+  return `<span class="rl-cover${it.kind === 'likes' ? ' likes' : ''}" style="${bg(url)}">${url ? '' : it.icon}</span>`;
+}
+
+function buildRailLibrary(rail) {
+  if (railLib.el) return;
+  // A <section>, not a <div>: the CSS that drops Queue / Settings to the bottom uses .rail-divider:last-of-type.
+  const sec = document.createElement('section');
+  sec.className = 'rail-lib';
+  sec.innerHTML = `<div class="rl-pins-head">Pinned</div>
+    <div class="rl-wide-head">
+      <div class="rl-head"><span class="rl-title">Your Library</span><button class="rl-create" title="Create playlist">${ICON.plus}<span>Create</span></button></div>
+      <div class="rl-chips"></div>
+      <div class="rl-tools"><label class="rl-filter">${svg('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')}<input type="text" placeholder="Search in Your Library" spellcheck="false" autocomplete="off"></label>
+        <button class="rl-sort" title="Sort"><span></span>${svg('<polyline points="6 9 12 15 18 9"/>')}</button></div>
+    </div>
+    <div class="rl-list"></div>`;
+  const dividers = rail.querySelectorAll('.rail-divider');
+  const last = dividers[dividers.length - 1];
+  if (last) last.before(sec); else rail.append(sec);
+  railLib.el = sec;
+
+  const edge = document.createElement('div');
+  edge.className = 'rail-resize-edge';
+  edge.id = 'sidebar-resize-edge';
+  edge.title = 'Drag to resize · double-click for Your Library';
+  rail.append(edge);
+  wireRailEdge(edge);
+
+  sec.querySelector('.rl-create').onclick = () => newPlaylist();
+  sec.querySelector('.rl-chips').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-chip]');
+    if (!c) return;
+    railLib.chip = railLib.chip === c.dataset.chip ? '' : c.dataset.chip;
+    renderRailLib(true);
+  });
+  const input = sec.querySelector('.rl-filter input');
+  input.addEventListener('input', () => { railLib.filter = input.value.trim().toLowerCase(); renderRailLib(); });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { input.value = ''; railLib.filter = ''; renderRailLib(); input.blur(); } });
+  const sortBtn = sec.querySelector('.rl-sort');
+  sortBtn.onclick = (e) => {
+    e.stopPropagation();
+    const r = sortBtn.getBoundingClientRect();
+    showMenu(LIB_SORTS.map(([v, label]) => ({ label, checked: pref('railSort', 'recent') === v, run: () => { setPref('railSort', v); renderRailLib(true); } })), r.left, r.bottom + 6);
+  };
+  const list = sec.querySelector('.rl-list');
+  const itemOf = (row) => libItems().find((it) => it.key === row.dataset.key);
+  list.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-key]');
+    const it = row && itemOf(row);
+    if (!it) return;
+    if (e.target.closest('[data-pin]')) { togglePin(it.key); return; }
+    openLibItem(it);
+  });
+  list.addEventListener('keydown', (e) => {
+    const row = e.target.closest('[data-key]');
+    const it = row && (e.key === 'Enter' || e.key === ' ') && itemOf(row);
+    if (it) { e.preventDefault(); openLibItem(it); }
+  });
+  list.addEventListener('contextmenu', (e) => {
+    const row = e.target.closest('[data-key]');
+    if (!row) return;
+    e.preventDefault();
+    const it = itemOf(row);
+    if (it) showMenu([{ label: 'Open', run: () => openLibItem(it) }, pinMenuItem(it.key)], e.clientX, e.clientY);
+  });
+
+  bus.addEventListener('library', () => renderRailLib());
+  bus.addEventListener('ready', () => setTimeout(loadRailMixes, 1500));
+  wireCardPinMenu();
+  applyShellPrefs();
+  setRailWidth(pref('railWidth', RAIL_W.normal), false);
+  renderRailLib(true);
+}
+
+/** Draws the pinned list (icons / labelled side bar) or the whole library (wide); cascade = rows slide in. */
+function renderRailLib(cascade) {
+  const sec = railLib.el;
+  if (!sec || !state.library) return;
+  const wide = railLib.mode === 'wide';
+  const all = libItems();
+  let items;
+  if (wide) {
+    const chips = LIB_CHIPS.filter(([id]) => id !== 'mixes' || railLib.mixes.length);
+    if (railLib.chip && !chips.some(([id]) => id === railLib.chip)) railLib.chip = '';
+    sec.querySelector('.rl-chips').innerHTML = (railLib.chip ? `<button class="rl-chip clear" data-chip="${railLib.chip}" title="Clear filter">${ICON.close}</button>` : '')
+      + chips.map(([id, label]) => `<button class="rl-chip${railLib.chip === id ? ' on' : ''}" data-chip="${id}">${label}</button>`).join('');
+    items = sortLib(all);
+    const chip = chips.find(([id]) => id === railLib.chip);
+    if (chip) items = items.filter(chip[2]);
+    if (railLib.filter) items = items.filter((it) => `${it.title} ${it.sub} ${it.creator}`.toLowerCase().includes(railLib.filter));
+  } else {
+    const byKey = new Map(all.map((it) => [it.key, it]));
+    items = railPins().map((k) => byKey.get(k)).filter(Boolean);
+  }
+  sec.querySelector('.rl-sort > span').textContent = (LIB_SORTS.find(([v]) => v === pref('railSort', 'recent')) || LIB_SORTS[0])[1];
+  sec.classList.toggle('empty', !wide && !items.length);
+  const activeKey = libKeyFor(state.view, state.arg);
+  const list = sec.querySelector('.rl-list');
+  list.innerHTML = items.map((it) => {
+    const pinned = isPinned(it.key);
+    return wide
+      ? `<div class="sb-lib-row${it.key === activeKey ? ' active' : ''}" data-key="${esc(it.key)}" role="button" tabindex="0" title="${esc(it.title)}">
+          ${libCoverHtml(it, 40)}<span class="rl-text"><span class="rl-name">${esc(it.title)}</span><span class="rl-sub">${pinned ? `<i class="rl-pinned">${PIN_ICON}</i>` : ''}${esc(it.sub)}</span></span>
+          <button class="rl-pin${pinned ? ' on' : ''}" data-pin title="${pinned ? 'Unpin' : 'Pin to side bar'}">${PIN_ICON}</button></div>`
+      : `<div class="sb-pin-row${it.key === activeKey ? ' active' : ''}" data-key="${esc(it.key)}" role="button" tabindex="0" title="${esc(it.title)}">
+          ${libCoverHtml(it, 28)}<span class="rl-name">${esc(it.title)}</span></div>`;
+  }).join('') || (wide ? `<div class="rl-empty">${railLib.filter ? 'Nothing matches.' : 'No playlists yet.'}</div>` : '');
+  if (cascade) {
+    [...list.children].forEach((r, i) => { r.style.animationDelay = `${Math.min(i, 4) * 20}ms`; }); // 80ms + 120ms ≤ 200ms
+    list.classList.remove('rl-intro');
+    void list.offsetWidth;
+    list.classList.add('rl-intro');
+    clearTimeout(railLib.introTimer);
+    railLib.introTimer = setTimeout(() => list.classList.remove('rl-intro'), 260);
+  }
+}
+
+function wireRailEdge(edge) {
+  let drag = null;
+  edge.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    drag = { x: e.clientX, w: railLib.px, moved: false };
+    try { edge.setPointerCapture(e.pointerId); } catch (err) {}
+    $('.app-layout').classList.add('rail-dragging');
+    document.body.classList.add('rail-resizing');
+  });
+  edge.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = (e.clientX - drag.x) / uiZoom();
+    if (Math.abs(dx) > 2) drag.moved = true;
+    if (drag.moved) setRailWidth(drag.w + dx, false);
+  });
+  const end = () => {
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    $('.app-layout').classList.remove('rail-dragging');
+    document.body.classList.remove('rail-resizing');
+    if (moved) { setRailWidth(railLib.px, true); redrawLists(); }
+  };
+  edge.addEventListener('pointerup', end);
+  edge.addEventListener('pointercancel', end);
+  edge.addEventListener('dblclick', (e) => { e.preventDefault(); toggleRailWide(); });
+}
+
+// A playlist's ⋯ menu (in its header) and right-click on playlist cards / tiles: pin or unpin it.
+bus.addEventListener('render', (e) => {
+  const { view: v, arg } = e.detail || {};
+  if ((v !== 'sc' && v !== 'local') || arg == null) return;
+  const actions = view.querySelector('.hero .actions');
+  if (!actions || actions.querySelector('[data-pl-more]')) return;
+  const key = `${v}:${arg}`;
+  const more = el(`<button class="pill-btn pl-more" data-pl-more title="More" aria-label="More">${ICON.more}</button>`);
+  more.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const r = more.getBoundingClientRect();
+    const btn = (a) => actions.querySelector(`[data-a="${a}"]`);
+    const items = [pinMenuItem(key)];
+    if (btn('rename')) items.push({ label: 'Rename…', run: () => btn('rename').click() });
+    if (btn('delete')) items.push({ label: 'Delete…', run: () => btn('delete').click() });
+    if (btn('save')) items.push({ label: 'Save a copy', run: () => btn('save').click() });
+    showMenu(items, r.left, r.bottom + 4);
+  });
+  actions.append(more);
+});
+// (wired from buildRailLibrary: `view` is declared further down this file)
+function wireCardPinMenu() {
+  view.addEventListener('contextmenu', (e) => {
+    const card = e.target.closest('[data-go="sc"][data-id], [data-go="local"][data-id]');
+    if (!card || e.defaultPrevented) return;
+    e.preventDefault();
+    const key = `${card.dataset.go}:${card.dataset.id}`;
+    showMenu([{ label: 'Open', run: () => go(card.dataset.go, card.dataset.id) }, pinMenuItem(key)], e.clientX, e.clientY);
+  });
 }
 
 async function reloadLibrary() {
@@ -332,11 +699,9 @@ function trackList(container, tracks, opts = {}) {
   container.append(el);
 
   let lastStart = -1, lastEnd = -1;
-  // Rows fade up (riff's m3FadeUp) only when the list arrives with a view change, not on scroll or filter.
-  if (performance.now() - lastGoAt < 600) {
-    el.classList.add('intro');
-    setTimeout(() => el.classList.remove('intro'), 800);
-  }
+  // Rows cascade in (20ms apart, all done within 200ms) only on the first draw after a view change:
+  // never on scroll or filter, and a scroll during the cascade drops it for the new rows.
+  let intro = performance.now() - lastGoAt < 600, drawn = 0;
   function draw(force) {
     if (!el.isConnected) return;
     const top = view.scrollTop - el.offsetTop;
@@ -350,6 +715,13 @@ function trackList(container, tracks, opts = {}) {
     let html = '';
     for (let i = start; i < end; i++) html += rowHtml(tracks[i], i, opts);
     el.innerHTML = html;
+    if (intro && !drawn++) {
+      // Delay by position on screen (rows above the fold don't count); the cap keeps the whole cascade under 200ms.
+      const first = Math.max(0, Math.floor(top / ROW_H));
+      for (const row of el.children) row.style.animationDelay = `${Math.min(4, Math.max(0, Number(row.dataset.i) - first)) * 20}ms`;
+      el.classList.add('intro');
+      setTimeout(() => el.classList.remove('intro'), 260);
+    } else el.classList.remove('intro');
   }
   // Same rows, new state (now playing / liked): update them in place so hover, ripples and focus survive.
   function patchRows() {
@@ -411,6 +783,8 @@ const menu = $('#menu');
 // items: '-' or { label, run, checked? } — when any item has `checked`, a check column lines them up.
 function showMenu(items, x, y) {
   menu.innerHTML = '';
+  // No separator at the start or end, and never two in a row.
+  items = items.filter(Boolean).filter((it, i, a) => it !== '-' || (i > 0 && i < a.length - 1 && a[i - 1] !== '-'));
   const checks = items.some((it) => it && it !== '-' && 'checked' in it);
   menu.classList.toggle('has-checks', checks);
   for (const it of items) {
@@ -449,7 +823,7 @@ function trackMenu(t, x, y, opts = {}, i = -1) {
   ];
   if (opts.removable && opts.onRemove && i >= 0) items.push({ label: 'Remove from this list', run: () => opts.onRemove(i) });
   for (const fn of ext.trackMenu) { try { const more = fn(t, opts) || []; if (more.length) items.push('-', ...more); } catch (e) { log('error', errText(e)); } }
-  items.push('-', { label: 'Copy SoundCloud link', run: () => navigator.clipboard.writeText(t.url).then(() => toast('Link copied')).catch(() => {}) });
+  if (t.url) items.push('-', { label: 'Copy link', run: () => navigator.clipboard.writeText(t.url).then(() => toast('Link copied')).catch(() => {}) });
   showMenu(items, x, y);
 }
 
@@ -629,6 +1003,7 @@ $('#pb-queue').onclick = () => go('queue');
 
 let lastGoAt = 0, enterTimer = 0;
 function go(v, arg = null) {
+  histPush(v, arg); // Back / Forward (before render clears the old page, so its scroll is kept)
   state.view = v;
   state.arg = arg;
   if (v === 'likes' && newLikes) bumpNewLikes(0);
@@ -637,12 +1012,13 @@ function go(v, arg = null) {
   updateNavIndicator(true);
   lastGoAt = performance.now();
   render();
-  // riff's m3ContainerOpen: the new page rises and scales in.
+  shellAfterGo(v, arg);
+  // The new page fades in with a small rise (110ms); its cards and rows cascade after it.
   view.classList.remove('enter');
   void view.offsetWidth;
   view.classList.add('enter');
   clearTimeout(enterTimer);
-  enterTimer = setTimeout(() => view.classList.remove('enter'), 700);
+  enterTimer = setTimeout(() => view.classList.remove('enter'), 320);
 }
 
 // ---------------------------------------------------------------- nav indicator (riff's sliding pill)
@@ -696,12 +1072,16 @@ function updateNavIndicator(animate) {
 
 let renderToken = 0;
 function render(keepScroll) {
-  const scroll = keepScroll ? view.scrollTop : 0;
+  // Back / Forward put the page back where it was scrolled to (navHistory sets histScroll).
+  const scroll = keepScroll ? view.scrollTop : (histScroll || 0);
+  histScroll = 0;
   const token = ++renderToken;
   activeLists = [];
   view.innerHTML = '';
   const views = { home: renderHome, search: renderSearch, likes: renderLikes, playlists: renderPlaylists, queue: renderQueue, sc: renderScPlaylist, local: renderLocalPlaylist, settings: renderSettings };
-  const fn = views[state.view] || (ext.views[state.view] && ext.views[state.view].render) || renderHome;
+  // A feature can replace a core page by registering it with { override: true } (e.g. the home feed).
+  const xv = ext.views[state.view];
+  const fn = (xv && xv.override && xv.render) || views[state.view] || (xv && xv.render) || renderHome;
   Promise.resolve().then(() => fn(token, state.arg)).catch((e) => { log('error', `view ${state.view}: ${errText(e)}`); }).then(() => {
     if (token !== renderToken) return;
     view.scrollTop = scroll;
@@ -775,7 +1155,16 @@ state.platform = load('platform', 'soundcloud');
 function provider() { return searchProviders.find((p) => p.id === state.platform) || searchProviders[0]; }
 
 // riff keeps the centred search clear of the right-hand group (--engine-w).
-function fitSearchBox() { $('.top-nav').style.setProperty('--engine-w', `${$('.nav-right').offsetWidth}px`); }
+// The left group (logo, Back / Forward) plus the Home button beside the search counts too.
+function fitSearchBox() {
+  const hist = $('.nav-history');
+  const histEnd = hist ? hist.offsetLeft + hist.offsetWidth : 0;
+  const nav = $('.top-nav'), right = $('.nav-right').offsetWidth;
+  nav.style.setProperty('--engine-w', `${Math.max(right, histEnd + 24)}px`);
+  // "Search bar: left" starts right after Back / Forward (+ the Home button); see style.css app shell.
+  nav.style.setProperty('--top-left-w', `${histEnd}px`);
+  nav.style.setProperty('--nav-right-w', `${right}px`);
+}
 
 function renderPlatformSwitch() {
   let box = $('#platform-switch');
@@ -794,7 +1183,7 @@ function renderPlatformSwitch() {
   box.innerHTML = `${cur.icon || ''}<span>${esc(cur.label)}</span>${svg('<polyline points="6 9 12 15 18 9"/>')}`;
   box.dataset.p = cur.id;
   box.dataset.order = searchProviders.map((p) => p.id).join(',');
-  searchInput.placeholder = 'Search tracks, artists, or paste a link';
+  searchInput.placeholder = 'What do you want to play?';
   fitSearchBox();
 }
 
@@ -1181,6 +1570,7 @@ function setPlatform(id) {
 
 const SHORTCUTS = [
   ['Play / Pause', ['Space']],
+  ['Back / Forward', ['Alt', '←', '/', '→']],
   ['Next / Previous', ['Ctrl', '→', '/', '←']],
   ['Seek ±5s', ['→', '/', '←']],
   ['Volume ±5%', ['Ctrl', '↑', '/', '↓']],
@@ -1263,6 +1653,9 @@ const coreSettings = {
         searchProviders.length > 1 && SET.prefToggle('compactEngine', false, 'Compact engine buttons', 'Show only icons for YouTube, YouTube Music, and SoundCloud in the top bar', applyBodyPrefs),
         searchProviders.length > 1 && SET.prefToggle('hideEngine', false, 'Hide engine buttons', 'Hide search engine buttons from the top bar', applyBodyPrefs),
         SET.prefToggle('noHandCursor', true, 'No-Hand cursor', 'Replaces the hand and grab cursors with the normal arrow', applyBodyPrefs),
+        SET.prefToggle('dockedShell', true, 'Docked layout', 'Side bar and player bar sit flush against the window edges', applyShellPrefs),
+        SET.select({ name: 'Side bar', options: [['icons', 'Icons only'], ['normal', 'Icons and labels'], ['wide', 'Your Library']], value: railLib.mode,
+          onChange: (v) => setRailWidth(v === 'icons' ? RAIL_W.icons : v === 'normal' ? RAIL_W.normal : pref('railWideWidth', 320), true) }),
         SET.toggle({ name: 'Shaped cover in the bottom bar', desc: 'Morphing Material 3 shape with a wavy progress ring around the cover', get: () => cover.on, set: (on) => setM3Cover(on) }),
       ]);
     },
@@ -1474,6 +1867,7 @@ async function playTrack(t, startAt = 0, fresh = false) {
 function attach(s, startAt) {
   if (s.protocol === 'hls') {
     if (!window.Hls || !Hls.isSupported()) { toast('HLS playback is not supported here', 'error'); setLoading(false); return; }
+    // Small buffers: 30 s ahead, 10 s behind, at most 12 MB (audio only, so that's plenty).
     hls = new Hls({ enableWorker: true, startPosition: startAt > 0 ? startAt : -1, maxBufferLength: 60 });
     hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) recover(); });
     hls.loadSource(s.url);
@@ -1665,60 +2059,51 @@ function drawWave(dt = 0) {
   const target = seekFrac ?? (d ? Math.max(0, Math.min(1, audio.currentTime / d)) : 0);
   const dragging = seekFrac != null;
   shownFrac += (target - shownFrac) * (dt ? Math.min(1, dt * (dragging ? 32 : 45)) : 1);
-  knobAnim += ((dragging ? 1 : 0) - knobAnim) * (dt ? Math.min(1, dt * 16) : 1);
-  const kw = 7.5 + 1.5 * knobAnim, kh = 24 + 8 * knobAnim, kr = 3.75 + 0.75 * knobAnim;
+  // The knob grows while you hover or drag the bar.
+  knobAnim += ((dragging || waveHover ? 1 : 0) - knobAnim) * (dt ? Math.min(1, dt * 20) : 1);
 
+  // Straight bar, same language as the cover ring: dotted track for what's left,
+  // a solid line with a soft glow for what's played, and a round knob.
   const trackW = waveW - PAD * 2;
-  const knobX = PAD + shownFrac * trackW;
-  if (lastKnobX === null) lastKnobX = knobX;
-  if (dragging) phase += (knobX - lastKnobX) * WAVE_K;
-  else if (!audio.paused) phase += 3.5 * dt;
-  lastKnobX = knobX;
-
+  const x = PAD + shownFrac * trackW;
   const mid = waveH / 2;
-  const cap = 9.5 / 2;
   const cls = document.body.classList;
   const noKnob = cls.contains('no-knob');
-  const flat = cls.contains('no-wavy') || cls.contains('perf');
-  const waveStart = PAD;
-  const waveEnd = noKnob ? knobX : knobX - kw / 2 - 4.5 - cap;
-  const restStart = noKnob ? knobX : knobX + kw / 2 + 4;
-  const restEnd = waveW - PAD;
   ctx.clearRect(0, 0, waveW, waveH);
   ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
 
-  if (restEnd > restStart && !cls.contains('no-progress-bg')) {
+  if (!cls.contains('no-progress-bg') && waveW - PAD > x + 8) {
     ctx.save();
-    ctx.globalAlpha = 0.3;
+    ctx.globalAlpha = 0.4;
     ctx.strokeStyle = wavePrimary;
-    ctx.lineWidth = 11;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([0.1, 6]);
     ctx.beginPath();
-    ctx.moveTo(restStart, mid);
-    ctx.lineTo(restEnd, mid);
+    ctx.moveTo(x + 8, mid);
+    ctx.lineTo(waveW - PAD, mid);
     ctx.stroke();
     ctx.restore();
   }
-  if (waveEnd > waveStart) {
+  if (x > PAD + 1) {
+    ctx.save();
     ctx.strokeStyle = wavePrimary;
-    ctx.lineWidth = 9.5;
+    ctx.lineWidth = 4 + knobAnim;
+    ctx.shadowColor = wavePrimary;
+    ctx.shadowBlur = 6;
+    ctx.globalAlpha = 0.95;
     ctx.beginPath();
-    if (flat) { ctx.moveTo(waveStart, mid); ctx.lineTo(waveEnd, mid); }
-    else {
-      for (let x = waveStart; x <= waveEnd; x += 2) {
-        const y = mid + Math.sin(phase - (waveEnd - x) * WAVE_K) * 5;
-        if (x === waveStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.lineTo(waveEnd, mid + Math.sin(phase) * 5);
-    }
+    ctx.moveTo(PAD, mid);
+    ctx.lineTo(x, mid);
     ctx.stroke();
+    ctx.restore();
   }
   if (noKnob) return;
   ctx.fillStyle = wavePrimary;
   ctx.beginPath();
-  ctx.roundRect(knobX - kw / 2, mid - kh / 2, kw, kh, kr);
+  ctx.arc(x, mid, 5.5 + 2.5 * knobAnim, 0, Math.PI * 2);
   ctx.fill();
 }
+let waveHover = false;
 
 // ---------------------------------------------------------------- shaped cover (riff's m3 cover)
 
@@ -1839,7 +2224,7 @@ function drawCover(dt) {
     const played = Math.max(2, Math.round(p * STEPS));
     for (let s = 0; s <= played; s++) {
       const phi = startPhi + (Math.PI * 2 * s) / STEPS;
-      const [x, y] = ringPoint(phi, Math.sin(phi * 26 + cover.phase) * 1.5);
+      const [x, y] = ringPoint(phi, 0); // smooth played arc (no wave)
       if (s === 0) c.moveTo(x, y); else c.lineTo(x, y);
     }
     c.stroke();
@@ -2058,7 +2443,8 @@ wave.addEventListener('pointerdown', (e) => {
 // Hover the progress bar to see the time you'd jump to.
 const waveTip = el('<span class="wave-tip" hidden></span>');
 wave.append(waveTip);
-wave.addEventListener('pointerleave', () => { waveTip.hidden = true; });
+wave.addEventListener('pointerleave', () => { waveTip.hidden = true; waveHover = false; kickAnim(); });
+wave.addEventListener('pointerenter', () => { waveHover = true; kickAnim(); });
 wave.addEventListener('pointermove', (e) => {
   const d = duration();
   if (d) {
@@ -2107,6 +2493,7 @@ const vol = $('#volume');
 function setVolume(v) {
   vol.value = v;
   vol.style.setProperty('--p', v + '%');
+  vol.title = `Volume ${Math.round(v)}%`;
   volBase = Math.pow(v / 100, 3); // riff's curve (position cubed)
   applyVolume();
   store('volume', Number(v));
@@ -2186,8 +2573,10 @@ if ('mediaSession' in navigator) {
 }
 
 document.addEventListener('keydown', (e) => {
-  const typing = e.target.closest('input, textarea');
+  // The target can be the document or a text node (synthetic events, focus on nothing).
+  const typing = (e.target instanceof Element ? e.target : e.target?.parentElement)?.closest('input, textarea');
   if (e.key === 'Escape') { hideMenu(); if (!modal.hidden) closeModal(); return; }
+  if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); navHistory(e.key === 'ArrowLeft' ? -1 : 1); return; }
   if (typing) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   else if (e.key === '/' || (e.ctrlKey && e.key.toLowerCase() === 'f')) { e.preventDefault(); searchInput.focus(); searchInput.select(); }
@@ -2231,6 +2620,7 @@ async function init() {
 
   renderPlatformSwitch();
   organizeRail();
+  buildTopPanel();
   emit('ready');
   await reloadLibrary();
   state.status = await invoke('sc_status');
@@ -2284,6 +2674,7 @@ async function selftest() {
   }
   await lookSelftest(wait);
   await settingsSelftest(wait);
+  await shellSelftest(wait);
   for (const [i, t] of ext.selftests.entries()) {
     const name = t.label || `#${i}`;
     log('test', `-- feature selftest ${name}`);
@@ -2324,8 +2715,10 @@ async function settingsSelftest(wait) {
     check('compact engine buttons', document.body.classList.contains('compact-engine-btns') && (!$('#platform-switch') || [...$('#platform-switch').querySelectorAll('.platform-btn > span')].every((x) => !x.offsetWidth)));
     setPref('searchPos', 'left'); applySearchPos();
     await wait(900);
-    const r = $('.search-box').getBoundingClientRect();
-    check('searchbar left', r.left < 120, `left ${Math.round(r.left)}px`);
+    // Left = just after the logo and Back / Forward, leaving room for the Home button (not the window edge any more).
+    const r = $('.search-box').getBoundingClientRect(), hb = $('#nav-fwd')?.getBoundingClientRect(), hr = $('#nav-home')?.getBoundingClientRect();
+    const leftOk = hb ? r.left > hb.right && r.left - hb.right < 90 * uiZoom() && (!hr || hr.left >= hb.right) : r.left < 120;
+    check('searchbar left', leftOk, `left ${Math.round(r.left)}px, after forward at ${hb ? Math.round(hb.right) : '-'}px`);
     setPref('uiScale', 110); applyUiScale(110);
     await wait(150);
     check('ui scale', Math.abs(uiZoom() - 0.99) < 0.005, `zoom ${uiZoom()}`);
@@ -2356,6 +2749,102 @@ async function settingsSelftest(wait) {
   } catch (e) { check('about', false, errText(e)); }
 }
 
+// App shell: Back / Forward, side bar drag (wide <-> labelled <-> icons), pins, motion timings.
+// Prefs it touches are put back. It holds wide and labelled mode a few seconds each for screenshots.
+async function shellSelftest(wait) {
+  const check = (name, ok, detail = '') => log('test', `shell ${name}: ${ok ? 'OK' : 'FAILED'}${detail ? ` (${detail})` : ''}`);
+  const keys = ['railWidth', 'railWideWidth', 'railPins', 'railSort', 'dockedShell'];
+  const saved = Object.fromEntries(keys.filter((k) => k in prefs).map((k) => [k, prefs[k]]));
+  const rail = $('.rail');
+  try {
+    // history
+    go('likes'); go('playlists'); go('queue');
+    const at = () => `${state.view}`;
+    navHistory(-1); const b1 = at();
+    navHistory(-1); const b2 = at();
+    navHistory(1); const f1 = at();
+    check('back / forward', b1 === 'playlists' && b2 === 'likes' && f1 === 'playlists' && !$('#nav-back').disabled && !$('#nav-fwd').disabled, `${b1} ${b2} ${f1}`);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true }));
+    const k1 = at();
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 4, bubbles: true }));
+    const m1 = at();
+    check('alt+left / mouse 5', k1 === 'likes' && m1 === 'playlists', `${k1} ${m1}`);
+    go('settings', 'interface');
+    check('new page drops forward', $('#nav-fwd').disabled && navHist.list[navHist.pos].v === 'settings');
+    $('#nav-home').click();
+    check('home button', state.view === 'home' && $('#nav-home').classList.contains('active') && $('#nav-home').offsetParent !== null);
+    const sr = $('.search-box').getBoundingClientRect(), hr = $('#nav-home').getBoundingClientRect(), hb = $('#nav-back').getBoundingClientRect();
+    check('top bar layout', hr.right <= sr.left && hb.right <= hr.left && hb.width > 0, `back ${Math.round(hb.left)}-${Math.round(hb.right)}, home ${Math.round(hr.left)}-${Math.round(hr.right)}, search ${Math.round(sr.left)}`);
+
+    // side bar: drag the edge wider, then double-click back
+    setPref('dockedShell', true); applyShellPrefs();
+    setRailWidth(RAIL_W.normal, true);
+    await wait(250);
+    const edge = $('#sidebar-resize-edge'), z = uiZoom();
+    const er = edge.getBoundingClientRect(), x0 = er.left + er.width / 2, y0 = er.top + 200;
+    const pe = (type, x) => edge.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y0, button: 0, buttons: 1, pointerId: 1, bubbles: true }));
+    pe('pointerdown', x0); pe('pointermove', x0 + 40 * z); pe('pointermove', x0 + 150 * z); pe('pointerup', x0 + 150 * z);
+    await wait(300);
+    const wideRows = rail.querySelectorAll('.sb-lib-row').length;
+    check('drag to Your Library', railLib.mode === 'wide' && Math.abs(rail.offsetWidth - 334) <= 2 && pref('railWidth') === 334 && wideRows >= 1 && document.body.classList.contains('sidebar-expanded'),
+      `${railLib.mode}, ${rail.offsetWidth}px, ${wideRows} rows, chips ${rail.querySelectorAll('.rl-chip').length}`);
+    const navTop = rail.querySelector('.nav-item').getBoundingClientRect().top, libTop = railLib.el.getBoundingClientRect().top;
+    check('nav stays on top', navTop < libTop && rail.querySelector('.rl-filter input').offsetParent !== null);
+    railLib.el.querySelector('.rl-chip[data-chip="mine"]')?.click();
+    const mine = [...rail.querySelectorAll('.sb-lib-row')].every((r) => r.dataset.key === 'likes' || r.dataset.key.startsWith('local:'));
+    railLib.chip = ''; renderRailLib();
+    check('filter chip', mine);
+    log('test', 'shell: holding Your Library for a screenshot');
+    await wait(6000);
+    edge.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await wait(250);
+    check('double-click toggles', railLib.mode === 'normal' && Math.abs(rail.offsetWidth - RAIL_W.normal) <= 2, `${railLib.mode} ${rail.offsetWidth}px`);
+    setRailWidth(60, false);
+    await wait(250);
+    check('icons below 120px', railLib.mode === 'icons' && rail.offsetWidth === RAIL_W.icons && !rail.querySelector('.nav-label').offsetWidth, `${rail.offsetWidth}px`);
+    setRailWidth(RAIL_W.normal, false);
+
+    // pins
+    setPref('railPins', []);
+    togglePin('likes', true);
+    const lp = state.library.playlists[0], sp = state.scPlaylists[0];
+    if (sp) togglePin(`sc:${sp.id}`, true); else if (lp) togglePin(`local:${lp.id}`, true);
+    await wait(100);
+    const pinRows = rail.querySelectorAll('.sb-pin-row');
+    check('pins', pinRows.length === (sp || lp ? 2 : 1) && pinRows[0].dataset.key === 'likes' && !railLib.el.classList.contains('empty'), `${pinRows.length} pinned`);
+    if (sp || lp) {
+      go(sp ? 'sc' : 'local', sp ? sp.id : lp.id);
+      const more = await (async () => { for (let i = 0; i < 50; i++) { const m = view.querySelector('[data-pl-more]'); if (m) return m; await wait(100); } return null; })();
+      check('playlist ⋯ menu', !!more);
+      if (more) {
+        more.click();
+        const item = [...menu.querySelectorAll('button')].find((b) => /Unpin from side bar/.test(b.textContent));
+        if (item) item.click(); else hideMenu();
+        check('unpin from ⋯ menu', !!item && rail.querySelectorAll('.sb-pin-row').length === 1);
+      }
+    }
+    go('likes');
+    log('test', 'shell: holding the labelled side bar for a screenshot');
+    await wait(6000);
+
+    // motion
+    go('playlists');
+    await wait(30);
+    const va = getComputedStyle(view);
+    const viewMs = parseFloat(va.animationDuration) * (va.animationDuration.endsWith('ms') ? 1 : 1000);
+    go('likes');
+    await wait(60);
+    const rows = [...view.querySelectorAll('.tracks.intro .track-row')];
+    const worst = rows.reduce((m, r) => { const s = getComputedStyle(r); const ms = (v) => parseFloat(v) * (v.endsWith('ms') ? 1 : 1000); return Math.max(m, ms(s.animationDelay) + ms(s.animationDuration)); }, 0);
+    check('motion ≤ 200ms', viewMs <= 200 && (motion.perf || !state.library.favorites.length || (rows.length > 0 && worst <= 200)), `view ${viewMs}ms, ${rows.length} rows, cascade ends ${worst}ms`);
+  } catch (e) { check('selftest', false, errText(e)); }
+  for (const k of keys) { if (k in saved) prefs[k] = saved[k]; else delete prefs[k]; }
+  try { localStorage.setItem('prefs', JSON.stringify(prefs)); } catch (e) {}
+  applyShellPrefs();
+  setRailWidth(pref('railWidth', RAIL_W.normal), false);
+  renderRailLib();
+}
+
 // Core look: switch, shaped cover, backdrops, nav pill, frame pacing.
 async function lookSelftest(wait) {
   const check = (name, ok, detail = '') => log('test', `look ${name}: ${ok ? 'OK' : 'FAILED'}${detail ? ` (${detail})` : ''}`);
@@ -2373,7 +2862,7 @@ async function lookSelftest(wait) {
     check('switch markup decorated', !!plain.querySelector('.sw-icon'));
     sw.remove(); plain.remove();
 
-    check('m3 shapes', !!window.RiffShapes && window.RiffShapes.ready() && window.RiffShapes.count() === 4, `${window.RiffShapes ? window.RiffShapes.count() : 0} shapes`);
+    check('m3 shapes', !!window.RiffShapes && window.RiffShapes.ready() && window.RiffShapes.count() >= 20, `${window.RiffShapes ? window.RiffShapes.count() : 0} shapes`);
     if (player.current) { if (audio.paused) audio.play().catch(() => {}); await wait(1500); }
     check('shaped cover', cover.on && document.body.classList.contains('m3-cover-on') && !!cover.ctx && cover.canvas.width >= 100 && (!player.current?.artwork || !!cover.img),
       `${cover.canvas.width}px canvas, art ${cover.img ? cover.img.naturalWidth + 'px' : 'none'} from ${cover.url.split('/').pop()}`);

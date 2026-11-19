@@ -541,7 +541,83 @@
   // riff's modal tabs in riff's order. riff shows presets in its rail drawer (no plug-in slot for that here),
   // so they get one extra tab after riff's five.
   const TABS = [['enhance', 'Enhancer'], ['tempo', 'Speed & Pitch'], ['effects', 'Audio FX'], ['eq', 'Equalizer'], ['sleep', 'Sleep'], ['presets', 'Presets']];
+  const TAB_SUB = {
+    enhance: 'Restore detail and keep loudness even', tempo: 'Playback speed, tape pitch and gain', effects: 'Reverb, distortion and echo',
+    eq: 'Tone controls and a 10-band graphic equalizer', sleep: 'Fade out and pause after a while', presets: 'Built-in sounds and your own',
+  };
   const signed = (v, unit) => { const r = Math.round(v); return `${r > 0 ? '+' : ''}${r}${unit}`; };
+
+  // ------------------------------------------------------------ nx-range: the shared slider (riff.slider)
+  // A native <input type=range> (keyboard, focus, screen readers) laid over a slim track. The visible
+  // parts are positioned from --v (0..1) so they line up with the native thumb: its centre runs from
+  // T/2 to W - T/2 where T is --nx-t (the native thumb size, 16px in fx.css).
+  function nxSync(wrap) {
+    const inp = wrap && wrap.querySelector('input');
+    if (!inp) return;
+    const min = Number(inp.min), max = Number(inp.max), v = Number(inp.value), span = (max - min) || 1;
+    const k = Math.max(0, Math.min(1, (v - min) / span));
+    const bip = wrap.classList.contains('nx-bipolar');
+    const c = bip ? Math.max(0, Math.min(1, ((wrap.dataset.center != null ? Number(wrap.dataset.center) : 0) - min) / span)) : 0;
+    const st = wrap.style;
+    st.setProperty('--v', k.toFixed(4));
+    st.setProperty('--lo', Math.min(c, k).toFixed(4));
+    st.setProperty('--hi', Math.max(c, k).toFixed(4));
+    if (bip) st.setProperty('--c', c.toFixed(4));
+    wrap.classList.toggle('nx-at-center', bip && Math.abs(k - c) < 1e-6);
+    const text = wrap._fmt ? wrap._fmt(v) : `${+v.toFixed(2)}${wrap.dataset.unit || ''}`;
+    const tip = wrap.querySelector('.nx-tip');
+    if (tip && tip.textContent !== text) tip.textContent = text;
+    if (inp.getAttribute('aria-valuetext') !== text) inp.setAttribute('aria-valuetext', text);
+  }
+  /** Markup for one slider. opts: { min, max, step, value, bipolar, center, vertical, unit, label, cls, attrs } */
+  function nxHtml(o = {}) {
+    const min = o.min ?? 0, max = o.max ?? 100, value = o.value ?? min;
+    const cls = ['nx-range', o.bipolar && 'nx-bipolar', o.vertical && 'nx-vertical', o.cls].filter(Boolean).join(' ');
+    return `<div class="${cls}"${o.bipolar && o.center != null ? ` data-center="${o.center}"` : ''}${o.unit ? ` data-unit="${R.esc(o.unit)}"` : ''}>`
+      + '<span class="nx-track"><span class="nx-fill"></span></span><span class="nx-detent"></span><span class="nx-thumb"></span><span class="nx-tip"></span>'
+      + `<input type="range" min="${min}" max="${max}" step="${o.step ?? 1}" value="${value}"${o.label ? ` aria-label="${R.esc(o.label)}"` : ''}${o.vertical ? ' aria-orientation="vertical"' : ''} ${o.attrs || ''}></div>`;
+  }
+  /** riff.slider({ min, max, step, value, bipolar, center, vertical, unit, label, format(v), onInput(v), onChange(v), reset })
+   *  -> element. el.value reads / sets the value. */
+  function nxSlider(o = {}) {
+    const el = R.el(nxHtml(o));
+    const inp = el.querySelector('input');
+    if (o.format) el._fmt = o.format;
+    if (o.reset != null) el.dataset.reset = String(o.reset);
+    if (o.onInput) inp.addEventListener('input', () => o.onInput(Number(inp.value), el));
+    if (o.onChange) inp.addEventListener('change', () => o.onChange(Number(inp.value), el));
+    Object.defineProperty(el, 'value', { get: () => Number(inp.value), set: (v) => { inp.value = v; nxSync(el); } });
+    el.input = inp;
+    nxSync(el);
+    return el;
+  }
+  nxSlider.html = nxHtml;
+  /** Re-reads every .nx-range inside root (or root itself) after values were set from script. */
+  nxSlider.sync = (root = document) => {
+    if (root.classList && root.classList.contains('nx-range')) nxSync(root);
+    else root.querySelectorAll('.nx-range').forEach(nxSync);
+  };
+  R.slider = nxSlider;
+  // One set of document listeners serves every slider, including plain `.nx-range` markup.
+  document.addEventListener('input', (e) => { const w = e.target.closest && e.target.closest('.nx-range'); if (w) nxSync(w); }, true);
+  let nxDragging = null;
+  const nxEnd = () => { if (nxDragging) { nxDragging.classList.remove('nx-drag'); nxDragging = null; } };
+  document.addEventListener('pointerdown', (e) => {
+    const w = e.target.closest && e.target.closest('.nx-range');
+    if (!w) return;
+    nxEnd(); nxDragging = w; w.classList.add('nx-drag');
+  }, true);
+  window.addEventListener('pointerup', nxEnd, true);
+  window.addEventListener('pointercancel', nxEnd, true);
+  window.addEventListener('blur', nxEnd);
+  document.addEventListener('dblclick', (e) => {
+    const w = e.target.closest && e.target.closest('.nx-range[data-reset]');
+    if (!w) return;
+    const inp = w.querySelector('input');
+    inp.value = w.dataset.reset;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  });
 
   // Slider specs: key -> [label, min, max, step, default, format, get, set, isEnhancer, dblclickResets]
   // (riff index.html ranges / steps / labels; riff only resets the EQ sliders on double-click)
@@ -560,72 +636,85 @@
     mid: ['Mid', -12, 12, 1, 0, (v) => signed(v, ' dB'), () => S.a.eq.mid, (v) => { S.a.eq.mid = v; }, false, true],
     high: ['High', -12, 12, 1, 0, (v) => signed(v, ' dB'), () => S.a.eq.high, (v) => { S.a.eq.high = v; }, false, true],
   };
-  const range = (k) => { const [, min, max, step, def, , , , , dbl] = SLIDERS[k]; return `<div class="fx-sl"><span class="fx-sl-on"></span><span class="fx-sl-off"></span><input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${def}"${dbl ? ' title="Double-click to reset"' : ''}></div>`; };
-  const sliderItem = (k, cls = 'setting-item') => `<div class="${cls}"><div class="fx-top"><span class="fx-name">${SLIDERS[k][0]}</span><span class="fx-val" data-v="${k}"></span></div>${range(k)}</div>`;
-  const eqRow = (k) => `<div class="fx-eq-row"><span class="fx-eq-name">${SLIDERS[k][0]}</span>${range(k)}<span class="fx-val" data-v="${k}"></span></div>`;
+  // Sliders whose neutral point sits inside the range get the centre-detent look (fill grows from there).
+  const BIPOLAR = { speed: 1, speedPitch: 1, pitch: 0, gain: 100, vocal: 0, air: 0, bass: 0, low: 0, mid: 0, high: 0 };
+  const range = (k) => {
+    const [label, min, max, step, def, , , , , dbl] = SLIDERS[k];
+    return nxHtml({ min, max, step, value: def, label, bipolar: k in BIPOLAR, center: BIPOLAR[k], attrs: `data-k="${k}"${dbl ? ' title="Double-click to reset"' : ''}` });
+  };
+  const sliderItem = (k, cls = 'fx-srow') => `<div class="${cls}"><div class="fx-top"><span class="fx-name">${SLIDERS[k][0]}</span><span class="fx-val" data-v="${k}"></span></div>${range(k)}</div>`;
+  const card = (body, cls = '') => `<div class="fx-card${cls ? ' ' + cls : ''}">${body}</div>`;
+  const DB_SCALE = ['+12', '+6', '0', '-6', '-12'];
   // riff's .effect-switch-btn: thumb carries an X that morphs into a check mark when on
   const SW_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="fx-sw-icon"/></svg>';
   const toggle = (id) => `<button type="button" class="fx-switch" data-t="${id}" role="switch"><span class="thumb">${SW_ICON}</span></button>`;
   const engineLabel = () => (ENGINES.find(([v]) => v === S.hq.engine) || ENGINES[0])[1];
 
   function panelHtml() {
+    const sleepChip = (v, label, sub) => `<button type="button" class="fx-chip fx-sleep-chip" data-sleep="${v}"><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</button>`;
     return `
-    <div class="fx-head">
-      <div class="fx-title">${I.sliders}<h3>Audio</h3></div>
-      <button type="button" class="pill-btn" data-a="close" title="Close">${I.close}</button>
+    <div class="fx-bar">
+      <nav class="fx-tabs" role="tablist" aria-label="Audio sections">
+        ${TABS.map(([id, label]) => `<button type="button" class="fx-tab" role="tab" data-tab="${id}" title="${label}" aria-label="${label}">${I[id] || I.sliders}<span>${label}</span></button>`).join('')}
+      </nav>
+      <button type="button" class="fx-close" data-a="close" title="Close" aria-label="Close">${I.close}</button>
     </div>
-    <div class="fx-layout">
-      <nav class="fx-tabs">${TABS.map(([id, label]) => `<button type="button" class="fx-tab" data-tab="${id}">${I[id] || I.sliders}<span>${label}</span></button>`).join('')}</nav>
+    <section class="fx-main">
+      <header class="fx-head">
+        <h3 class="fx-heading" data-heading></h3><span class="fx-sub" data-sub></span>
+      </header>
       <div class="fx-body">
         <div class="fx-panel" data-panel="sleep">
-          <div class="setting-item">
-            <div class="fx-top"><span class="fx-name">Sleep timer</span><span class="fx-val fx-sleep-status" data-sleep-status>Off</span></div>
-            <div class="fx-sleep-opts">${['15', '30', '45', '60'].map((m) => `<button type="button" class="btn outline" data-sleep="${m}">${m} min</button>`).join('')}<button type="button" class="btn outline" data-sleep="end">End of track</button><button type="button" class="btn outline" data-sleep="off">Turn off</button></div>
-            <span class="fx-hint">Fades out and pauses when the timer runs out.</span>
-          </div>
+          ${card(`<div class="fx-sleep-hero">
+              <div class="fx-col"><span class="fx-label">Sleep timer</span><span class="fx-sleep-big fx-sleep-status" data-sleep-status>Off</span></div>
+              <button type="button" class="btn outline fx-small" data-sleep="off">Turn off</button>
+            </div>
+            <div class="fx-sleep-opts">${['15', '30', '45', '60'].map((m) => sleepChip(m, m, 'min')).join('')}${sleepChip('end', 'End', 'of track')}</div>
+            <span class="fx-hint">Fades out over 4 seconds and pauses when the timer runs out.</span>`, 'fx-pad')}
         </div>
         <div class="fx-panel" data-panel="enhance">
-          <div class="setting-item fx-hq">
-            <div class="fx-top"><div class="fx-row"><span class="fx-name">High Quality</span><span class="fx-badge">BETA</span></div>${toggle('hq')}</div>
+          ${card(`<div class="fx-hq">
+            <div class="fx-top fx-pad-row"><div class="fx-col"><div class="fx-row"><span class="fx-name">High Quality</span><span class="fx-badge">BETA</span></div><span class="fx-hint">Glue compression, shelves and soft saturation</span></div>${toggle('hq')}</div>
             <div class="fx-hq-wrap"><div class="fx-hq-content">
-              <div class="fx-group">
-                <span class="fx-label">Enhancement Engine</span>
+              <div class="fx-group fx-pad-row">
+                <span class="fx-label">Enhancement engine</span>
                 <div class="fx-dd">
-                  <button type="button" class="fx-dd-trigger" data-a="engine"><span data-engine-label>${R.esc(engineLabel())}</span>${I.down}</button>
-                  <div class="fx-dd-menu">${ENGINES.map(([v, l]) => `<button type="button" class="fx-dd-opt" data-engine="${v}">${R.esc(l)}</button>`).join('')}</div>
+                  <button type="button" class="fx-dd-trigger" data-a="engine" aria-haspopup="listbox"><span data-engine-label>${R.esc(engineLabel())}</span>${I.down}</button>
+                  <div class="fx-dd-menu" role="listbox">${ENGINES.map(([v, l]) => `<button type="button" class="fx-dd-opt" data-engine="${v}" role="option">${R.esc(l)}</button>`).join('')}</div>
                 </div>
               </div>
-              ${['vocal', 'air', 'bass'].map((k) => sliderItem(k, 'fx-hq-slider')).join('')}
+              ${['vocal', 'air', 'bass'].map((k) => sliderItem(k)).join('')}
             </div></div>
-          </div>
-          <div class="setting-item">
-            <div class="fx-top"><div class="fx-col"><span class="fx-name">Normalize volume</span><span class="fx-hint">Keeps loudness similar between tracks (adjusts live, up to 9 dB)</span></div>${toggle('norm')}</div>
-          </div>
+          </div>`)}
+          ${card(`<div class="fx-top fx-pad-row"><div class="fx-col"><span class="fx-name">Normalize volume</span><span class="fx-hint">Keeps loudness similar between tracks (adjusts live, up to 9 dB)</span></div>${toggle('norm')}</div>`)}
         </div>
-        <div class="fx-panel" data-panel="tempo">${['speed', 'speedPitch', 'pitch', 'gain'].map((k) => sliderItem(k)).join('')}</div>
-        <div class="fx-panel" data-panel="effects">${['reverb', 'distortion', 'echo'].map((k) => sliderItem(k)).join('')}</div>
+        <div class="fx-panel" data-panel="tempo">${card(['speed', 'speedPitch', 'pitch', 'gain'].map((k) => sliderItem(k)).join(''))}
+          <span class="fx-hint fx-note">Speed keeps the pitch. Speed (pitch) and Pitch change it like a tape, and then Speed is ignored.</span></div>
+        <div class="fx-panel" data-panel="effects">${card(['reverb', 'distortion', 'echo'].map((k) => sliderItem(k)).join(''))}</div>
         <div class="fx-panel" data-panel="eq">
-          ${['low', 'mid', 'high'].map(eqRow).join('')}
-          <div class="fx-eq10">
-            <div class="fx-top"><span class="fx-name">10-band Equalizer</span><button type="button" class="btn outline fx-small" data-a="reset-bands">Reset</button></div>
-            <div class="fx-faders">
-              <div class="fx-scale"><span>+12</span><span>0</span><span>-12</span></div>
-              <div class="fx-fader-area">
-                <div class="fx-grid"><i class="max"></i><i class="mid"></i><i class="min"></i></div>
-                <div class="fx-bands">${BAND_LABELS.map((l, i) => `<div class="fx-band"><span class="fx-band-val" data-bv="${i}"></span><div class="fx-band-box"><input type="range" class="fx-band-range" data-band="${i}" min="-12" max="12" step="1" value="0" title="Double-click to reset"></div><span class="fx-band-freq">${l}</span></div>`).join('')}</div>
+          ${card(['low', 'mid', 'high'].map((k) => sliderItem(k)).join(''), 'fx-tone')}
+          ${card(`<div class="fx-top fx-pad-row"><div class="fx-col"><span class="fx-name">10-band equalizer</span><span class="fx-hint">Double-click a band to reset it</span></div><button type="button" class="btn outline fx-small" data-a="reset-bands">Reset</button></div>
+            <div class="fx-eq">
+              <div class="fx-scale" aria-hidden="true">${DB_SCALE.map((s) => `<span>${s}</span>`).join('')}</div>
+              <div class="fx-eq-area">
+                <div class="fx-grid" aria-hidden="true">${DB_SCALE.map((s) => `<i${s === '0' ? ' class="zero"' : ''}></i>`).join('')}</div>
+                <svg class="fx-curve" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="fx-curve-fill" data-curve-fill/><path class="fx-curve-line" data-curve/></svg>
+                <div class="fx-bands">${BAND_LABELS.map((l, i) => `<div class="fx-band"><span class="fx-band-val" data-bv="${i}"></span>
+                  ${nxHtml({ min: -12, max: 12, step: 1, value: 0, bipolar: true, vertical: true, label: `${l} Hz band`, cls: 'fx-band-sl', attrs: `class="fx-band-range" data-band="${i}" title="Double-click to reset"` })}
+                  <span class="fx-band-freq">${l}</span></div>`).join('')}</div>
               </div>
-            </div>
-          </div>
+            </div>`, 'fx-eq10')}
         </div>
         <div class="fx-panel" data-panel="presets">
-          <div class="setting-item">
-            <div class="fx-top"><span class="fx-name">Audio presets</span><button type="button" class="btn outline fx-small" data-a="save">${I.plus}Save preset</button></div>
-            <div class="fx-chips" data-presets></div>
-          </div>
+          ${card(`<div class="fx-top fx-pad-row"><div class="fx-col"><span class="fx-name">Audio presets</span><span class="fx-hint">Applying one blends over smoothly when Smooth preset transitions is on</span></div><button type="button" class="btn outline fx-small" data-a="save">${I.plus}Save current</button></div>
+            <div class="fx-chips fx-pad-row" data-presets></div>`)}
         </div>
       </div>
-    </div>
-    <div class="fx-foot"><button type="button" class="btn outline" data-a="reset">Reset audio settings</button></div>`;
+      <footer class="fx-foot">
+        <span class="fx-state" data-state></span>
+        <button type="button" class="btn outline fx-small" data-a="reset">Reset audio settings</button>
+      </footer>
+    </section>`;
   }
 
   let panel = null;
@@ -638,6 +727,10 @@
     if (!live()) return;
     panel.querySelectorAll('.fx-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === id));
     panel.querySelectorAll('.fx-panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === id));
+    panel.querySelectorAll('.fx-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === id)));
+    panel.querySelector('[data-heading]').textContent = TABS.find(([t]) => t === id)[1];
+    panel.querySelector('[data-sub]').textContent = TAB_SUB[id] || '';
+    panel.querySelector('.fx-body').scrollTop = 0;
   }
 
   const switchOn = (t) => (t === 'hq' ? S.hqOn : t === 'norm' ? S.norm : t === 'smooth' ? S.smooth : S.persist);
@@ -648,17 +741,40 @@
     panel.querySelectorAll('input[data-k]').forEach((inp) => {
       const [, min, max, , , , get] = SLIDERS[inp.dataset.k];
       const v = get();
-      inp.value = v;
-      inp.parentElement.style.setProperty('--v', String((v - min) / (max - min)));
+      if (Number(inp.value) !== v) inp.value = v;
+      const w = inp.parentElement;
+      w.classList.toggle('nx-changed', Math.abs(v - SLIDERS[inp.dataset.k][4]) > 1e-9);
+      nxSync(w);
     });
     panel.querySelectorAll('[data-v]').forEach((e) => { const s = SLIDERS[e.dataset.v]; e.textContent = s[5](s[6]()); });
-    panel.querySelectorAll('input[data-band]').forEach((inp) => { inp.value = S.a.eqBands[inp.dataset.band]; });
-    panel.querySelectorAll('[data-bv]').forEach((e) => { e.textContent = signed(S.a.eqBands[e.dataset.bv], ' dB'); });
+    panel.querySelectorAll('input[data-band]').forEach((inp) => { const v = S.a.eqBands[inp.dataset.band]; if (Number(inp.value) !== v) inp.value = v; nxSync(inp.parentElement); });
+    panel.querySelectorAll('[data-bv]').forEach((e) => { const v = Math.round(S.a.eqBands[e.dataset.bv]); e.textContent = v > 0 ? '+' + v : String(v); e.classList.toggle('on', v !== 0); });
+    drawCurve();
+    const st = panel.querySelector('[data-state]');
+    const on = [S.hqOn && 'High Quality', S.norm && 'Normalize', tempoModified(S.a) && 'Speed / pitch', (S.a.reverb || S.a.echo || S.a.distortion || S.a.volume !== 1) && 'Effects', eqActive(S.a) && 'EQ'].filter(Boolean);
+    st.textContent = on.length ? on.join(' · ') : 'Default sound';
+    st.classList.toggle('on', on.length > 0);
     panel.querySelector('.fx-hq').classList.toggle('open', S.hqOn);
     panel.querySelectorAll('.fx-switch').forEach(syncSwitch);
     panel.querySelector('[data-engine-label]').textContent = engineLabel();
     panel.querySelectorAll('[data-engine]').forEach((b) => b.classList.toggle('selected', b.dataset.engine === S.hq.engine));
     syncSleep();
+  }
+  // Response curve behind the 10 faders: one point per band, x at the fader centres.
+  function drawCurve() {
+    const line = panel.querySelector('[data-curve]'), fill = panel.querySelector('[data-curve-fill]');
+    if (!line) return;
+    // fader travel runs from 8px to (height - 8px) of the box; the svg maps that box to 0..100
+    const fh = panel.querySelector('.fx-curve').clientHeight || 150, span = 50 * (fh - 16) / fh;
+    const pts = S.a.eqBands.map((v, i) => [((i + 0.5) / 10) * 100, 50 - (v / 12) * span]);
+    let d = `M${pts[0][0]} ${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], mx = (x0 + x1) / 2;
+      d += ` C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`;
+    }
+    line.setAttribute('d', d);
+    fill.setAttribute('d', `${d} L${pts[9][0]} 50 L${pts[0][0]} 50 Z`);
+    panel.querySelector('.fx-curve').classList.toggle('flat', !S.a.eqBands.some((v) => v));
   }
   function syncSleep() {
     if (!live()) return;
@@ -753,12 +869,43 @@
 
   // riff opens the audio menu on Speed & Pitch every time (other tabs only when asked for by name).
   function open(tab) {
+    const again = live();
     panel = R.openModal(panelHtml());
     panel.classList.add('fx-modal');
+    if (again) panel.classList.add('fx-reopen');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Audio');
+    panel.querySelectorAll('input[data-k]').forEach((inp) => { inp.parentElement._fmt = SLIDERS[inp.dataset.k][5]; });
+    panel.querySelectorAll('input[data-band]').forEach((inp) => { inp.parentElement._fmt = (v) => signed(v, ' dB'); });
+    anchor();
     wire();
     renderPresets();
     setTab(tab || 'tempo');
     syncPanel();
+  }
+
+  // riff's newest audio editor grows out of the player bar. Here the card sits just above the bar, centred
+  // on the Audio pill (clamped to the bar's width) and scales up from the pill: one composited transform,
+  // so it stays smooth in software rendering. Lengths set from script are in zoomed CSS pixels.
+  function anchor() {
+    const bar = document.querySelector('.playbar');
+    const wrap = panel.parentElement;
+    if (!bar || !wrap || window.innerWidth < 640 || window.innerHeight < 520) return;
+    const z = document.body.currentCSSZoom || 1;
+    const b = bar.getBoundingClientRect(), p = pill.getBoundingClientRect();
+    const vw = window.innerWidth / z, vh = window.innerHeight / z;
+    const w = Math.min(720, vw - 32);
+    const bl = b.left / z, br = b.right / z, pc = (p.left + p.width / 2) / z;
+    // keep the fillets (22px) on the straight part of the bar's top edge (its corners are ~26px)
+    const left = Math.max(bl + 50, Math.min(br - 50 - w, pc - w / 2));
+    if (br - bl < w + 100) return;
+    const bottom = vh - b.top / z;
+    const h = Math.min(560, vh - bottom - 16);
+    if (h < 380) return;
+    const st = panel.style;
+    st.left = left + 'px'; st.bottom = bottom + 'px'; st.width = w + 'px'; st.height = h + 'px';
+    st.setProperty('--fx-ox', Math.max(24, Math.min(w - 24, pc - left)) + 'px');
+    panel.classList.add('fx-docked');
   }
 
   // Player-bar pill (riff's sliders icon); the dot shows while the audio settings differ from default.
@@ -946,8 +1093,43 @@
       const rng = (k) => { const i = panel.querySelector(`input[data-k="${k}"]`); return `${i.min}/${i.max}/${i.step}`; };
       const rangesOk = rng('speed') === '0.5/2/0.05' && rng('speedPitch') === '0.5/2/0.05' && rng('pitch') === '-12/12/1' && rng('gain') === '0/200/1'
         && rng('reverb') === '0/100/1' && rng('vocal') === '-50/50/1' && rng('low') === '-12/12/1';
-      R.closeModal();
       log(`fx panel ${ok(order === 'enhance,tempo,effects,eq,sleep,presets' && bands === 10 && activePanel === 'tempo' && rangesOk)}: tabs=${order} bands=${bands} active=${activePanel} ranges=${rangesOk}`);
+
+      // 9. sliders: every panel slider is an .nx-range; centre detent on the bipolar ones; vertical EQ faders
+      const wrapOf = (k) => panel.querySelector(`input[data-k="${k}"]`).parentElement;
+      const allNx = [...panel.querySelectorAll('input[type=range]')].every((i) => i.parentElement.classList.contains('nx-range'));
+      const bip = ['pitch', 'low', 'vocal', 'speed'].every((k) => wrapOf(k).classList.contains('nx-bipolar')) && !wrapOf('reverb').classList.contains('nx-bipolar');
+      const vert = [...panel.querySelectorAll('input[data-band]')].every((i) => i.parentElement.classList.contains('nx-vertical') && getComputedStyle(i).writingMode.startsWith('vertical'));
+      const pin = panel.querySelector('input[data-k="pitch"]');
+      pin.value = 3; pin.dispatchEvent(new Event('input', { bubbles: true }));
+      const pw = pin.parentElement;
+      const slOk = S.a.pitch === 3 && pw.style.getPropertyValue('--v') === '0.6250' && pw.style.getPropertyValue('--lo') === '0.5000' && pw.querySelector('.nx-tip').textContent === '+3 st' && pin.getAttribute('aria-valuetext') === '+3 st';
+      const bin = panel.querySelector('input[data-band="2"]');
+      bin.value = -6; bin.dispatchEvent(new Event('input', { bubbles: true }));
+      const bandOk = S.a.eqBands[2] === -6 && bin.parentElement.style.getPropertyValue('--hi') === '0.5000' && panel.querySelector('[data-bv="2"]').textContent === '-6' && /C/.test(panel.querySelector('[data-curve]').getAttribute('d') || '');
+      const api = R.slider({ min: -12, max: 12, value: 0, bipolar: true, format: (v) => v + 'x', label: 'test' });
+      api.value = 6;
+      const apiOk = typeof R.slider.sync === 'function' && api.style.getPropertyValue('--v') === '0.7500' && api.querySelector('.nx-tip').textContent === '6x' && api.querySelector('input').getAttribute('aria-label') === 'test';
+      log(`fx sliders ${ok(allNx && bip && vert && slOk && bandOk && apiOk)}: nx=${allNx} bipolar=${bip} vertical=${vert} pitch=${slOk} band=${bandOk} api=${apiOk}`);
+      resetAll();
+
+      // 10. surface: opaque, no live blur, opens within 200 ms; nothing clipped on any tab
+      const cs = getComputedStyle(panel);
+      const alpha = (() => { const m = cs.backgroundColor.match(/rgba?(([^)]+))/); const p = m ? m[1].split(',').map(Number) : []; return p.length === 4 ? p[3] : 1; })();
+      const dur = Math.max(...cs.animationDuration.split(',').map((x) => parseFloat(x) * (x.trim().endsWith('ms') ? 0.001 : 1)));
+      const clipped = [];
+      for (const [id] of TABS) {
+        setTab(id);
+        const body = panel.querySelector('.fx-body'), h = panel.querySelector('[data-heading]');
+        if (body.scrollWidth > body.clientWidth + 1) clipped.push(id + ':body');
+        if (h.scrollWidth > h.clientWidth + 1) clipped.push(id + ':title');
+        panel.querySelectorAll('.fx-panel.active .fx-name, .fx-panel.active .fx-band-freq').forEach((e) => { if (e.scrollWidth > e.clientWidth + 1) clipped.push(id + ':' + e.textContent); });
+        const br = body.getBoundingClientRect();
+        panel.querySelectorAll('.fx-panel.active .fx-name').forEach((e) => { const r = e.getBoundingClientRect(); if (r.left < br.left - 1 || r.right > br.right + 1) clipped.push(id + ':' + e.textContent); });
+      }
+      log(`fx surface ${ok(alpha === 1 && (cs.backdropFilter || 'none') === 'none' && dur <= 0.2 && !clipped.length)}: bg=${cs.backgroundColor} blur=${cs.backdropFilter || 'none'} anim=${dur}s docked=${panel.classList.contains('fx-docked')} clipped=${clipped.join(',') || 'none'}`);
+      setTab('tempo');
+      R.closeModal();
     } catch (e) {
       log('fx selftest error: ' + R.errText(e));
     } finally {
