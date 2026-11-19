@@ -40,6 +40,16 @@
       "icons/128x128.png",
       "icons/icon.png",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Music",
+    "shortDescription": "Fast music player for SoundCloud, YouTube and YouTube Music",
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      },
+      "deb": {
+        "depends": ["gstreamer1.0-plugins-good", "gstreamer1.0-plugins-bad", "gstreamer1.0-libav"]
+      }
+    }
   }
 }

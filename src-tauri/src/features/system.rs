@@ -24,9 +24,14 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
+#[cfg(desktop)]
 use tauri::menu::{Menu, MenuItem};
+#[cfg(desktop)]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+#[cfg(desktop)]
+use tauri::WindowEvent;
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
 const SETTINGS_FILE: &str = "settings.json";
@@ -60,14 +65,28 @@ fn read_settings(dir: &Path) -> Settings {
 }
 
 /// Settings read before the Tauri builder exists (single-instance has to be
-/// decided there). Same folder as `app_data_dir()` on Windows.
+/// decided there). Same folder as `app_data_dir()`.
 pub fn early_settings() -> Settings {
     if let Some(dir) = crate::portable_dir() {
         return read_settings(&dir);
     }
-    std::env::var_os("APPDATA")
-        .map(|d| read_settings(&PathBuf::from(d).join(IDENTIFIER)))
-        .unwrap_or_default()
+    early_data_dir().map(|d| read_settings(&d)).unwrap_or_default()
+}
+
+/// `app_data_dir()` before the app exists: %APPDATA% on Windows, $XDG_DATA_HOME
+/// (or ~/.local/share) on Linux, ~/Library/Application Support on macOS.
+pub fn early_data_dir() -> Option<PathBuf> {
+    let base = if cfg!(windows) {
+        std::env::var_os("APPDATA").map(PathBuf::from)
+    } else if cfg!(target_os = "macos") {
+        std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support"))
+    } else {
+        std::env::var_os("XDG_DATA_HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+    };
+    base.map(|b| b.join(IDENTIFIER))
 }
 
 fn data_dir(app: &AppHandle) -> PathBuf {
@@ -100,6 +119,7 @@ pub fn set_low_memory(w: &tauri::WebviewWindow, low: bool) {
 #[cfg(not(windows))]
 pub fn set_low_memory(_w: &tauri::WebviewWindow, _low: bool) {}
 
+#[cfg(desktop)]
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         set_low_memory(&w, false);
@@ -110,6 +130,10 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
+#[cfg(mobile)]
+pub fn show_main(_app: &AppHandle) {}
+
+#[cfg(desktop)]
 const MEDIA_KEYS: [(Code, &str); 4] = [
     (Code::MediaPlayPause, "playpause"),
     (Code::MediaTrackNext, "next"),
@@ -118,6 +142,7 @@ const MEDIA_KEYS: [(Code, &str); 4] = [
 ];
 
 /// Global-shortcut plugin with the media-key handler (registered in lib.rs).
+#[cfg(desktop)]
 pub fn shortcut_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
@@ -131,6 +156,12 @@ pub fn shortcut_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .build()
 }
 
+#[cfg(mobile)]
+fn apply_media_keys(_app: &AppHandle, _on: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(desktop)]
 fn apply_media_keys(app: &AppHandle, on: bool) -> Result<(), String> {
     let gs = app.global_shortcut();
     let mut errs = Vec::new();
@@ -149,6 +180,7 @@ fn apply_media_keys(app: &AppHandle, on: bool) -> Result<(), String> {
     if errs.is_empty() { Ok(()) } else { Err(errs.join(", ")) }
 }
 
+#[cfg(desktop)]
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Show noxx", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -179,6 +211,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 
 pub fn setup(app: &AppHandle) {
     *settings() = read_settings(&data_dir(app));
+    #[cfg(desktop)]
+    desktop_setup(app);
+}
+
+#[cfg(desktop)]
+fn desktop_setup(app: &AppHandle) {
     if let Err(e) = build_tray(app) {
         eprintln!("[system] tray: {e}");
     }

@@ -63,10 +63,12 @@ fn sc_logout(state: State<'_, AppState>) {
     let _ = std::fs::write(state.data_dir.join("sc-login-reset"), b"1");
 }
 
+#[cfg_attr(mobile, allow(dead_code))]
 fn reset_marker(state: &AppState) -> PathBuf {
     state.data_dir.join("sc-login-reset")
 }
 
+#[cfg(desktop)]
 fn is_login_host(url: &Url) -> bool {
     let host = url.host_str().unwrap_or("").to_ascii_lowercase();
     ["soundcloud.com", "sndcdn.com", "accounts.google.com", "appleid.apple.com", "facebook.com", "google.com", "gstatic.com"]
@@ -74,6 +76,7 @@ fn is_login_host(url: &Url) -> bool {
         .any(|d| host == *d || host.ends_with(&format!(".{d}")))
 }
 
+#[cfg(desktop)]
 fn read_oauth_cookie(win: &tauri::WebviewWindow) -> Option<String> {
     let url = Url::parse("https://soundcloud.com/").ok()?;
     win.cookies_for_url(url)
@@ -83,8 +86,16 @@ fn read_oauth_cookie(win: &tauri::WebviewWindow) -> Option<String> {
         .map(|c| c.value().trim().to_string())
 }
 
+/// Phones get a single window, so sign-in there goes through the browser or a pasted token.
+#[cfg(mobile)]
+#[tauri::command]
+async fn sc_login(_force: bool) -> Res<Status> {
+    Err(err("Use \"Use my browser\" or paste a token to sign in on this device."))
+}
+
 /// Opens soundcloud.com in its own window (separate cookie jar) and waits for
 /// the `oauth_token` cookie the site sets after a successful sign-in.
+#[cfg(desktop)]
 #[tauri::command]
 async fn sc_login(app: AppHandle, state: State<'_, AppState>, force: bool) -> Res<Status> {
     if let Some(w) = app.get_webview_window(LOGIN_LABEL) {
@@ -320,7 +331,7 @@ pub(crate) fn portable_dir() -> Option<PathBuf> {
 /// AppState, which doesn't exist yet). If a launch ever stalls, the last line shows where.
 fn boot_log(step: &str) {
     use std::io::Write;
-    let dir = portable_dir().or_else(|| std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("dev.riffrs.player")));
+    let dir = portable_dir().or_else(features::system::early_data_dir);
     let Some(dir) = dir.map(|d| d.join("logs")) else { return };
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("startup.log");
@@ -333,6 +344,7 @@ fn boot_log(step: &str) {
     }
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     boot_log(&format!("start {}", std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()));
     if let Some(dir) = portable_dir() {
@@ -341,15 +353,19 @@ pub fn run() {
         // WebView2 reads this before Tauri's own data folder.
         std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &web);
     }
+    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
     // Settings → Advanced → Allow multiple instances (off: a second launch focuses this window).
     // RIFF_SELFTEST runs alongside a normal copy, so it skips the check.
-    if !features::system::early_settings().multi_instance && std::env::var_os("RIFF_SELFTEST").is_none() {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| features::system::show_main(app)));
+    #[cfg(desktop)]
+    {
+        if !features::system::early_settings().multi_instance && std::env::var_os("RIFF_SELFTEST").is_none() {
+            builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| features::system::show_main(app)));
+        }
+        builder = builder.plugin(features::system::shortcut_plugin());
     }
     boot_log("plugins: single-instance checked");
     builder
-        .plugin(features::system::shortcut_plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
