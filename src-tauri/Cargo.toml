@@ -1,6 +1,6 @@
 [package]
 name = "noxx"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 description = "noxx: fast desktop music player for SoundCloud, YouTube and YouTube Music"
 license = "MIT"
