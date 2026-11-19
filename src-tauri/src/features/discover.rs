@@ -770,7 +770,24 @@ const NEIGHBOURS: &[(&str, &[&str])] = &[
 
 enum Stem {
     Inside(&'static str),
-    Word(Regex),
+    Word(&'static str),
+}
+
+/// `stem` as a whole word in `t`, allowing a plural "s". Letters / digits on either side don't
+/// count (the old per-stem Unicode regexes did the same, but 105 of them held ~70 MB).
+fn has_word(t: &str, stem: &str) -> bool {
+    let alnum = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
+    t.match_indices(stem).any(|(i, m)| {
+        if alnum(t[..i].chars().next_back()) {
+            return false;
+        }
+        let mut rest = t[i + m.len()..].chars();
+        let mut next = rest.next();
+        if next == Some('s') && !alnum(rest.clone().next()) {
+            next = rest.next();
+        }
+        !alnum(next)
+    })
 }
 
 static STEMS: LazyLock<Vec<(&'static str, Vec<Stem>)>> = LazyLock::new(|| {
@@ -783,8 +800,7 @@ static STEMS: LazyLock<Vec<(&'static str, Vec<Stem>)>> = LazyLock::new(|| {
                     if INSIDE_WORD.contains(stem) {
                         Stem::Inside(stem)
                     } else {
-                        // Whole word, allowing a plural "s".
-                        Stem::Word(Regex::new(&format!(r"(^|[^\p{{L}}\p{{N}}]){}s?([^\p{{L}}\p{{N}}]|$)", regex::escape(stem))).unwrap())
+                        Stem::Word(stem) // whole word, allowing a plural "s"
                     }
                 })
                 .collect();
@@ -811,7 +827,7 @@ fn detect_families(text: &str) -> Profile {
     for (family, stems) in STEMS.iter() {
         let hit = stems.iter().any(|s| match s {
             Stem::Inside(stem) => t.contains(stem),
-            Stem::Word(re) => re.is_match(&t),
+            Stem::Word(stem) => has_word(&t, stem),
         });
         if hit {
             found.insert((*family).to_string(), 1.0);
@@ -1191,6 +1207,24 @@ async fn wave(sc: &SoundCloud, args: &Value) -> super::Out {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn discover_has_word() {
+        use super::has_word;
+        assert!(has_word(" hard techno ", "techno"));
+        assert!(has_word("techno", "techno"));
+        assert!(has_word(" techno, ", "techno"));
+        assert!(has_word(" remixes remix ", "remix"));
+        assert!(has_word(" synths ", "synth"));
+        assert!(!has_word(" technology ", "techno"));
+        assert!(!has_word(" protechno ", "techno"));
+        assert!(!has_word(" technos1 ", "techno"));
+        assert!(has_word(" rap ", "rap"));
+        assert!(!has_word(" trap ", "rap"));
+        assert!(has_word(" pop/rock ", "pop"));
+        assert!(has_word(" pöp rap ", "rap"));
+        assert!(!has_word(" räp ", "p"));
+    }
+
     use super::*;
 
     fn fam(text: &str) -> Vec<String> {
