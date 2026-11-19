@@ -27,13 +27,12 @@ regex = "1"
 url = "2"
 thiserror = "2"
 
-# Desktop only: tray, global media keys, single instance, and mimalloc (returns freed
-# memory to the OS quickly; big download/parse bursts otherwise stay reserved).
+# Desktop only: tray, global media keys, single instance, self-update.
+# (No mimalloc: measured on Windows it kept ~150 MB more committed than the system heap.)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
-mimalloc = { version = "0.1", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
