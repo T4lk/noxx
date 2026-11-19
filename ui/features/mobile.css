@@ -75,8 +75,9 @@ html.riff-android .pb-cover { width: 52px; height: 52px; }
 html.riff-android .pb-art { width: 46px; height: 46px; border-radius: 12px; }
 html.riff-android .pb-center { width: auto; }
 html.riff-android .pb-controls { gap: 4px; }
-html.riff-android .pb-progress { position: absolute; left: 18px; right: 18px; bottom: 0; width: auto; height: 10px; margin: 0; }
-html.riff-android .pb-progress .wave { height: 10px; }
+html.riff-android .pb-progress { display: none !important; }
+html.riff-android .mini-progress { position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; border-radius: 2px; background: #ffffff26; overflow: hidden; pointer-events: none; }
+html.riff-android .mini-progress i { display: block; height: 100%; width: 0; background: var(--on-surface, #fff); border-radius: 2px; }
 
 /* dialogs and menus fit the screen */
 html.riff-android .modal { max-width: calc(100vw - 24px); max-height: calc(100vh - 48px - var(--sat, 0px) - var(--sab, 0px)); overflow: auto; }

@@ -164,6 +164,24 @@
   riff.on('settings-tab', pruneSoon);
   riff.on('render', (r) => { if (r && r.view === 'settings') pruneSoon(); });
 
+  // ------------------------------------------------------------ mini player progress
+  // A thin line along the bottom of the mini player instead of the desktop's wavy bar.
+  const bar = document.querySelector('.playbar');
+  if (bar) {
+    const line = document.createElement('div');
+    line.className = 'mini-progress';
+    line.innerHTML = '<i></i>';
+    bar.append(line);
+    const fill = line.firstChild;
+    const paint = () => {
+      const d = riff.duration() || 0;
+      fill.style.width = d ? `${Math.min(100, (riff.audio.currentTime || 0) / d * 100)}%` : '0%';
+    };
+    riff.audio.addEventListener('timeupdate', paint);
+    riff.on('trackchange', paint);
+    riff.on('seeked', paint);
+  }
+
   riff.on('trackchange', sync);
   riff.on('play', sync);
   riff.on('pause', sync);
