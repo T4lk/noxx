@@ -798,6 +798,10 @@
     if (noFullscreen !== true) setFullscreen(true);
     loop();
   }
+  // Phones use this view as the full-screen "now playing" (features/android.js).
+  R.openNowPlaying = () => openTv(true);
+  R.closeNowPlaying = () => closeTv(true);
+  R.nowPlayingOpen = () => tv.open;
   function closeTv(skipFullscreen) {
     if (!tv.open) return;
     tv.open = false;

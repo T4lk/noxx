@@ -923,7 +923,10 @@ function connectDialog(force) {
     </div>`);
   m.querySelector('[data-k=cancel]').onclick = closeModal;
   // Android: the sign-in page opens as its own screen (LoginActivity.kt) and hands the token back.
-  if (window.noxxAndroid) m.querySelector('[data-k=browser]').remove();
+  if (window.noxxAndroid) {
+    m.querySelector('[data-k=browser]').remove();
+    m.querySelectorAll('p').forEach((p, i) => (i ? p.remove() : (p.textContent = "SoundCloud's sign-in page opens. Sign in there and you come straight back here, connected.")));
+  }
   m.querySelector('[data-k=open]').onclick = async () => {
     closeModal();
     toast('Waiting for SoundCloud sign-in…');

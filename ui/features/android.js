@@ -52,6 +52,90 @@
     }, 150);
   }
 
+  // ------------------------------------------------------------ now playing (full screen)
+  // Tapping the mini player opens the karaoke view (lyrics.js) as a phone "now playing" screen,
+  // with a seek bar and shuffle / repeat / like added; the extra buttons drive the playbar's own.
+  const $ = (s, r = document) => r.querySelector(s);
+  function npExtras() {
+    const tv = $('.tvk');
+    if (!tv || tv.querySelector('.np-seek')) return tv;
+    const side = $('.tvk-side', tv), ctr = $('.tvk-controls', tv);
+    const proxy = (id, cls) => {
+      const src = document.getElementById(id);
+      const b = document.createElement('button');
+      b.className = `tvk-ctrl ${cls}`;
+      b.title = src ? src.title : '';
+      b.innerHTML = src ? src.innerHTML : '';
+      b.addEventListener('click', (e) => { e.stopPropagation(); if (src) src.click(); setTimeout(mirror, 50); });
+      return b;
+    };
+    ctr.prepend(proxy('btn-shuffle', 'np-shuffle'));
+    ctr.append(proxy('btn-repeat', 'np-repeat'));
+    const meta = $('.tvk-meta', tv);
+    const row = document.createElement('div');
+    row.className = 'np-metarow';
+    meta.replaceWith(row);
+    row.append(meta, proxy('pb-heart', 'np-heart'));
+    const seek = document.createElement('div');
+    seek.className = 'np-seek';
+    seek.innerHTML = '<input type="range" min="0" max="1000" value="0" aria-label="Seek"><div class="np-times"><span class="np-cur">0:00</span><span class="np-dur">0:00</span></div>';
+    ctr.before(seek);
+    const range = $('input', seek);
+    let dragging = false;
+    range.addEventListener('input', () => { dragging = true; $('.np-cur', seek).textContent = riff.fmt(range.value / 1000 * (riff.duration() || 0)); });
+    range.addEventListener('change', () => {
+      const d = riff.duration() || 0;
+      if (d) riff.audio.currentTime = range.value / 1000 * d;
+      dragging = false;
+    });
+    riff.audio.addEventListener('timeupdate', () => {
+      if (dragging || !riff.nowPlayingOpen || !riff.nowPlayingOpen()) return;
+      const d = riff.duration() || 0, t = riff.audio.currentTime || 0;
+      range.value = d ? Math.round(t / d * 1000) : 0;
+      $('.np-cur', seek).textContent = riff.fmt(t);
+      $('.np-dur', seek).textContent = riff.fmt(d);
+    });
+    return tv;
+  }
+  function mirror() {
+    const tv = $('.tvk');
+    if (!tv) return;
+    for (const [id, cls] of [['btn-shuffle', 'np-shuffle'], ['btn-repeat', 'np-repeat'], ['pb-heart', 'np-heart']]) {
+      const src = document.getElementById(id), b = tv.querySelector(`.${cls}`);
+      if (src && b) { b.className = `tvk-ctrl ${cls} ${src.className.replace(/(pill-btn|ctrl-btn|heart)/g, '')}`; b.innerHTML = src.innerHTML; }
+    }
+  }
+  function openNowPlaying() {
+    if (!riff.player.current || !riff.openNowPlaying) return;
+    npExtras();
+    mirror();
+    riff.openNowPlaying();
+    riff.audio.dispatchEvent(new Event('timeupdate'));
+  }
+  const pbLeft = $('.pb-left');
+  if (pbLeft) {
+    pbLeft.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      e.preventDefault(); e.stopPropagation();
+      openNowPlaying();
+    }, true);
+  }
+  riff.on('trackchange', () => setTimeout(mirror, 50));
+
+  // ------------------------------------------------------------ back button
+  // MainActivity asks this first; false sends noxx to the background (music keeps playing).
+  window.__noxxBack = () => {
+    if (riff.nowPlayingOpen && riff.nowPlayingOpen()) { riff.closeNowPlaying(); return true; }
+    const modal = document.getElementById('modal');
+    if (modal && !modal.hidden) { riff.closeModal(); return true; }
+    const menu = document.getElementById('menu');
+    if (menu && !menu.hidden) { riff.hideMenu(); return true; }
+    const back = document.getElementById('nav-back');
+    if (back && !back.disabled) { back.click(); return true; }
+    if (riff.state && riff.state.view && riff.state.view !== 'home') { const h = document.querySelector('.rail .nav-item[data-view="home"]'); if (h) { h.click(); return true; } }
+    return false;
+  };
+
   riff.on('trackchange', sync);
   riff.on('play', sync);
   riff.on('pause', sync);

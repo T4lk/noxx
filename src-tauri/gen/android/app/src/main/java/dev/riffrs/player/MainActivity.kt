@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.webkit.WebView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -18,6 +19,17 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     instance = this
+    // Back: the page closes what's open (now playing, dialogs) or goes back a page; at the
+    // start it sends noxx to the background instead of closing it, so music keeps playing.
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        val wv = webView
+        if (wv == null) { moveTaskToBack(true); return }
+        wv.evaluateJavascript("(window.__noxxBack && window.__noxxBack()) || false") { r ->
+          if (r != "true") moveTaskToBack(true)
+        }
+      }
+    })
     // The media notification needs this on Android 13+.
     if (Build.VERSION.SDK_INT >= 33 &&
       ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED

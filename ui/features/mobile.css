@@ -111,3 +111,46 @@ html.riff-android #pb-heart,
 html.riff-android #btn-prev { display: none !important; }
 html.riff-android .pb-text { min-width: 0; flex: 1; }
 html.riff-android .play-btn { width: 44px; height: 44px; }
+
+/* full-screen now playing (the karaoke view): cover, title + like, seek bar, controls, lyrics below */
+html.riff-android .tvk { padding-top: var(--sat, 0px); padding-bottom: var(--sab, 0px); }
+html.riff-android .tvk.tvk-idle .tvk-close,
+html.riff-android .tvk.tvk-idle .tvk-controls { opacity: 1 !important; pointer-events: auto !important; }
+html.riff-android .tvk.tvk-idle .tvk-meta { opacity: 1; }
+html.riff-android .tvk-close { top: calc(12px + var(--sat, 0px)); left: 14px; right: auto; }
+html.riff-android .tvk-layout { flex-direction: column !important; align-items: stretch; padding: 64px 22px 18px !important; gap: 14px !important; min-height: 0; flex: 1; }
+html.riff-android .tvk.tvk-nolyrics .tvk-layout { justify-content: center; }
+html.riff-android .tvk-side { flex-direction: column !important; align-items: stretch !important; text-align: left !important; gap: 16px; }
+html.riff-android .tvk-cover { width: min(100%, 42vh) !important; align-self: center; border-radius: 16px !important; }
+html.riff-android .tvk:not(.tvk-nolyrics) .tvk-cover { width: min(52vw, 22vh) !important; }
+html.riff-android .np-metarow { display: flex; align-items: center; gap: 10px; }
+html.riff-android .np-metarow .tvk-meta { flex: 1; min-width: 0; max-width: none; gap: 4px; }
+html.riff-android .tvk-title { font-size: 22px; }
+html.riff-android .tvk-artist { font-size: 15px; }
+html.riff-android .np-seek { display: flex; flex-direction: column; gap: 2px; }
+html.riff-android .np-seek input { width: 100%; accent-color: #fff; height: 28px; margin: 0; }
+html.riff-android .np-times { display: flex; justify-content: space-between; font-size: 12px; color: #ffffffa6; font-variant-numeric: tabular-nums; }
+html.riff-android .tvk-controls { display: flex !important; justify-content: space-between; gap: 0; padding: 0 4px; }
+html.riff-android .tvk-ctrl svg { width: 24px; height: 24px; }
+html.riff-android .tvk-ctrl.on, html.riff-android .tvk-ctrl.active { color: var(--primary, #fff); opacity: 1; }
+html.riff-android .np-heart.on svg { fill: currentColor; }
+html.riff-android .tvk-play { width: 68px; height: 68px; }
+html.riff-android .tvk-content { flex: 1; min-height: 0; overflow: hidden; }
+html.riff-android .tvk-list { padding-inline: 4px; }
+html.riff-android .tvk-visualizer { bottom: var(--sab, 0px); }
+
+/* grids and headers wrap on a phone */
+html.riff-android .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+html.riff-android .dc-wave-head { flex-wrap: wrap; padding: 0 16px; row-gap: 10px; }
+html.riff-android .dc-wave-head > div:first-child { flex: 1 1 100%; }
+html.riff-android .dc-wave-msg { flex-direction: column; text-align: center; gap: 10px; }
+html.riff-android .view .actions { flex-wrap: wrap; }
+/* nothing to open on a phone */
+html.riff-android .view [data-a="folder"] { display: none; }
+/* text + button cards stack */
+html.riff-android .set-card { flex-wrap: wrap; row-gap: 12px; }
+html.riff-android .set-card > .i { flex: 1 1 100%; min-width: 0; }
+/* library search gets its own line */
+html.riff-android .lib-tools .lib-search { flex: 1 1 100%; }
+/* desktop-only settings (tray, media keys, multiple windows) */
+html.riff-android .th-item:has([data-sys-sw]) { display: none; }
