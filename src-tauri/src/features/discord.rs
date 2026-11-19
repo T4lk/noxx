@@ -18,7 +18,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
-const CLIENT_ID: &str = "1520100510877749358";
+const CLIENT_ID: &str = "1573013030122426418";
+/// Art asset key uploaded to the Discord application (Rich Presence > Art Assets).
+const LOGO_ASSET: &str = "noxx";
 const RETRY_EVERY: Duration = Duration::from_secs(30);
 const STATUS_EVENT: &str = "discord-status";
 
@@ -214,8 +216,18 @@ pub fn build_activity(p: &Presence, now: i64) -> Activity<'static> {
         .details(clip(title, 128))
         .state(clip(&state, 128))
         .timestamps(ts);
+    // Cover art as the big image with the noxx logo (Rich Presence asset "noxx") in the corner;
+    // songs without web artwork (local files) show just the logo.
     if is_web(&p.artwork) && p.artwork.len() <= 256 {
-        a = a.assets(Assets::new().large_image(p.artwork.clone()).large_text(clip(title, 128)));
+        a = a.assets(
+            Assets::new()
+                .large_image(p.artwork.clone())
+                .large_text(clip(title, 128))
+                .small_image(LOGO_ASSET.to_string())
+                .small_text("noxx".to_string()),
+        );
+    } else {
+        a = a.assets(Assets::new().large_image(LOGO_ASSET.to_string()).large_text("noxx".to_string()));
     }
     if is_web(&p.url) && p.url.len() <= 512 {
         a = a.buttons(vec![Button::new(button_label(p, &p.url), p.url.clone())]);
@@ -404,7 +416,7 @@ mod tests {
             ..track()
         };
         let v = serde_json::to_value(build_activity(&p, 5_000)).unwrap();
-        assert!(v.get("assets").is_none());
+        assert_eq!(v["assets"]["large_image"], "noxx");
         assert!(v.get("buttons").is_none());
         assert!(v["timestamps"].get("end").is_none());
         assert!(!is_web("http://asset.localhost/C%3A/x.jpg"));
