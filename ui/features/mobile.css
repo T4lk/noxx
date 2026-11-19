@@ -154,3 +154,16 @@ html.riff-android .set-card > .i { flex: 1 1 100%; min-width: 0; }
 html.riff-android .lib-tools .lib-search { flex: 1 1 100%; }
 /* desktop-only settings (tray, media keys, multiple windows) */
 html.riff-android .th-item:has([data-sys-sw]) { display: none; }
+/* settings tabs: all icons visible (two rows) instead of a sideways scroller */
+html.riff-android .settings-nav { flex-wrap: wrap; overflow: visible; justify-content: flex-start; gap: 4px; }
+html.riff-android .settings-nav-btn { flex: 0 0 auto; }
+html.riff-android .settings-nav-btn.active span { display: inline; }
+html.riff-android .np-extra { display: flex; justify-content: center; gap: 10px; }
+html.riff-android .np-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 99px; background: #ffffff1f; color: #fff; font-size: 13px; font-weight: 500; }
+html.riff-android .np-chip svg { width: 16px; height: 16px; }
+/* playlist / artist / mix header: cover on top, then title and a wrapping row of buttons */
+html.riff-android .hero { flex-direction: column; align-items: flex-start; gap: 14px; }
+html.riff-android .hero .cover { width: 168px; height: 168px; align-self: center; }
+html.riff-android .hero .meta { width: 100%; min-width: 0; }
+html.riff-android .hero h1 { font-size: 30px; overflow-wrap: anywhere; }
+html.riff-android .hero .actions { flex-wrap: wrap; gap: 8px; }

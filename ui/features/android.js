@@ -80,6 +80,15 @@
     seek.className = 'np-seek';
     seek.innerHTML = '<input type="range" min="0" max="1000" value="0" aria-label="Seek"><div class="np-times"><span class="np-cur">0:00</span><span class="np-dur">0:00</span></div>';
     ctr.before(seek);
+    // Audio effects panel and the queue (the desktop's player-bar buttons).
+    const extra = document.createElement('div');
+    extra.className = 'np-extra';
+    const fx = document.querySelector('.fx-pill');
+    const mk = (label, html, run) => { const b = document.createElement('button'); b.className = 'np-chip'; b.innerHTML = `${html}<span>${label}</span>`; b.addEventListener('click', (e) => { e.stopPropagation(); riff.closeNowPlaying(); setTimeout(run, 60); }); return b; };
+    if (fx) extra.append(mk('Audio', fx.innerHTML, () => fx.click()));
+    const q = document.getElementById('pb-queue');
+    extra.append(mk('Queue', q ? q.innerHTML : '', () => riff.go('queue')));
+    ctr.after(extra);
     const range = $('input', seek);
     let dragging = false;
     range.addEventListener('input', () => { dragging = true; $('.np-cur', seek).textContent = riff.fmt(range.value / 1000 * (riff.duration() || 0)); });
@@ -135,6 +144,25 @@
     if (riff.state && riff.state.view && riff.state.view !== 'home') { const h = document.querySelector('.rail .nav-item[data-view="home"]'); if (h) { h.click(); return true; } }
     return false;
   };
+
+  // ------------------------------------------------------------ settings
+  // Rows for things a phone doesn't have (window layout, folders, yt-dlp, keyboard, logs folder).
+  const PHONE_HIDDEN = new Set([
+    'Position of searchbar', 'No-Hand cursor', 'Docked layout', 'Side bar', 'Shaped cover in the bottom bar',
+    'Show wave visualizer in bottom bar', 'Now playing cover', 'Now playing alignment', 'Now playing panel',
+    'Show up next in the panel', 'Show About the artist', 'Show Credits', 'Show Next in queue',
+    'Show My files tab', 'Required tools', 'Music folder', 'Download folder',
+    'Keyboard shortcuts', 'Logs', 'Memory', 'Minimize to tray on close', 'Capture media keys (Windows)',
+    'Allow multiple instances',
+  ]);
+  function pruneSettings() {
+    for (const n of document.querySelectorAll('.view .th-item .th-name')) {
+      if (PHONE_HIDDEN.has(n.textContent.trim())) n.closest('.th-item').style.display = 'none';
+    }
+  }
+  const pruneSoon = () => { pruneSettings(); setTimeout(pruneSettings, 120); setTimeout(pruneSettings, 600); };
+  riff.on('settings-tab', pruneSoon);
+  riff.on('render', (r) => { if (r && r.view === 'settings') pruneSoon(); });
 
   riff.on('trackchange', sync);
   riff.on('play', sync);
