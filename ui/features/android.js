@@ -5,7 +5,16 @@
   const bridge = window.noxxAndroid;
   if (!bridge) return;
   const riff = window.riff;
-  document.documentElement.classList.add('riff-android');
+  const root = document.documentElement;
+  root.classList.add('riff-android');
+
+  // Status / navigation bar heights (CSS px) for the edge-to-edge layout; MainActivity calls
+  // this again whenever they change.
+  window.__noxxInsets = (top, bottom) => {
+    root.style.setProperty('--sat', `${Number(top) || 0}px`);
+    root.style.setProperty('--sab', `${Number(bottom) || 0}px`);
+  };
+  try { const [t, b] = String(bridge.insets()).split(','); window.__noxxInsets(t, b); } catch (e) {}
 
   // Notification / headset buttons arrive here and go through the same handler as desktop media keys.
   window.__noxxMediaKey = (k) => {

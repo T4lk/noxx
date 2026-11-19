@@ -13,6 +13,10 @@ class NoxxBridge(private val ctx: Context) {
     )
   }
 
+  /** "top,bottom" system bar heights in CSS px. */
+  @JavascriptInterface
+  fun insets(): String = "${MainActivity.insetTop},${MainActivity.insetBottom}"
+
   @JavascriptInterface
   fun stop() {
     PlaybackService.stop(ctx)

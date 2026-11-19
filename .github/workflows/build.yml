@@ -102,6 +102,8 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - uses: gradle/actions/setup-gradle@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
@@ -120,7 +122,12 @@ jobs:
           # The runner image ships the Android SDK and NDK.
           export NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
           echo "SDK $ANDROID_HOME, NDK $NDK_HOME"
-          npx --yes @tauri-apps/cli@^2 android build --apk --target aarch64
+          # Maven Central sometimes answers 429 to shared runners; try again before giving up.
+          for i in 1 2 3; do
+            npx --yes @tauri-apps/cli@^2 android build --apk --target aarch64 && exit 0
+            echo "build attempt $i failed, retrying in 60s"; sleep 60
+          done
+          exit 1
 
       # Signed with the key from the ANDROID_KEYSTORE secret (base64 .jks) when it is set,
       # otherwise with a throwaway key (installs fine, but can't update over a differently signed build).

@@ -8,6 +8,8 @@ import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
   private var webView: WebView? = null
@@ -28,6 +30,15 @@ class MainActivity : TauriActivity() {
     this.webView = webView
     webView.settings.mediaPlaybackRequiresUserGesture = false
     webView.addJavascriptInterface(NoxxBridge(applicationContext), "noxxAndroid")
+    // Edge-to-edge: hand the status / navigation bar heights to the page (ui/features/mobile.css).
+    ViewCompat.setOnApplyWindowInsetsListener(webView) { v, insets ->
+      val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      val d = resources.displayMetrics.density
+      insetTop = Math.round(bars.top / d)
+      insetBottom = Math.round(bars.bottom / d)
+      (v as WebView).evaluateJavascript("window.__noxxInsets && window.__noxxInsets($insetTop, $insetBottom)", null)
+      insets
+    }
   }
 
   // WryActivity pauses the WebView when the app leaves the screen, which would stop the
@@ -54,5 +65,11 @@ class MainActivity : TauriActivity() {
   companion object {
     @Volatile
     var instance: MainActivity? = null
+
+    @Volatile
+    var insetTop = 0
+
+    @Volatile
+    var insetBottom = 0
   }
 }
