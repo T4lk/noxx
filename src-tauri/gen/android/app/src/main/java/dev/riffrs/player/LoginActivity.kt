@@ -49,8 +49,14 @@ class LoginActivity : Activity() {
       setBackgroundColor(Color.parseColor("#070707"))
       settings.javaScriptEnabled = true
       settings.domStorageEnabled = true
-      // Some sign-in providers refuse pages that announce an embedded WebView.
-      settings.userAgentString = settings.userAgentString.replace("; wv", "")
+      // Desktop Chrome user agent: SoundCloud then serves the same sign-in as on the desktop
+      // app (the mobile site keeps the login elsewhere), and Google doesn't refuse it as a WebView.
+      val chrome = Regex("""Chrome/[\d.]+""").find(settings.userAgentString)?.value ?: "Chrome/131.0.0.0"
+      settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) $chrome Safari/537.36"
+      settings.useWideViewPort = true
+      settings.loadWithOverviewMode = true
+      settings.builtInZoomControls = true
+      settings.displayZoomControls = false
       webViewClient = WebViewClient()
     }
     cookies.setAcceptThirdPartyCookies(web, true)
@@ -65,25 +71,32 @@ class LoginActivity : Activity() {
   }
 
   private fun readToken(): String? {
-    val all = CookieManager.getInstance().getCookie("https://soundcloud.com") ?: return null
-    return all.split(';')
-      .map { it.trim() }
-      .firstOrNull { it.startsWith("oauth_token=") }
-      ?.substringAfter('=')
-      ?.trim()
-      ?.takeIf { it.isNotEmpty() }
+    val cm = CookieManager.getInstance()
+    for (host in HOSTS) {
+      val all = cm.getCookie(host) ?: continue
+      val t = all.split(';')
+        .map { it.trim() }
+        .firstOrNull { it.startsWith("oauth_token=") }
+        ?.substringAfter('=')
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+      if (t != null) return t
+    }
+    return null
   }
 
   private fun clearSoundCloudCookies() {
     val cm = CookieManager.getInstance()
-    val all = cm.getCookie("https://soundcloud.com") ?: return
-    for (c in all.split(';')) {
-      val name = c.substringBefore('=').trim()
-      if (name.isEmpty()) continue
-      for (domain in listOf(".soundcloud.com", "soundcloud.com", "secure.soundcloud.com")) {
-        cm.setCookie("https://soundcloud.com", "$name=; Max-Age=0; Path=/; Domain=$domain")
+    for (host in HOSTS) {
+      val all = cm.getCookie(host) ?: continue
+      for (c in all.split(';')) {
+        val name = c.substringBefore('=').trim()
+        if (name.isEmpty()) continue
+        for (domain in listOf(".soundcloud.com", "soundcloud.com", host.removePrefix("https://"))) {
+          cm.setCookie(host, "$name=; Max-Age=0; Path=/; Domain=$domain")
+        }
+        cm.setCookie(host, "$name=; Max-Age=0; Path=/")
       }
-      cm.setCookie("https://soundcloud.com", "$name=; Max-Age=0; Path=/")
     }
     cm.flush()
   }
@@ -112,6 +125,8 @@ class LoginActivity : Activity() {
   }
 
   companion object {
+    private val HOSTS = listOf("https://soundcloud.com", "https://m.soundcloud.com", "https://secure.soundcloud.com", "https://api.soundcloud.com")
+
     fun start(activity: Activity, force: Boolean) {
       activity.startActivity(Intent(activity, LoginActivity::class.java).putExtra("force", force))
     }
