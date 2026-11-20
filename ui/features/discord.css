@@ -6,3 +6,32 @@
 .dc-dot.on { background: #3ba55d; }
 
 /* the on/off switch is the core .switch component (style.css) */
+
+/* Customize: text fields and the Discord-style preview */
+.dc-sub { margin-top: 18px; }
+.dc-text-row .th-top { margin-bottom: 8px; }
+.dc-input {
+  width: 100%; background: var(--container-high); color: var(--on-surface); border: 0; outline: 0;
+  border-radius: var(--r-m, 12px); padding: 9px 12px; font: inherit; font-size: calc(13px * var(--fs)); user-select: text;
+}
+.dc-input:focus { background: var(--container-highest); }
+.dc-preview { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.dcp-empty { color: var(--on-variant); font-size: calc(13px * var(--fs)); padding: 10px 2px; }
+.dcp-member { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: #2b2d31; color: #f2f3f5; font-size: 13px; }
+.dcp-avatar { width: 32px; height: 32px; border-radius: 50%; background: #5865F2; flex: none; }
+.dcp-dim { color: #b5bac1; font-size: 12px; }
+.dcp-dim b { color: #f2f3f5; font-weight: 600; }
+.dcp-card { background: #232428; color: #f2f3f5; border-radius: 10px; padding: 12px; font-size: 13px; }
+.dcp-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; color: #b5bac1; margin-bottom: 10px; }
+.dcp-body { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.dcp-art { position: relative; width: 72px; height: 72px; border-radius: 8px; background: #111 center/cover; flex: none; display: grid; place-items: center; }
+.dcp-art > img { width: 60%; height: 60%; }
+.dcp-small { position: absolute; right: -4px; bottom: -4px; width: 22px; height: 22px; border-radius: 50%; background: #111; border: 2px solid #232428; display: grid; place-items: center; }
+.dcp-small img { width: 70%; height: 70%; }
+.dcp-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.dcp-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dcp-bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: #b5bac1; }
+.dcp-bar i { flex: 1; height: 4px; border-radius: 2px; background: #4e5058; overflow: hidden; }
+.dcp-bar b { display: block; height: 100%; background: #f2f3f5; }
+.dcp-btns { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.dcp-btn { display: block; text-align: center; padding: 6px; border-radius: 4px; background: #4e5058; color: #fff; font-size: 13px; font-weight: 500; }

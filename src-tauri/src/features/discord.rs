@@ -1,4 +1,4 @@
-//! Discord Rich Presence ("Listening to riff").
+//! Discord Rich Presence ("Listening to noxx"), customizable in Settings > Integrations.
 //!
 //! All Discord IPC is blocking (named pipe / unix socket), so it lives on one
 //! dedicated `std::thread`. Commands from the UI only push a message into a
@@ -37,6 +37,49 @@ pub struct Presence {
     pub duration: f64,
     /// seconds into the track
     pub position: f64,
+    pub paused: bool,
+}
+
+/// What the presence looks like (Settings > Integrations > Discord). Templates take
+/// {title}, {artist} and {source}.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Config {
+    /// What follows "Listening to" in the member list: "song" (line 1), "artist" (line 2) or "app" (noxx).
+    pub status_shows: String,
+    pub line1: String,
+    pub line2: String,
+    /// "cover" | "logo" | "none"
+    pub large_image: String,
+    pub large_text: String,
+    /// noxx logo in the corner of the cover
+    pub small_logo: bool,
+    /// "progress" (bar with both times) | "elapsed" | "none"
+    pub time: String,
+    /// "Listen on SoundCloud / YouTube" button
+    pub listen_button: bool,
+    pub custom_label: String,
+    pub custom_url: String,
+    /// Keep the presence while paused (otherwise it's cleared).
+    pub show_paused: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            status_shows: "song".into(),
+            line1: "{title}".into(),
+            line2: "{artist}".into(),
+            large_image: "cover".into(),
+            large_text: "{title}".into(),
+            small_logo: true,
+            time: "progress".into(),
+            listen_button: true,
+            custom_label: String::new(),
+            custom_url: String::new(),
+            show_paused: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -52,17 +95,21 @@ pub struct Status {
 #[derive(Serialize, Deserialize)]
 struct Saved {
     enabled: bool,
+    #[serde(default)]
+    config: Config,
 }
 
 enum Msg {
     Update(Presence),
     Clear,
     Enabled(bool),
+    Refresh,
 }
 
 struct Shared {
     tx: Mutex<Sender<Msg>>,
     status: Mutex<Status>,
+    config: Mutex<Config>,
     file: PathBuf,
     app: AppHandle,
 }
@@ -100,15 +147,14 @@ fn set_status(f: impl FnOnce(&mut Status)) {
 
 pub fn setup(app: &AppHandle) {
     let file = app.state::<crate::AppState>().data_dir.join("discord.json");
-    let enabled = std::fs::read(&file)
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Saved>(&b).ok())
-        .map(|s| s.enabled)
-        .unwrap_or(true); // on by default, like riff
+    let saved = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Saved>(&b).ok());
+    let enabled = saved.as_ref().map(|s| s.enabled).unwrap_or(true); // on by default, like riff
+    let config = saved.map(|s| s.config).unwrap_or_default();
     let (tx, rx) = mpsc::channel::<Msg>();
     let shared = Shared {
         tx: Mutex::new(tx),
         status: Mutex::new(Status { enabled, connected: false, user: None, error: None, showing: None }),
+        config: Mutex::new(config),
         file,
         app: app.clone(),
     };
@@ -127,7 +173,7 @@ pub async fn handle(_app: &AppHandle, cmd: &str, args: Value) -> super::Out {
         "setEnabled" => {
             let enabled = args.get("enabled").and_then(Value::as_bool).ok_or("discord.setEnabled: missing `enabled`")?;
             let s = shared()?;
-            crate::soundcloud::write_json(&s.file, &Saved { enabled });
+            crate::soundcloud::write_json(&s.file, &Saved { enabled, config: config_now() });
             set_status(|st| st.enabled = enabled);
             send(Msg::Enabled(enabled))?;
             Ok(json!(status_now()))
@@ -140,10 +186,25 @@ pub async fn handle(_app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             send(Msg::Clear)?;
             Ok(Value::Null)
         }
-        // Pure: the activity JSON `update` would send (no IPC; used by the selftest).
+        "config" => Ok(json!(config_now())),
+        "setConfig" => {
+            let c: Config = serde_json::from_value(args.get("config").cloned().unwrap_or(args))
+                .map_err(|e| format!("discord: bad config: {e}"))?;
+            let s = shared()?;
+            *s.config.lock().unwrap() = c.clone();
+            crate::soundcloud::write_json(&s.file, &Saved { enabled: status_now().enabled, config: c });
+            send(Msg::Refresh)?;
+            Ok(json!(config_now()))
+        }
+        // Pure: the activity JSON `update` would send (no IPC; used by the settings preview and
+        // the selftest). Optional `config` previews unsaved settings. null = presence cleared.
         "preview" => {
-            let p = parse(args)?;
-            serde_json::to_value(build_activity(&p, now_ms())).map_err(|e| e.to_string())
+            let p = parse(args.clone())?;
+            let cfg = match args.get("config") {
+                Some(c) => serde_json::from_value(c.clone()).map_err(|e| format!("discord: bad config: {e}"))?,
+                None => config_now(),
+            };
+            serde_json::to_value(build_activity(&p, now_ms(), &cfg)).map_err(|e| e.to_string())
         }
         _ => Err(format!("discord: unknown command {cmd}")),
     }
@@ -152,6 +213,10 @@ pub async fn handle(_app: &AppHandle, cmd: &str, args: Value) -> super::Out {
 fn parse(args: Value) -> Result<Presence, String> {
     let v = args.get("track").cloned().unwrap_or(args);
     serde_json::from_value(v).map_err(|e| format!("discord: bad track: {e}"))
+}
+
+fn config_now() -> Config {
+    SHARED.get().map(|s| s.config.lock().unwrap().clone()).unwrap_or_default()
 }
 
 fn send(m: Msg) -> Result<(), String> {
@@ -201,38 +266,97 @@ fn button_label(p: &Presence, url: &str) -> &'static str {
     }
 }
 
-pub fn build_activity(p: &Presence, now: i64) -> Activity<'static> {
-    let title = if p.title.trim().is_empty() { "Unknown Track" } else { p.title.as_str() };
-    let state = if p.artist.trim().is_empty() { "Unknown Artist".to_string() } else { format!("by {}", p.artist.trim()) };
-    let start = now - (p.position.max(0.0) * 1000.0) as i64;
-    let mut ts = Timestamps::new().start(start);
-    if p.duration > 0.0 {
-        ts = ts.end(start + (p.duration * 1000.0) as i64);
-    }
-    let mut a = Activity::new()
-        .activity_type(ActivityType::Listening)
-        // "Listening to <song>" in the member list instead of the Discord app's name
-        .status_display_type(StatusDisplayType::Details)
-        .details(clip(title, 128))
-        .state(clip(&state, 128))
-        .timestamps(ts);
-    // Cover art as the big image with the noxx logo (Rich Presence asset "noxx") in the corner;
-    // songs without web artwork (local files) show just the logo.
-    if is_web(&p.artwork) && p.artwork.len() <= 256 {
-        a = a.assets(
-            Assets::new()
-                .large_image(p.artwork.clone())
-                .large_text(clip(title, 128))
-                .small_image(LOGO_ASSET.to_string())
-                .small_text("noxx".to_string()),
-        );
+fn source_name(p: &Presence) -> &'static str {
+    let u = p.url.as_str();
+    if p.source == "local" || p.source == "file" {
+        "Local file"
+    } else if u.contains("music.youtube.com") || p.source == "ytmusic" {
+        "YouTube Music"
+    } else if p.source == "youtube" || u.contains("youtube.com") || u.contains("youtu.be") {
+        "YouTube"
     } else {
-        a = a.assets(Assets::new().large_image(LOGO_ASSET.to_string()).large_text("noxx".to_string()));
+        "SoundCloud"
     }
-    if is_web(&p.url) && p.url.len() <= 512 {
-        a = a.buttons(vec![Button::new(button_label(p, &p.url), p.url.clone())]);
+}
+
+/// Fills {title} / {artist} / {source}.
+fn render(tpl: &str, p: &Presence) -> String {
+    let title = if p.title.trim().is_empty() { "Unknown Track" } else { p.title.trim() };
+    let artist = if p.artist.trim().is_empty() { "Unknown Artist" } else { p.artist.trim() };
+    tpl.replace("{title}", title).replace("{artist}", artist).replace("{source}", source_name(p)).trim().to_string()
+}
+
+/// The SET_ACTIVITY payload for `p` under `cfg`; None = show nothing (paused with "show paused" off).
+pub fn build_activity(p: &Presence, now: i64, cfg: &Config) -> Option<Activity<'static>> {
+    if p.paused && !cfg.show_paused {
+        return None;
     }
-    a
+    let line1 = render(&cfg.line1, p);
+    let line2 = render(&cfg.line2, p);
+    let shows = match cfg.status_shows.as_str() {
+        "artist" if !line2.is_empty() => StatusDisplayType::State,
+        "app" => StatusDisplayType::Name,
+        _ if !line1.is_empty() => StatusDisplayType::Details,
+        _ => StatusDisplayType::Name,
+    };
+    let mut a = Activity::new().activity_type(ActivityType::Listening).status_display_type(shows);
+    if !line1.is_empty() {
+        a = a.details(clip(&line1, 128));
+    }
+    if !line2.is_empty() {
+        a = a.state(clip(&line2, 128));
+    }
+    // Paused: no clock (Discord would keep counting).
+    if !p.paused && cfg.time != "none" {
+        let start = now - (p.position.max(0.0) * 1000.0) as i64;
+        let mut ts = Timestamps::new().start(start);
+        if cfg.time == "progress" && p.duration > 0.0 {
+            ts = ts.end(start + (p.duration * 1000.0) as i64);
+        }
+        a = a.timestamps(ts);
+    }
+
+    let hover = render(&cfg.large_text, p);
+    let cover = is_web(&p.artwork) && p.artwork.len() <= 256;
+    let large = match cfg.large_image.as_str() {
+        "none" => None,
+        "logo" => Some(LOGO_ASSET.to_string()),
+        _ if cover => Some(p.artwork.clone()),
+        _ => Some(LOGO_ASSET.to_string()), // local files: no web cover
+    };
+    let mut assets = Assets::new();
+    let mut any = false;
+    let big_is_logo = large.as_deref() == Some(LOGO_ASSET);
+    if let Some(img) = large.clone() {
+        assets = assets.large_image(img);
+        if !hover.is_empty() {
+            assets = assets.large_text(clip(&hover, 128));
+        }
+        any = true;
+    }
+    // The small logo only makes sense next to a cover, or to say "Paused".
+    if large.is_some() && (p.paused || (cfg.small_logo && !big_is_logo)) {
+        let text = if p.paused { "Paused" } else { "noxx" };
+        assets = assets.small_image(LOGO_ASSET.to_string()).small_text(text.to_string());
+        any = true;
+    }
+    if any {
+        a = a.assets(assets);
+    }
+
+    let mut buttons = Vec::new();
+    if cfg.listen_button && is_web(&p.url) && p.url.len() <= 512 {
+        buttons.push(Button::new(button_label(p, &p.url), p.url.clone()));
+    }
+    let label = render(&cfg.custom_label, p);
+    let url = cfg.custom_url.trim();
+    if !label.is_empty() && is_web(url) && url.len() <= 512 {
+        buttons.push(Button::new(clip(&label, 32), url.to_string()));
+    }
+    if !buttons.is_empty() {
+        a = a.buttons(buttons);
+    }
+    Some(a)
 }
 
 // ------------------------------------------------------------------ worker
@@ -313,12 +437,15 @@ fn worker(rx: mpsc::Receiver<Msg>, mut enabled: bool) {
 
         if dirty {
             if let Some(c) = conn.as_mut() {
-                let act = current.as_ref().map(|p| {
+                let cfg = config_now();
+                let act = current.as_ref().and_then(|p| {
                     let mut p = p.clone();
-                    p.position += current_at.elapsed().as_secs_f64();
-                    build_activity(&p, now_ms())
+                    if !p.paused {
+                        p.position += current_at.elapsed().as_secs_f64();
+                    }
+                    build_activity(&p, now_ms(), &cfg)
                 });
-                let showing = current.as_ref().map(|p| p.title.clone());
+                let showing = if act.is_some() { current.as_ref().map(|p| p.title.clone()) } else { None };
                 match exchange(c, act) {
                     Ok(rejected) => {
                         dirty = false;
@@ -348,6 +475,9 @@ fn worker(rx: mpsc::Receiver<Msg>, mut enabled: bool) {
                 current = Some(p);
                 current_at = Instant::now();
                 dirty = true;
+            }
+            Ok(Msg::Refresh) => {
+                dirty = conn.is_some();
             }
             Ok(Msg::Clear) => {
                 current = None;
@@ -389,16 +519,21 @@ mod tests {
             source: String::new(),
             duration: 200.0,
             position: 50.0,
+            paused: false,
         }
+    }
+
+    fn act(p: &Presence, now: i64, c: &Config) -> Value {
+        serde_json::to_value(build_activity(p, now, c).expect("shown")).unwrap()
     }
 
     #[test]
     fn activity_fields() {
-        let v = serde_json::to_value(build_activity(&track(), 1_000_000)).unwrap();
+        let v = act(&track(), 1_000_000, &Config::default());
         assert_eq!(v["type"], 2);
         assert_eq!(v["status_display_type"], 2);
         assert_eq!(v["details"], "Song");
-        assert_eq!(v["state"], "by Artist");
+        assert_eq!(v["state"], "Artist");
         assert_eq!(v["timestamps"]["start"], 1_000_000 - 50_000);
         assert_eq!(v["timestamps"]["end"], 1_000_000 - 50_000 + 200_000);
         assert_eq!(v["assets"]["large_image"], "https://i1.sndcdn.com/artworks-x-t500x500.jpg");
@@ -415,7 +550,7 @@ mod tests {
             duration: 0.0,
             ..track()
         };
-        let v = serde_json::to_value(build_activity(&p, 5_000)).unwrap();
+        let v = act(&p, 5_000, &Config::default());
         assert_eq!(v["assets"]["large_image"], "noxx");
         assert!(v.get("buttons").is_none());
         assert!(v["timestamps"].get("end").is_none());
@@ -431,9 +566,59 @@ mod tests {
         assert_eq!(c.chars().count(), 128);
         assert!(c.ends_with('…'));
         assert_eq!(clip("  hello  ", 128), "hello");
-        let blank = serde_json::to_value(build_activity(&Presence::default(), 0)).unwrap();
+        let blank = act(&Presence::default(), 0, &Config::default());
         assert_eq!(blank["details"], "Unknown Track");
         assert_eq!(blank["state"], "Unknown Artist");
+    }
+
+    #[test]
+    fn config_artist_status_and_templates() {
+        let c = Config { status_shows: "artist".into(), line1: "{artist} - {title}".into(), line2: "on {source}".into(), ..Config::default() };
+        let v = act(&track(), 0, &c);
+        assert_eq!(v["status_display_type"], 1); // State
+        assert_eq!(v["details"], "Artist - Song");
+        assert_eq!(v["state"], "on SoundCloud");
+        let app = act(&track(), 0, &Config { status_shows: "app".into(), ..Config::default() });
+        assert_eq!(app["status_display_type"], 0); // Name: "Listening to noxx"
+    }
+
+    #[test]
+    fn config_images_time_buttons() {
+        let c = Config {
+            large_image: "logo".into(),
+            time: "elapsed".into(),
+            listen_button: false,
+            custom_label: "Get noxx".into(),
+            custom_url: "https://github.com/T4lk/noxx".into(),
+            ..Config::default()
+        };
+        let v = act(&track(), 1_000, &c);
+        assert_eq!(v["assets"]["large_image"], "noxx");
+        assert!(v["assets"].get("small_image").is_none());
+        assert!(v["timestamps"].get("end").is_none());
+        assert_eq!(v["buttons"].as_array().unwrap().len(), 1);
+        assert_eq!(v["buttons"][0]["label"], "Get noxx");
+        let none = act(&track(), 0, &Config { large_image: "none".into(), time: "none".into(), ..Config::default() });
+        assert!(none.get("assets").is_none());
+        assert!(none.get("timestamps").is_none());
+        let bad = act(&track(), 0, &Config { listen_button: false, custom_label: "x".into(), custom_url: "javascript:alert(1)".into(), ..Config::default() });
+        assert!(bad.get("buttons").is_none());
+    }
+
+    #[test]
+    fn config_paused() {
+        let p = Presence { paused: true, ..track() };
+        assert!(build_activity(&p, 0, &Config::default()).is_none());
+        let v = act(&p, 0, &Config { show_paused: true, ..Config::default() });
+        assert!(v.get("timestamps").is_none());
+        assert_eq!(v["assets"]["small_text"], "Paused");
+    }
+
+    #[test]
+    fn config_old_file_still_loads() {
+        let s: Saved = serde_json::from_str(r#"{"enabled":false}"#).unwrap();
+        assert!(!s.enabled);
+        assert_eq!(s.config, Config::default());
     }
 
     #[test]
@@ -450,7 +635,7 @@ mod tests {
     fn live_connect() {
         let (mut c, user) = connect().expect("discord running");
         println!("connected as {user:?}");
-        assert_eq!(exchange(&mut c, Some(build_activity(&track(), now_ms()))).unwrap(), None);
+        assert_eq!(exchange(&mut c, build_activity(&track(), now_ms(), &Config::default())).unwrap(), None);
         assert_eq!(exchange(&mut c, None).unwrap(), None);
     }
 }
