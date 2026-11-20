@@ -1057,6 +1057,39 @@
     }
   }
 
+  // Looser "songs like these": tries each recent song in turn, first the normal mixed radio, then each
+  // platform's raw related list without the genre filter. Used when the normal picks come back empty.
+  async function looseRecs(recent, avoid = [], limit = 15) {
+    const skip = new Set(avoid);
+    const keep = (l) => (l || []).filter((t) => t && t.id && !skip.has(t.id));
+    for (const seed of recent.slice(0, 5)) {
+      try { const r = keep(await radioRecs(seed, { avoid: [...skip], limit })); if (r.length) return r; } catch (e) { R.log('warn', `autoplay radio ${seed.title}: ${errText(e)}`); }
+    }
+    for (const seed of recent.slice(0, 3)) {
+      try {
+        const s = await matchSeed(seed);
+        if (!s) continue;
+        const tw = await twinOf(s).catch(() => null);
+        const yt = isYt(s) ? s : tw, sc = isYt(s) ? tw : s;
+        const [a, b] = await Promise.all([
+          yt ? R.call('youtube.related', { id: yt.id, limit: limit + 10 }).catch(() => []) : [],
+          sc ? R.call('discover.wave', { seeds: [{ id: sc.id, weight: 1 }], heard: [], avoid: [...skip], limit }).catch(() => []) : [],
+        ]);
+        const r = keep(interleave(b || [], a || [], limit));
+        if (r.length) return r;
+      } catch (e) { R.log('warn', `autoplay loose ${seed.title}: ${errText(e)}`); }
+    }
+    return [];
+  }
+
+  // When any queue (a playlist, a mix, search results, one song) runs out, the core asks for more:
+  // songs like what just played, then My Wave. The core falls back to trending after these.
+  R.addContinuation((recent, avoid) => looseRecs(recent, avoid, 20), 'radio');
+  R.addContinuation(async (recent, avoid) => {
+    const skip = new Set(avoid);
+    return ((await loadWave(true)) || []).filter((t) => !skip.has(t.id));
+  }, 'my wave');
+
   // Keeps BUFFER songs lined up ahead, so the queue never looks like it ends.
   async function topUp(attempt = 0) {
     const a = D.auto;
@@ -1082,6 +1115,13 @@
           useYt() ? waveYouTube(useSc() ? 8 : 15, avoid).catch(() => []) : [],
         ]);
         more = interleave(scMore || [], ytMore || [], 15);
+      }
+      // Never run dry: if the normal top-up found nothing, loosen it (earlier songs, other platform, no genre filter).
+      if (!more || !more.length) {
+        R.log('warn', `discover top-up: ${a.mode} found nothing, trying looser picks`);
+        const recent = [];
+        for (let i = p.pos; i >= 0 && recent.length < 5; i--) { const t = p.context[p.order[i]]; if (t) recent.push(t); }
+        more = await looseRecs(recent, avoid, 10);
       }
       if (D.auto !== a || p.context !== a.ctx) return 0;
       const have = new Set(p.context.map((t) => t.id));
@@ -1307,6 +1347,18 @@
     }
     stopAuto();
     log(`discover radio off ${ok(!D.auto && !pill.classList.contains('on'))}`);
+
+    // Autoplay: a one-song queue lines up more songs by itself, and ⏭ at the end keeps playing.
+    t0 = performance.now();
+    const solo = seed;
+    R.playList([solo], 0);
+    const lined = await until(() => R.player.current === solo && R.player.context.length > 1, 20000);
+    log(`autoplay queue ${ok(lined)}: one song -> ${R.player.context.length} in queue (${ms(t0)})${lined ? `; next "${R.player.context[R.player.order[1]]?.title}"` : ''}`);
+    t0 = performance.now();
+    R.next(false);
+    const moved = await until(() => R.player.current && R.player.current !== solo, 15000);
+    log(`autoplay skip ${ok(moved)}: now "${R.player.current?.title}" (${ms(t0)})`);
+    R.audio.pause();
     R.audio.pause();
 
     // Leave the artist page open (for screenshots of the finished run).

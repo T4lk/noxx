@@ -775,7 +775,7 @@ enum Stem {
 
 /// `stem` as a whole word in `t`, allowing a plural "s". Letters / digits on either side don't
 /// count (the old per-stem Unicode regexes did the same, but 105 of them held ~70 MB).
-fn has_word(t: &str, stem: &str) -> bool {
+pub(crate) fn has_word(t: &str, stem: &str) -> bool {
     let alnum = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
     t.match_indices(stem).any(|(i, m)| {
         if alnum(t[..i].chars().next_back()) {
@@ -821,7 +821,7 @@ static NOT_A_SONG_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 type Profile = HashMap<String, f64>;
 
-fn detect_families(text: &str) -> Profile {
+pub(crate) fn detect_families(text: &str) -> Profile {
     let t = format!(" {} ", SEPARATORS.replace_all(&text.to_lowercase(), " "));
     let mut found = Profile::new();
     for (family, stems) in STEMS.iter() {

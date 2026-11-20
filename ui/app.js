@@ -41,6 +41,7 @@ const ext = {
   settings: [],          // { fn(paneEl), cat } — see riff.addSettings
   streamResolvers: [],   // async fn(track, fresh) -> {url, protocol:'progressive'|'hls'|'file'} | null
   selftests: [],         // async fn(log)
+  continuations: [],     // async fn(seeds, avoidIds) -> tracks: what to play when the queue runs out
 };
 
 // Persisted UI preferences (riff's settings toggles): riff.pref(key, default) / riff.setPref(key, value).
@@ -1670,6 +1671,7 @@ const coreSettings = {
         searchProviders.length > 1 && SET.prefToggle('compactEngine', false, 'Compact engine buttons', 'Show only icons for YouTube, YouTube Music, and SoundCloud in the top bar', applyBodyPrefs),
         searchProviders.length > 1 && SET.prefToggle('hideEngine', false, 'Hide engine buttons', 'Hide search engine buttons from the top bar', applyBodyPrefs),
         SET.prefToggle('noHandCursor', true, 'No-Hand cursor', 'Replaces the hand and grab cursors with the normal arrow', applyBodyPrefs),
+        SET.prefToggle('autoplay', true, 'Autoplay', 'When your queue ends, keep playing similar songs instead of stopping'),
         SET.prefToggle('dockedShell', true, 'Docked layout', 'Side bar and player bar sit flush against the window edges', applyShellPrefs),
         SET.select({ name: 'Side bar', options: [['icons', 'Icons only'], ['normal', 'Icons and labels'], ['wide', 'Your Library']], value: railLib.mode,
           onChange: (v) => setRailWidth(v === 'icons' ? RAIL_W.icons : v === 'normal' ? RAIL_W.normal : pref('railWideWidth', 320), true) }),
@@ -1866,10 +1868,20 @@ async function playTrack(t, startAt = 0, fresh = false) {
   destroyHls();
   audio.pause();
   let s = null;
+  // A source that never answers must not leave the player stuck: give up after 15 s and move on.
+  const started = performance.now();
+  let stage = 'resolver';
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error(`no stream after 15 s (${stage})`)), 15000));
   try {
-    for (const r of ext.streamResolvers) { s = await r(t, fresh); if (s) break; }
-    if (!s) s = await invoke('stream_url', { id: t.id, fresh });
+    s = await Promise.race([(async () => {
+      for (const r of ext.streamResolvers) { stage = r.label || 'resolver'; const x = await r(t, fresh); if (x) return x; }
+      stage = 'stream_url';
+      return invoke('stream_url', { id: t.id, fresh });
+    })(), timeout]);
+    const took = performance.now() - started;
+    if (took > 4000) log('warn', `slow stream for ${t.id} "${t.title}": ${Math.round(took)} ms (${stage})`);
   } catch (e) {
+    if (token === player.loadToken) log('error', `stream failed for ${t.id} "${t.title}": ${errText(e)}`);
     if (token !== player.loadToken) return;
     setLoading(false);
     toast(`${t.title}: ${errText(e)}`, 'error');
@@ -1914,6 +1926,41 @@ function peekNext() {
   return null;
 }
 
+// ---------------------------------------------------------------- keep playing when the queue runs out
+// Features register providers (riff.addContinuation): async (seeds, avoidIds) -> tracks. They run in
+// order until one returns songs; trending is the last resort. On by default (Settings: "Autoplay").
+const continuing = { busy: null, failedFor: '' };
+async function continueQueue(play) {
+  if (!pref('autoplay', true) || !player.current) return false;
+  if (continuing.busy) return continuing.busy;
+  continuing.busy = (async () => {
+    const recent = [];
+    for (let p = player.pos; p >= 0 && recent.length < 6; p--) { const t = player.context[player.order[p]]; if (t) recent.push(t); }
+    if (!recent.length) recent.push(player.current);
+    const have = new Set(player.context.map((t) => t.id));
+    const fresh = (list) => (list || []).filter((t) => t && t.id && !have.has(t.id) && (have.add(t.id), true));
+    let found = [];
+    for (const fn of ext.continuations) {
+      try { found = fresh(await fn(recent, [...have])); } catch (e) { log('warn', `autoplay: ${fn.label || 'provider'} failed: ${errText(e)}`); found = []; }
+      if (found.length) break;
+      log('warn', `autoplay: ${fn.label || 'provider'} found nothing for "${player.current?.title}"`);
+    }
+    if (!found.length) {
+      try { if (!state.trending) state.trending = await invoke('trending'); } catch (e) { log('warn', `autoplay: trending failed: ${errText(e)}`); }
+      found = fresh(state.trending || []).slice(0, 20);
+      if (found.length) log('warn', 'autoplay: fell back to trending');
+    }
+    if (!found.length) { log('error', 'autoplay: nothing to continue with'); return false; }
+    for (const t of found) { player.order.push(player.context.length); player.context.push(t); }
+    queueChanged();
+    if (play && player.pos + 1 < player.order.length) { player.pos++; playTrack(player.context[player.order[player.pos]]); }
+    return true;
+  })();
+  try { return await continuing.busy; } finally { continuing.busy = null; }
+}
+// Line the continuation up early (when the last song of the queue starts), so the end is seamless.
+bus.addEventListener('trackchange', () => { if (!peekNext() && player.repeat === 'off') continueQueue(false); });
+
 function next(auto) {
   if (auto && player.repeat === 'one' && player.current) { audio.currentTime = 0; audio.play().catch(() => {}); return; }
   if (player.userQueue.length) { playTrack(player.userQueue.shift()); queueChanged(); return; }
@@ -1924,7 +1971,12 @@ function next(auto) {
     playTrack(player.context[player.order[0]]);
     return;
   }
-  audio.pause();
+  // End of the queue: keep going with similar songs instead of stopping (⏭ works here too).
+  continueQueue(true).then((ok) => {
+    if (ok) return;
+    audio.pause();
+    if (!auto) toast('Nothing more to play right now');
+  });
 }
 
 function prev() {
@@ -3005,9 +3057,12 @@ window.riff = {
   pref, setPref,
   /** Open Settings on a tab. */
   openSettings: (cat) => go('settings', cat || null),
-  addStreamResolver(fn) { ext.streamResolvers.push(fn); },
+  addStreamResolver(fn) { if (!fn.label) fn.label = fn.name || (document.currentScript && document.currentScript.src.split('/').pop()) || 'resolver'; ext.streamResolvers.push(fn); },
   /** { id, label, icon?, search(query, offset) -> Promise<tracks>, pageSize?, matchesLink?(text) } — riff's platform switch */
   addSearchProvider(p) { const i = searchProviders.findIndex((x) => x.id === p.id); if (i >= 0) searchProviders[i] = p; else searchProviders.unshift(p); if (document.readyState !== 'loading') renderPlatformSwitch(); },
+  /** Keep-playing provider: async (recentTracks newest first, avoidIds) -> tracks. Tried in order. */
+  addContinuation(fn, label = '') { fn.label = label; ext.continuations.push(fn); },
+  continueQueue,
   addSelftest(fn) { fn.label = (document.currentScript && document.currentScript.src.split('/').pop()) || ''; ext.selftests.push(fn); },
   addPlaybarButton(btn, where = 'right') {
     if (where === 'left') $('#pb-more').before(btn); else $('#pb-queue').before(btn);

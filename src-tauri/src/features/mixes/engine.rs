@@ -108,6 +108,115 @@ pub fn subgenre_of(genre: &str) -> Option<String> {
     Some(canon.to_string())
 }
 
+/// Sub-genres a mix can be about (names as `subgenre_of` gives them) and the words that
+/// name them in a genre field, tags, title or artist name. Most specific first: a
+/// track's primary sub-genre is the first one that matches. Words in `SUB_INSIDE` match
+/// inside other words ("HUMPSTEKK"), the rest as whole words (discover's `has_word`).
+pub const SUBS: &[(&str, &str, &[&str])] = &[
+    ("hardtekk", "harddance", &["tekk", "tekno", "hardtek", "tek"]),
+    ("frenchcore", "harddance", &["frenchcore", "french core"]),
+    ("rawstyle", "harddance", &["rawstyle", "raw style", "raw hardstyle"]),
+    ("hardstyle", "harddance", &["hardstyle"]),
+    ("jumpstyle", "harddance", &["jumpstyle"]),
+    ("uptempo", "harddance", &["uptempo", "up tempo"]),
+    ("speedcore", "harddance", &["speedcore"]),
+    ("mylancore", "harddance", &["mylancore"]),
+    ("gabber", "harddance", &["gabber", "gabba"]),
+    ("schranz", "harddance", &["schranz"]),
+    ("hard techno", "harddance", &["hard techno", "hardtechno"]),
+    ("hardbass", "harddance", &["hardbass", "hard bass"]),
+    ("hardcore", "harddance", &["hardcore"]),
+    ("drift phonk", "phonk", &["drift phonk", "drift"]),
+    ("brazilian phonk", "phonk", &["brazilian phonk", "montagem", "baile funk", "funk"]),
+    ("drill", "rap", &["drill"]),
+    ("plugg", "rap", &["plugg", "pluggnb"]),
+    ("rage", "rap", &["rage"]),
+    ("opium", "rap", &["opium", "opiumcore"]),
+    ("jerk", "rap", &["jerk"]),
+    ("grime", "rap", &["grime"]),
+    ("boom bap", "rap", &["boom bap", "boombap"]),
+    ("cloud rap", "rap", &["cloud rap"]),
+    ("trap", "rap", &["trap"]),
+    ("breakcore", "dnb", &["breakcore"]),
+    ("jungle", "dnb", &["jungle"]),
+    ("drum and bass", "dnb", &["drum and bass", "drum & bass", "drum n bass", "dnb"]),
+    ("riddim", "bass", &["riddim"]),
+    ("dubstep", "bass", &["dubstep"]),
+    ("deep house", "house", &["deep house"]),
+    ("tech house", "house", &["tech house"]),
+    ("uk garage", "house", &["uk garage", "ukg"]),
+    ("jersey club", "house", &["jersey club"]),
+    ("psytrance", "trance", &["psytrance", "psy trance", "psy"]),
+    ("digicore", "hyperpop", &["digicore"]),
+    ("lofi", "ambient", &["lofi", "lo fi", "lo-fi"]),
+];
+
+const SUB_INSIDE: &[&str] =
+    &["tekk", "tekno", "hardstyle", "rawstyle", "jumpstyle", "schranz", "gabber", "frenchcore", "speedcore", "mylancore", "hardbass", "breakcore", "dubstep", "psytrance", "digicore", "opiumcore"];
+
+/// Lower-case text a track's style words are read from: style (genre + tags), title, genre, artist.
+fn sub_text(t: &Track) -> String {
+    let raw = format!(" {} {} {} {} ", t.style, t.title, t.genre, t.artist).to_lowercase();
+    raw.chars().map(|c| if matches!(c, '_' | '/' | '|' | '•' | '·') { ' ' } else { c }).collect()
+}
+
+fn stem_hit(text: &str, stem: &str) -> bool {
+    if SUB_INSIDE.contains(&stem) {
+        text.contains(stem)
+    } else {
+        super::super::discover::has_word(text, stem)
+    }
+}
+
+fn sub_stems(sub: &str) -> Option<&'static [&'static str]> {
+    SUBS.iter().find(|(n, ..)| *n == sub).map(|(_, _, s)| *s)
+}
+
+/// The family a known sub-genre belongs to.
+pub fn sub_family(sub: &str) -> Option<&'static str> {
+    SUBS.iter().find(|(n, ..)| *n == sub).map(|(_, f, _)| *f)
+}
+
+/// True when a track names sub-genre `sub` (genre field, tags, title or artist words).
+pub fn names_sub(t: &Track, sub: &str) -> bool {
+    if subgenre_of(&t.genre).as_deref() == Some(sub) {
+        return true;
+    }
+    let text = sub_text(t);
+    match sub_stems(sub) {
+        Some(stems) => stems.iter().any(|s| stem_hit(&text, s)),
+        None => super::super::discover::has_word(&text, sub),
+    }
+}
+
+/// The known sub-genres (`SUBS`) of `family` a track names (any family when None), genre
+/// field first, then most specific first.
+pub fn track_subs(t: &Track, family: Option<&str>) -> Vec<String> {
+    let text = sub_text(t);
+    let mut v: Vec<String> = Vec::new();
+    if let Some(s) = subgenre_of(&t.genre).filter(|s| sub_family(s).is_some_and(|f| family.is_none_or(|x| x == f))) {
+        v.push(s);
+    }
+    for (name, f, stems) in SUBS {
+        if family.is_some_and(|x| x != *f) || v.iter().any(|x| x == name) {
+            continue;
+        }
+        if stems.iter().any(|s| stem_hit(&text, s)) {
+            v.push(name.to_string());
+        }
+    }
+    v
+}
+
+/// An own track belongs in a mix about `sub` (of `family`) unless it is labeled with
+/// other sub-genres of that family only.
+pub fn own_fits(t: &Track, family: Option<&str>, sub: Option<&str>) -> bool {
+    match sub {
+        None => true,
+        Some(s) => names_sub(t, s) || track_subs(t, family.or(sub_family(s))).is_empty(),
+    }
+}
+
 /// Release year from SoundCloud track JSON: release_date, then display_date, then created_at.
 pub fn year_of(raw: &Value) -> Option<u16> {
     for key in ["release_date", "display_date", "created_at"] {
@@ -575,9 +684,113 @@ pub fn taste_groups(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>
     }
     // A family-level group that collected its sub-groups is still fine; drop what stays tiny.
     kept.retain(|g| g.members.len() >= SMALL || g.members.len() >= 4 && g.family.is_some());
+    // Each group's sub-genre comes from its own tracks (`dominant_sub`), else the family
+    // alone; groups that end up with the same style merge.
+    let mut merged: Vec<Group> = Vec::new();
+    for mut g in kept {
+        g.sub = g.family.as_deref().and_then(|f| dominant_sub(items, &g.members, f));
+        g.key = taste_key(&g.family, &g.sub);
+        match merged.iter_mut().find(|m| m.key == g.key) {
+            Some(m) => {
+                m.members.extend(g.members);
+                m.weight += g.weight;
+            }
+            None => merged.push(g),
+        }
+    }
+    let mut kept = merged;
     kept.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal).then(a.key.cmp(&b.key)));
     kept.truncate(MAX_DAILY);
     kept
+}
+
+/// A track's own sub-genre: its genre field's, else the first known one its words name
+/// (within its family).
+pub fn primary_sub(it: &Item) -> Option<String> {
+    it.sub.clone().or_else(|| track_subs(&it.track, it.family.as_deref()).into_iter().next())
+}
+
+/// The sub-genre a set of tracks clearly shares within `family`: the most common primary
+/// sub-genre (by weight) when at least 3 tracks have it, it holds over half of the labeled
+/// weight and at least a quarter of the family's weight. None = the family alone.
+pub fn dominant_sub(items: &[Item], members: &[usize], family: &str) -> Option<String> {
+    let mut w: HashMap<String, (f64, usize)> = HashMap::new();
+    let (mut labeled, mut total) = (0.0, 0.0);
+    for &i in members {
+        let it = &items[i];
+        if it.family.as_deref() != Some(family) {
+            continue;
+        }
+        let x = it.weight.max(0.5);
+        total += x;
+        if let Some(s) = primary_sub(it) {
+            let e = w.entry(s).or_insert((0.0, 0));
+            e.0 += x;
+            e.1 += 1;
+            labeled += x;
+        }
+    }
+    let mut v: Vec<(String, (f64, usize))> = w.into_iter().collect();
+    v.sort_by(|a, b| b.1 .0.partial_cmp(&a.1 .0).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
+    let (s, (sw, n)) = v.into_iter().next()?;
+    (n >= 3 && sw * 2.0 > labeled && sw * 4.0 >= total).then_some(s)
+}
+
+/// "harddance" or "harddance/hardtekk".
+pub fn style_key(family: Option<&str>, sub: Option<&str>) -> String {
+    match (family, sub) {
+        (Some(f), Some(s)) => format!("{f}/{s}"),
+        (Some(f), None) => f.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// Established artists per style key ("harddance", "harddance/hardtekk"): the family and
+/// sub-genre most of an artist's tracks have (artists with two or more tracks).
+pub fn established(items: &[Item]) -> HashMap<String, HashSet<String>> {
+    let mut fam: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    let mut sub: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    let mut count: HashMap<String, usize> = HashMap::new();
+    for it in items {
+        let a = name_key(&it.track.artist);
+        if a.is_empty() || a == "unknown artist" {
+            continue;
+        }
+        *count.entry(a.clone()).or_default() += 1;
+        if let Some(f) = &it.family {
+            *fam.entry(a.clone()).or_default().entry(f.clone()).or_insert(0.0) += it.weight.max(0.5);
+            if let Some(s) = primary_sub(it) {
+                *sub.entry(a.clone()).or_default().entry(format!("{f}/{s}")).or_insert(0.0) += it.weight.max(0.5);
+            }
+        }
+    }
+    let top = |m: &HashMap<String, f64>| -> Option<String> {
+        let mut v: Vec<(&String, &f64)> = m.iter().collect();
+        v.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(b.0)));
+        v.first().map(|(k, _)| (*k).clone())
+    };
+    let mut out: HashMap<String, HashSet<String>> = HashMap::new();
+    for (a, n) in count {
+        if n < 2 {
+            continue;
+        }
+        let Some(f) = fam.get(&a).and_then(top) else { continue };
+        out.entry(f.clone()).or_default().insert(a.clone());
+        if let Some(k) = sub.get(&a).and_then(top).filter(|k| k.starts_with(&format!("{f}/"))) {
+            out.entry(k).or_default().insert(a.clone());
+        }
+    }
+    out
+}
+
+/// Artists whose genre-less songs a plan accepts: the artists of its own tracks plus the
+/// user's established artists of its style.
+fn known_artists(list: &[&Item], est: &HashMap<String, HashSet<String>>, family: Option<&str>, sub: Option<&str>) -> HashSet<String> {
+    let mut s: HashSet<String> = list.iter().map(|it| name_key(&it.track.artist)).filter(|a| !a.is_empty() && a != "unknown artist").collect();
+    if let Some(e) = est.get(&style_key(family, sub)) {
+        s.extend(e.iter().cloned());
+    }
+    s
 }
 
 // ------------------------------------------------------------------
@@ -605,6 +818,13 @@ pub struct Plan {
     pub yt_share: f64,
     /// Fresh tracks must be in this family.
     pub family: Option<String>,
+    /// ... and name this sub-genre ("hardtekk"), when set (`admit`).
+    pub sub: Option<String>,
+    /// Era mixes: new songs that have a genre must be in one of these families.
+    pub families: Vec<String>,
+    /// Artists (`name_key`) whose genre-less songs fit: the mix's own artists and the
+    /// user's established artists of its style.
+    pub artists: HashSet<String>,
     /// Own tracks per artist (0 = no cap).
     pub own_cap: usize,
     pub max_own: usize,
@@ -632,6 +852,9 @@ impl Plan {
             yt_seeds: Vec::new(),
             yt_share: 0.0,
             family: None,
+            sub: None,
+            families: Vec::new(),
+            artists: HashSet::new(),
             own_cap: 4,
             max_own: 30,
             own_run: 2,
@@ -693,16 +916,23 @@ fn half_new(p: &mut Plan) {
 
 pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: u64) -> Vec<Plan> {
     let mut out = Vec::new();
+    let est = established(items);
 
-    // Daily Mix 1-6
+    // Daily Mix 1-6. A mix about a sub-genre leaves out own tracks labeled with another
+    // one (they would seed off-genre radios too).
     for (n, g) in taste_groups(items, cooc).iter().enumerate() {
-        let list = sorted_by_weight(items, g.members.iter().copied());
+        let list: Vec<&Item> = sorted_by_weight(items, g.members.iter().copied())
+            .into_iter()
+            .filter(|it| own_fits(&it.track, g.family.as_deref(), g.sub.as_deref()))
+            .collect();
         let mut p = Plan::new(format!("daily-{}", n + 1), "daily", format!("Daily Mix {}", n + 1));
         p.number = (n + 1) as u8;
         p.tag = g.label();
         set_seeds(&mut p, &list, 10);
         p.own = list.iter().map(|it| it.track.clone()).collect();
         p.family = g.family.clone();
+        p.sub = g.sub.clone();
+        p.artists = known_artists(&list, &est, g.family.as_deref(), g.sub.as_deref());
         // Mostly discovery, like Spotify's: one of your songs, then two new ones.
         p.max_own = 17;
         p.own_run = 1;
@@ -739,12 +969,14 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
                 set_seeds(&mut p, &list, 10);
                 p.own = list.iter().map(|it| it.track.clone()).collect();
                 p.family = Some(f.clone());
+                p.artists = known_artists(&list, &est, Some(f), None);
                 half_new(&mut p);
                 genre.push((list.iter().map(|it| it.weight).sum(), p));
             }
         }
         for (s, m) in subs {
-            let list = sorted_by_weight(items, m.iter().copied());
+            let list: Vec<&Item> =
+                sorted_by_weight(items, m.iter().copied()).into_iter().filter(|it| own_fits(&it.track, Some(f), Some(s))).collect();
             let title = format!("{} Mix", title_case(s));
             if !titles.insert(title.to_lowercase()) {
                 continue;
@@ -754,6 +986,8 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
             set_seeds(&mut p, &list, 10);
             p.own = list.iter().map(|it| it.track.clone()).collect();
             p.family = Some(f.clone());
+            p.sub = Some(s.clone());
+            p.artists = known_artists(&list, &est, Some(f), Some(s));
             half_new(&mut p);
             genre.push((list.iter().map(|it| it.weight).sum(), p));
         }
@@ -779,6 +1013,8 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
         p.own = list.iter().map(|it| it.track.clone()).collect();
         p.own_cap = 5;
         p.decade = d;
+        p.families = era_families(items, d, 3);
+        p.artists = known_artists(&list, &HashMap::new(), None, None);
         half_new(&mut p);
         out.push(p);
     }
@@ -797,7 +1033,7 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
         if out.iter().filter(|p| p.kind == "artist").count() >= MAX_ARTIST {
             break;
         }
-        let list = sorted_by_weight(items, m.into_iter());
+        let list = sorted_by_weight(items, m.iter().copied());
         let has_seed = list.iter().any(|it| is_sc(&it.track) || is_yt(&it.track));
         if list.len() < 3 || (!has_seed && list.len() < MIN_TRACKS) {
             continue;
@@ -815,6 +1051,10 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
             }
         }
         p.family = fams.into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)).map(|(f, _)| f.to_string());
+        // ... and the artist's dominant sub-genre, when their tracks clearly share one.
+        p.sub = p.family.as_deref().and_then(|f| dominant_sub(items, &m, f));
+        p.artists = known_artists(&list, &est, p.family.as_deref(), p.sub.as_deref());
+        p.artists.insert(name_key(&name));
         p.own_cap = 0;
         half_new(&mut p);
         p.lead = name;
@@ -1047,19 +1287,104 @@ pub fn rank_related(lists: &[(f64, Vec<Track>)], skip: &HashSet<String>, skip_so
     out
 }
 
-/// Genre check for a YouTube related track. YouTube Music has no genres, so a track
-/// whose title shows no family still fits a plan's family when it is related to two
-/// or more seeds, or is by an artist already in the plan. Returns the families to
-/// hand to `finish`, or None to drop the track.
-pub fn admit_related(plan: &Plan, families: Vec<String>, hits: usize, artist_known: bool) -> Option<Vec<String>> {
-    let Some(f) = &plan.family else { return Some(families) };
-    if families.contains(f) {
-        return Some(families);
+/// What `admit` says about a new song.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Fit {
+    /// It fits; the families to hand to `finish`.
+    Yes(Vec<String>),
+    /// Its genre / style words say another genre or sub-genre.
+    Off,
+    /// No genre info and an artist the mix doesn't know.
+    Unsure,
+}
+
+/// New songs dropped by the genre check, per mix.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Rejects {
+    /// another genre or sub-genre
+    pub off: usize,
+    /// no genre info, unknown artist
+    pub unsure: usize,
+}
+
+impl Rejects {
+    pub fn add(&mut self, o: Rejects) {
+        self.off += o.off;
+        self.unsure += o.unsure;
     }
-    if families.is_empty() && (hits >= 2 || artist_known) {
-        return Some(vec![f.clone()]);
+    pub fn total(&self) -> usize {
+        self.off + self.unsure
     }
-    None
+}
+
+/// Genre check for a new song (`families` = discover's families of its style text).
+/// - Era mixes (no family): a song with a genre must be in one of the decade's families.
+/// - Family mixes: the song's families must include the plan's.
+/// - Sub-genre mixes: the song must name the sub-genre (genre field, tags, title or artist
+///   words); one that names only another sub-genre or just the family is off.
+/// - The genre field wins over tags and titles: a field naming another family ("House"
+///   with "tekk" in the tags), or another sub-genre ("Hardstyle" with "Tekk" in the title)
+///   is off.
+/// - A song with no genre info at all (most of YouTube) fits only when its artist is one
+///   the mix knows (`Plan::artists`): being in a radio of the mix's songs is not enough.
+pub fn admit(plan: &Plan, t: &Track, families: Vec<String>) -> Fit {
+    let labeled = !families.is_empty() || subgenre_of(&t.genre).is_some();
+    let known = plan.artists.contains(&name_key(&t.artist));
+    let Some(f) = &plan.family else {
+        if plan.decade > 0 {
+            if !plan.families.is_empty() && !families.is_empty() && !families.iter().any(|x| plan.families.contains(x)) {
+                return Fit::Off;
+            }
+        } else if !families.is_empty() && !known {
+            // A mix whose own songs have no genre (a grab-bag Daily Mix, an artist with no
+            // genre): a song that has one only comes in by an artist the mix knows.
+            return Fit::Off;
+        }
+        return Fit::Yes(families);
+    };
+    let field_fams = super::super::discover::detect_families(&t.genre);
+    if !field_fams.is_empty() && !field_fams.contains_key(f) {
+        return Fit::Off;
+    }
+    // A genre field naming a sub-genre of another family ("Lofi Hip Hop" in a Hip Hop mix).
+    if subgenre_of(&t.genre).and_then(|s| sub_family(&s)).is_some_and(|sf| sf != f) {
+        return Fit::Off;
+    }
+    let fits = match &plan.sub {
+        Some(s) => {
+            let field = subgenre_of(&t.genre).filter(|g| sub_family(g).is_some());
+            names_sub(t, s) && field.is_none_or(|g| g == *s)
+        }
+        None => families.contains(f),
+    };
+    if fits {
+        let mut fams = families;
+        if !fams.contains(f) {
+            fams.push(f.clone());
+        }
+        Fit::Yes(fams)
+    } else if labeled {
+        Fit::Off
+    } else if known {
+        Fit::Yes(vec![f.clone()])
+    } else {
+        Fit::Unsure
+    }
+}
+
+/// `admit`, counting what it drops in `r`.
+pub fn admit_counted(plan: &Plan, t: &Track, families: Vec<String>, r: &mut Rejects) -> Option<Vec<String>> {
+    match admit(plan, t, families) {
+        Fit::Yes(f) => Some(f),
+        Fit::Off => {
+            r.off += 1;
+            None
+        }
+        Fit::Unsure => {
+            r.unsure += 1;
+            None
+        }
+    }
 }
 
 /// Where new songs in mixes come from (the user's own tracks are always kept).
@@ -1507,13 +1832,95 @@ mod tests {
     fn related_admission_without_genres() {
         let mut p = Plan::new("x".into(), "daily", "x".into());
         p.family = Some("rap".into());
-        assert_eq!(admit_related(&p, vec!["rap".into()], 1, false), Some(vec!["rap".to_string()]));
-        assert_eq!(admit_related(&p, vec!["house".into()], 3, true), None, "a different genre stays out");
-        assert_eq!(admit_related(&p, vec![], 1, false), None, "no genre, one seed: unsure");
-        assert_eq!(admit_related(&p, vec![], 2, false), Some(vec!["rap".to_string()]));
-        assert_eq!(admit_related(&p, vec![], 1, true), Some(vec!["rap".to_string()]));
-        p.family = None;
-        assert_eq!(admit_related(&p, vec![], 1, false), Some(vec![]));
+        p.artists.insert("known rapper".into());
+        let song = yt("aaaaaaaaaa1", "Stranger", "song");
+        assert_eq!(admit(&p, &song, vec!["rap".into()]), Fit::Yes(vec!["rap".to_string()]));
+        assert_eq!(admit(&p, &song, vec!["house".into()]), Fit::Off, "a different genre stays out");
+        assert_eq!(admit(&p, &song, vec![]), Fit::Unsure, "no genre, unknown artist: out");
+        let known = yt("aaaaaaaaaa2", "Known Rapper - Topic", "song");
+        assert_eq!(admit(&p, &known, vec![]), Fit::Yes(vec!["rap".to_string()]), "no genre, artist in the mix");
+        assert_eq!(admit(&p, &known, vec!["house".into()]), Fit::Off, "known artist, other genre");
+        let mut r = Rejects::default();
+        assert!(admit_counted(&p, &song, vec![], &mut r).is_none());
+        assert!(admit_counted(&p, &song, vec!["house".into()], &mut r).is_none());
+        assert_eq!((r.off, r.unsure, r.total()), (1, 1, 2));
+        // Era mixes: a song with a genre must be one of the decade's families.
+        let mut e = Plan::new("era-1990s".into(), "era", "90s Mix".into());
+        e.decade = 1990;
+        e.families = vec!["rap".into(), "rnb".into()];
+        assert_eq!(admit(&e, &song, vec!["house".into()]), Fit::Off);
+        assert_eq!(admit(&e, &song, vec!["rnb".into()]), Fit::Yes(vec!["rnb".to_string()]));
+        assert_eq!(admit(&e, &song, vec![]), Fit::Yes(vec![]), "decade searches name the genre");
+        // A genre field naming another family's sub-genre stays out of a family mix.
+        assert_eq!(admit(&p, &tr("l", "L", "beats", "Lofi Hip Hop"), vec!["rap".into(), "ambient".into()]), Fit::Off);
+        // A mix with no genre of its own: songs with a genre need an artist it knows.
+        let mut g = Plan::new("daily-5".into(), "daily", "Daily Mix 5".into());
+        g.artists.insert("known rapper".into());
+        assert_eq!(admit(&g, &song, vec!["harddance".into()]), Fit::Off);
+        assert_eq!(admit(&g, &known, vec!["harddance".into()]), Fit::Yes(vec!["harddance".to_string()]));
+        assert_eq!(admit(&g, &song, vec![]), Fit::Yes(vec![]));
+    }
+
+    #[test]
+    fn hardtekk_mix_takes_tekk_not_hardstyle() {
+        let mut p = Plan::new("genre-harddance-hardtekk".into(), "genre", "Hardtekk Mix".into());
+        p.family = Some("harddance".into());
+        p.sub = Some("hardtekk".into());
+        p.artists.insert("humpstekk".into());
+        let hd = || vec!["harddance".to_string()];
+        // A hardstyle song has the right family but the wrong sub-genre.
+        assert_eq!(admit(&p, &tr("1", "Headhunterz", "Dragonborn", "Hardstyle"), hd()), Fit::Off);
+        assert_eq!(admit(&p, &tr("2", "X", "Raw kick", "Rawstyle"), hd()), Fit::Off);
+        assert_eq!(admit(&p, &tr("3", "X", "Anthem", "Hard Dance"), hd()), Fit::Off, "the family alone is not enough");
+        assert_eq!(admit(&p, &tr("4", "X", "Anthem (Tekk Edit)", "Hardstyle"), hd()), Fit::Off, "the genre field wins");
+        assert_eq!(admit(&p, &tr("4b", "X", "LP (tekk)", "House"), hd()), Fit::Off, "a field naming another family wins too");
+        // "tekk" in the genre, tags, title or artist name fits.
+        assert!(matches!(admit(&p, &tr("5", "X", "Song", "Hardtek"), hd()), Fit::Yes(_)));
+        assert!(matches!(admit(&p, &tr("6", "X", "Pump It (TEKK Remix)", ""), hd()), Fit::Yes(_)));
+        assert!(matches!(admit(&p, &tr("7", "TEKKSTAR", "Song", "Dance & EDM"), vec![]), Fit::Yes(_)));
+        // YouTube songs with no genre: style words or a known artist.
+        assert!(matches!(admit(&p, &yt("bbbbbbbbbb1", "Someone", "Hardtekk Bangers 2"), hd()), Fit::Yes(_)));
+        assert_eq!(admit(&p, &yt("bbbbbbbbbb2", "Someone", "Untitled"), vec![]), Fit::Unsure, "unknown artist, no style words");
+        assert_eq!(admit(&p, &yt("bbbbbbbbbb3", "Someone", "Big Hardstyle Anthem"), hd()), Fit::Off);
+        assert_eq!(admit(&p, &yt("bbbbbbbbbb4", "HUMPSTEKK", "Untitled"), vec![]), Fit::Yes(hd()), "artist the mix knows");
+        // The same hardstyle song is fine in a Hardstyle Mix.
+        p.sub = Some("hardstyle".into());
+        assert!(matches!(admit(&p, &tr("1", "Headhunterz", "Dragonborn", "Hardstyle"), hd()), Fit::Yes(_)));
+        // Own tracks: only ones labeled with another sub-genre of the family leave.
+        assert!(!own_fits(&tr("1", "A", "x", "Hardstyle"), Some("harddance"), Some("hardtekk")));
+        assert!(own_fits(&tr("1", "A", "x", "Hardtekk"), Some("harddance"), Some("hardtekk")));
+        assert!(own_fits(&tr("1", "A", "x", "Dance & EDM"), Some("harddance"), Some("hardtekk")), "unlabeled stays");
+        assert!(own_fits(&tr("1", "A", "Rage", ""), Some("harddance"), Some("hardtekk")), "rap words don't count here");
+        assert_eq!(track_subs(&tr("1", "A", "Frenchcore Hardcore", ""), None), vec!["frenchcore", "hardcore"]);
+    }
+
+    #[test]
+    fn daily_mix_sub_genre_comes_from_its_tracks() {
+        // Tekk tracks named only in their titles (genre "Dance & EDM") plus a few hardstyle ones:
+        // the cluster is about hardtekk, so the hardstyle songs leave its Daily Mix.
+        let mut likes: Vec<Track> = (0..9).map(|i| tr(&format!("1{i}"), &format!("T{}", i % 3), &format!("tekk song {i}"), "Dance & EDM")).collect();
+        likes.extend((0..3).map(|i| tr(&format!("2{i}"), "H", &format!("hs {i}"), "Hardstyle")));
+        let items = items_from(&likes, &[], 0);
+        let groups = taste_groups(&items, &HashMap::new());
+        assert_eq!(groups.len(), 1, "{groups:?}");
+        assert_eq!((groups[0].sub.as_deref(), groups[0].label().as_str()), (Some("hardtekk"), "Hardtekk"));
+        let plans = plans(&items, &HashMap::new(), 0);
+        let d = plans.iter().find(|p| p.kind == "daily").unwrap();
+        assert_eq!((d.family.as_deref(), d.sub.as_deref(), d.tag.as_str()), (Some("harddance"), Some("hardtekk"), "Hardtekk"));
+        assert_eq!(d.own.len(), 9);
+        assert!(d.own.iter().all(|t| t.genre != "Hardstyle"));
+        assert!(d.artists.contains("t0") && !d.artists.contains("h"));
+        assert_eq!(admit(d, &tr("x", "Z", "y", "Hardstyle"), vec!["harddance".into()]), Fit::Off);
+
+        // An even mix of three sub-genres: the family alone.
+        let mut likes: Vec<Track> = Vec::new();
+        for (k, g) in ["Hardtekk", "Frenchcore", "Hardstyle"].iter().enumerate() {
+            likes.extend((0..3).map(|i| tr(&format!("{k}{i}"), &format!("{g}{i}"), &format!("s {k}{i}"), g)));
+        }
+        let items = items_from(&likes, &[], 0);
+        let groups = taste_groups(&items, &HashMap::new());
+        assert_eq!(groups.len(), 1);
+        assert_eq!((groups[0].sub.as_deref(), groups[0].label().as_str()), (None, "Hard Dance"));
     }
 
     #[test]

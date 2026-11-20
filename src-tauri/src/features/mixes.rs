@@ -42,14 +42,16 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::soundcloud::{artwork, collection, id_of, map_track, playable, str_of, unwrap_item, write_json, SoundCloud, Track};
-use engine::{Item, Mix, Plan, Sources, MAX_TRACKS};
+use engine::{Item, Mix, Plan, Rejects, Sources, MAX_TRACKS};
 
 const FILE: &str = "mixes.json";
 const SOURCES_FILE: &str = "mixes-sources.json";
 // 3: YouTube seeds top up with YouTube Music radio; YouTube Music years
 // 4: new songs from SoundCloud and YouTube by default (YouTube Music twins of SoundCloud seeds)
 // 5: every mix but On Repeat / Repeat Rewind fills to 50 with about half new songs; era mixes get new songs of their decade
-const VERSION: u32 = 5;
+// 6: one clear style per mix: sub-genre mixes (and Daily Mixes about one) only take new songs that
+//    name the sub-genre; genre-less YouTube songs need an artist the mix knows; shorter mixes over off-genre filler
+const VERSION: u32 = 6;
 /// SoundCloud seeds per plan that get a YouTube Music twin (more are tried when some have none).
 const TWIN_SEEDS: usize = 4;
 const TWIN_TRIES: usize = 6;
@@ -493,18 +495,26 @@ async fn twin_requests(app: &AppHandle, items: &[Item], plans: &[Plan], src: Sou
     out
 }
 
-/// Twin seeds per genre family, from every plan's SoundCloud seeds (heaviest first): a
-/// plan whose own seeds have no twin borrows these, so it still gets YouTube songs of its genre.
+/// Twin seeds per style (`engine::style_key`: "harddance", "harddance/hardtekk"), from every
+/// plan's SoundCloud seeds (heaviest first): a plan whose own seeds have no twin borrows
+/// those of its style, so it still gets YouTube songs of its genre. A sub-genre plan only
+/// borrows from plans about the same sub-genre; a family plan from any plan of the family.
 fn family_twins(plans: &[Plan], twins: &HashMap<String, String>) -> HashMap<String, Vec<(String, f64)>> {
     let mut m: HashMap<String, Vec<(String, f64)>> = HashMap::new();
     for p in plans {
         let Some(f) = &p.family else { continue };
-        let list = m.entry(f.clone()).or_default();
-        for (id, w) in &p.seeds {
-            if let Some(v) = twins.get(id) {
-                let v = format!("yt:{v}");
-                if !list.iter().any(|(s, _)| *s == v) {
-                    list.push((v, *w));
+        let mut keys = vec![f.clone()];
+        if let Some(s) = &p.sub {
+            keys.push(engine::style_key(Some(f), Some(s)));
+        }
+        for key in keys {
+            let list = m.entry(key).or_default();
+            for (id, w) in &p.seeds {
+                if let Some(v) = twins.get(id) {
+                    let v = format!("yt:{v}");
+                    if !list.iter().any(|(s, _)| *s == v) {
+                        list.push((v, *w));
+                    }
                 }
             }
         }
@@ -531,7 +541,7 @@ fn with_twins(p: &Plan, twins: &HashMap<String, String>, fam: &HashMap<String, V
             .collect();
         p.yt_seeds.extend(add);
         if p.yt_seeds.is_empty() {
-            if let Some(list) = p.family.as_ref().and_then(|f| fam.get(f)) {
+            if let Some(list) = p.family.as_ref().and_then(|f| fam.get(&engine::style_key(Some(f), p.sub.as_deref()))) {
                 p.yt_seeds = list.iter().take(TWIN_SEEDS).cloned().collect();
             }
         }
@@ -565,24 +575,25 @@ async fn yt_radios(plan: &Plan, known: &Known, limit: usize, seeds: usize) -> Ve
 
 /// New songs for a plan: SoundCloud related tracks (discover's My Wave) for its SoundCloud
 /// seeds and YouTube Music radio for its YouTube seeds (twins included, see `with_twins`),
-/// each filtered to the plan's genre family, then blended by `engine::new_share`: about
-/// half and half with "both", one platform only with "sc" / "yt".
-async fn top_up(app: &AppHandle, plan: &Plan, known: &Known, src: Sources) -> Vec<(Track, Vec<String>)> {
+/// each checked by `engine::admit` (family, sub-genre, known artist), then blended by
+/// `engine::new_share`: about half and half with "both", one platform only with "sc" / "yt".
+/// Also returns how many candidates the genre check dropped.
+async fn top_up(app: &AppHandle, plan: &Plan, known: &Known, src: Sources) -> (Vec<(Track, Vec<String>)>, Rejects) {
     let has_sc = !plan.seeds.is_empty() && src != Sources::Yt;
     let has_yt = !plan.yt_seeds.is_empty() && src != Sources::Sc;
     let share = match (has_sc, has_yt) {
-        (false, false) => return Vec::new(),
+        (false, false) => return (Vec::new(), Rejects::default()),
         (true, false) => 0.0,
         (false, true) => 1.0,
         _ => engine::new_share(src, plan.yt_share),
     };
     // Daily Mixes are mostly new songs, so they need a bigger pool (some get dropped by the genre filter).
     let limit = if plan.kind == "daily" { 70 } else { 60 };
-    let fits = |fams: &[String]| plan.family.as_ref().is_none_or(|f| fams.contains(f));
 
     let sc = async {
+        let mut r = Rejects::default();
         if !has_sc || share > 0.9 {
-            return Vec::new();
+            return (Vec::new(), r);
         }
         let seeds: Vec<Value> = plan.seeds.iter().map(|(id, w)| json!({ "id": id, "weight": w })).collect();
         let v = super::discover::handle(app, "wave", json!({ "seeds": seeds, "heard": known.ids, "limit": limit })).await;
@@ -590,33 +601,34 @@ async fn top_up(app: &AppHandle, plan: &Plan, known: &Known, src: Sources) -> Ve
         let mut out = Vec::with_capacity(list.len());
         for t in list {
             let f = families(app, &style_text(&t)).await;
-            if fits(&f) {
+            if let Some(f) = engine::admit_counted(plan, &t, f, &mut r) {
                 out.push((t, f));
             }
         }
-        out
+        (out, r)
     };
     let yt = async {
+        let mut r = Rejects::default();
         if !has_yt || share < 0.1 {
-            return Vec::new();
+            return (Vec::new(), r);
         }
-        let artists: HashSet<String> = plan.own.iter().map(engine::artist_key).collect();
         let mut out = Vec::new();
         // YouTube Music has no genres, so more candidates fall to the genre check: rank twice as many
         // (the radios are fetched anyway).
-        for (t, hits) in yt_related(plan, known, limit * 2).await {
+        for (t, _) in yt_related(plan, known, limit * 2).await {
             let (f, junk) = style_of(app, &style_text(&t)).await;
             if junk {
                 continue;
             }
-            if let Some(f) = engine::admit_related(plan, f, hits, artists.contains(&engine::artist_key(&t))) {
+            if let Some(f) = engine::admit_counted(plan, &t, f, &mut r) {
                 out.push((t, f));
             }
         }
-        out
+        (out, r)
     };
-    let (sc, yt) = futures::join!(sc, yt);
-    engine::blend(sc, yt, share)
+    let ((sc, mut r), (yt, ry)) = futures::join!(sc, yt);
+    r.add(ry);
+    (engine::blend(sc, yt, share), r)
 }
 
 /// The YouTube share of a plan's new songs when one side may have nothing.
@@ -631,7 +643,7 @@ fn side_share(plan: &Plan, src: Sources, has_sc: bool, has_yt: bool) -> f64 {
 /// More new songs for a mix still under 50 tracks: SoundCloud related tracks of up to
 /// `MORE_SEEDS` SoundCloud seeds and YouTube Music radios of as many YouTube seeds, with the
 /// same genre checks as `top_up` (`style` = discover's style: families, is an edit).
-async fn more_related<S, F>(sc: &SoundCloud, plan: &Plan, known: &Known, src: Sources, limit: usize, style: S) -> Vec<(Track, Vec<String>)>
+async fn more_related<S, F>(sc: &SoundCloud, plan: &Plan, known: &Known, src: Sources, limit: usize, style: S) -> (Vec<(Track, Vec<String>)>, Rejects)
 where
     S: Fn(String) -> F,
     F: std::future::Future<Output = (Vec<String>, bool)>,
@@ -639,12 +651,12 @@ where
     let has_sc = !plan.seeds.is_empty() && src != Sources::Yt;
     let has_yt = !plan.yt_seeds.is_empty() && src != Sources::Sc;
     if !has_sc && !has_yt {
-        return Vec::new();
+        return (Vec::new(), Rejects::default());
     }
-    let fits = |fams: &[String]| plan.family.as_ref().is_none_or(|f| fams.contains(f));
     let sc_side = async {
+        let mut r = Rejects::default();
         if !has_sc {
-            return Vec::new();
+            return (Vec::new(), r);
         }
         let lists: Vec<(f64, Vec<Track>)> = join_all(plan.seeds.iter().take(MORE_SEEDS).map(|(id, w)| async move {
             let v = sc.api(&format!("/tracks/{id}/related"), &[("limit", "50".to_string())]).await.unwrap_or(Value::Null);
@@ -653,33 +665,37 @@ where
         .await;
         let mut out = Vec::new();
         for (t, _) in engine::rank_related(&lists, &known.set, &known.songs, limit * 2) {
-            let (f, _) = style(style_text(&t)).await;
-            if fits(&f) {
-                out.push((t, f));
-            }
-        }
-        out
-    };
-    let yt_side = async {
-        if !has_yt {
-            return Vec::new();
-        }
-        let artists: HashSet<String> = plan.own.iter().map(engine::artist_key).collect();
-        let mut out = Vec::new();
-        for (t, hits) in yt_radios(plan, known, limit * 2, MORE_SEEDS).await {
             let (f, junk) = style(style_text(&t)).await;
             if junk {
                 continue;
             }
-            if let Some(f) = engine::admit_related(plan, f, hits, artists.contains(&engine::artist_key(&t))) {
+            if let Some(f) = engine::admit_counted(plan, &t, f, &mut r) {
                 out.push((t, f));
             }
         }
-        out
+        (out, r)
     };
-    let (a, b) = futures::join!(sc_side, yt_side);
+    let yt_side = async {
+        let mut r = Rejects::default();
+        if !has_yt {
+            return (Vec::new(), r);
+        }
+        let mut out = Vec::new();
+        for (t, _) in yt_radios(plan, known, limit * 2, MORE_SEEDS).await {
+            let (f, junk) = style(style_text(&t)).await;
+            if junk {
+                continue;
+            }
+            if let Some(f) = engine::admit_counted(plan, &t, f, &mut r) {
+                out.push((t, f));
+            }
+        }
+        (out, r)
+    };
+    let ((a, mut r), (b, rb)) = futures::join!(sc_side, yt_side);
+    r.add(rb);
     let share = side_share(plan, src, !a.is_empty(), !b.is_empty());
-    engine::blend(a, b, share)
+    (engine::blend(a, b, share), r)
 }
 
 /// Playable SoundCloud tracks of an API answer: (track, year, year is only the upload date).
@@ -715,8 +731,9 @@ type EraCand = (Track, Option<u16>, bool, Vec<String>);
 /// searches in the user's top genres of that decade (`fams`). Every candidate's year is checked:
 /// SoundCloud dates, YouTube Music album years for YouTube songs and for SoundCloud songs dated
 /// only by their upload (cached, at most `ERA_LOOKUPS` new lookups / `ERA_BUDGET` per platform).
+/// Candidates with a genre must be in one of the decade's families (`engine::admit`).
 #[allow(clippy::too_many_arguments)]
-async fn era_top_up<S, F>(sc: &SoundCloud, dir: &std::path::Path, plan: &Plan, fams: &[String], known: &Known, src: Sources, style: S) -> Vec<(Track, Vec<String>)>
+async fn era_top_up<S, F>(sc: &SoundCloud, dir: &std::path::Path, plan: &Plan, fams: &[String], known: &Known, src: Sources, style: S) -> (Vec<(Track, Vec<String>)>, Rejects)
 where
     S: Fn(String) -> F,
     F: std::future::Future<Output = (Vec<String>, bool)>,
@@ -822,22 +839,27 @@ where
     };
     let (sc_c, yt_c) = (clean(sc_c), clean(yt_c));
     let n_cands = (sc_c.len(), yt_c.len());
-    let (a, b) = futures::join!(era_dated(dir, sc_c, decade, want, false, &style), era_dated(dir, yt_c, decade, want, true, &style));
+    let ((a, mut r), (b, rb)) =
+        futures::join!(era_dated(dir, plan, sc_c, want, false, &style), era_dated(dir, plan, yt_c, want, true, &style));
+    r.add(rb);
     log(&format!(
-        "{}: {} + {} SoundCloud / YouTube candidates -> {} + {} of the {} (want {need})",
-        plan.title, n_cands.0, n_cands.1, a.len(), b.len(), engine::decade_word(decade)
+        "{}: {} + {} SoundCloud / YouTube candidates -> {} + {} of the {} (want {need}; {} off-genre, families {:?})",
+        plan.title, n_cands.0, n_cands.1, a.len(), b.len(), engine::decade_word(decade), r.total(), plan.families
     ));
     let share = side_share(plan, src, !a.is_empty(), !b.is_empty());
-    engine::blend(a, b, share)
+    (engine::blend(a, b, share), r)
 }
 
-/// The candidates of one platform that are songs of `decade`, in order, until `want` are
-/// found. Years come in chunks (cache hits are free; new lookups are bounded).
-async fn era_dated<S, F>(dir: &std::path::Path, cands: Vec<EraCand>, decade: u16, want: usize, youtube: bool, style: &S) -> Vec<(Track, Vec<String>)>
+/// The candidates of one platform that are songs of the plan's decade and pass its genre
+/// check, in order, until `want` are found. Years come in chunks (cache hits are free; new
+/// lookups are bounded).
+async fn era_dated<S, F>(dir: &std::path::Path, plan: &Plan, cands: Vec<EraCand>, want: usize, youtube: bool, style: &S) -> (Vec<(Track, Vec<String>)>, Rejects)
 where
     S: Fn(String) -> F,
     F: std::future::Future<Output = (Vec<String>, bool)>,
 {
+    let decade = plan.decade;
+    let mut r = Rejects::default();
     let yt = super::youtube::Yt::global();
     let deadline = Instant::now() + ERA_BUDGET;
     let mut lookups = ERA_LOOKUPS;
@@ -851,7 +873,10 @@ where
         let mut fams: Vec<Vec<String>> = Vec::new();
         for c in chunk {
             let (f, junk) = style(style_text(&c.0)).await;
-            if !junk {
+            if junk {
+                continue;
+            }
+            if let Some(f) = engine::admit_counted(plan, &c.0, f, &mut r) {
                 keep.push(c);
                 fams.push(f);
             }
@@ -885,7 +910,7 @@ where
             }
         }
     }
-    out
+    (out, r)
 }
 
 /// Release years from YouTube Music (cached forever, bounded per build, highest weight
@@ -1051,10 +1076,6 @@ async fn build(app: &AppHandle) -> Result<Cache, String> {
     let known = &known;
     let fam = &family_twins(&plans, &twins);
     let twins = &twins;
-    // Era mixes search the user's top genres of their decade.
-    let era_fams: HashMap<u16, Vec<String>> =
-        plans.iter().filter(|p| p.decade > 0).map(|p| (p.decade, engine::era_families(&items, p.decade, 3))).collect();
-    let era_fams = &era_fams;
     let (scr, dir): (&SoundCloud, &std::path::Path) = (&*sc, dir.as_path());
     let style = |text: String| async move { style_of(app, &text).await };
     let style = &style;
@@ -1062,23 +1083,32 @@ async fn build(app: &AppHandle) -> Result<Cache, String> {
     for group in plans.chunks(3) {
         let done = join_all(group.iter().map(|p| async move {
             let tp = with_twins(p, twins, fam, src);
-            let mix = if p.decade > 0 {
-                let fams = era_fams.get(&p.decade).map(Vec::as_slice).unwrap_or(&[]);
-                let fresh = era_top_up(scr, dir, &tp, fams, known, src, style).await;
-                engine::finish(p, &fresh, now)
+            // Era mixes search the user's top genres of their decade (`Plan::families`).
+            let (mix, rejected) = if p.decade > 0 {
+                let (fresh, r) = era_top_up(scr, dir, &tp, &p.families, known, src, style).await;
+                (engine::finish(p, &fresh, now), r)
             } else {
-                let mut fresh = top_up(app, &tp, known, src).await;
+                let (mut fresh, mut r) = top_up(app, &tp, known, src).await;
                 let mut mix = engine::finish(p, &fresh, now);
-                // Still under 50: more related tracks from more seeds.
+                // Still under 50: more related tracks from more seeds (same genre checks).
                 if engine::tops_up(&p.kind) && mix.as_ref().map_or(0, |m| m.tracks.len()) < MAX_TRACKS {
-                    fresh.extend(more_related(scr, &tp, known, src, 60, style).await);
+                    let (more, rm) = more_related(scr, &tp, known, src, 60, style).await;
+                    fresh.extend(more);
+                    r.add(rm);
                     mix = engine::finish(p, &fresh, now);
                 }
-                mix
+                (mix, r)
             };
             let n = mix.as_ref().map_or(0, |m| m.tracks.len());
+            let style_name = engine::style_key(p.family.as_deref(), p.sub.as_deref());
             if engine::tops_up(&p.kind) && n < MAX_TRACKS {
-                log(&format!("{}: {n} tracks, not enough new songs passed the genre / decade checks", p.title));
+                // Shorter beats off-genre filler: own tracks of the style and matching new songs only.
+                log(&format!(
+                    "{} [{style_name}]: {n} tracks, not enough new songs of its style ({} off-genre, {} genre-less from unknown artists dropped)",
+                    p.title, rejected.off, rejected.unsure
+                ));
+            } else if rejected.total() > 0 {
+                log(&format!("{} [{style_name}]: {} off-genre / {} unsure new songs dropped", p.title, rejected.off, rejected.unsure));
             }
             mix
         }))
@@ -1121,22 +1151,10 @@ async fn build(app: &AppHandle) -> Result<Cache, String> {
 mod tests {
     use super::*;
 
-    /// Rough family guess for the live test (the app uses discover's detector).
+    /// Genre families of a text with discover's detector (what the app's `style` command uses).
     fn guess(text: &str) -> Vec<String> {
-        let t = text.to_lowercase();
-        let mut v = Vec::new();
-        for (f, words) in [
-            ("harddance", &["tekk", "tek", "frenchcore", "hardstyle", "uptempo", "hardcore", "rawstyle", "speedcore", "gabber"][..]),
-            ("techno", &["techno"][..]),
-            ("house", &["house", "disco"][..]),
-            ("rap", &["hip hop", "hip-hop", "rap", "trap", "drill", "plugg"][..]),
-            ("phonk", &["phonk"][..]),
-            ("bass", &["dubstep", "riddim"][..]),
-        ] {
-            if words.iter().any(|w| t.contains(w)) {
-                v.push(f.to_string());
-            }
-        }
+        let mut v: Vec<String> = super::super::discover::detect_families(text).into_keys().collect();
+        v.sort_by_key(|f| engine::family_rank(f));
         v
     }
 
@@ -1301,125 +1319,132 @@ mod tests {
         }
 
         // SoundCloud side: related tracks of the best seeds (stand-in for discover's wave).
-        async fn sc_fresh(sc: &SoundCloud, p: &Plan, known: &Known, limit: usize, guess: fn(&str) -> Vec<String>) -> Vec<(Track, Vec<String>)> {
+        // Unfiltered: the genre rules run below, so old and new rules see the same candidates.
+        async fn sc_pool(sc: &SoundCloud, p: &Plan, known: &Known, limit: usize, guess: fn(&str) -> Vec<String>) -> Vec<(Track, Vec<String>)> {
             let lists: Vec<(f64, Vec<Track>)> = join_all(p.seeds.iter().take(5).map(|(id, w)| async move {
                 let v = sc.api(&format!("/tracks/{id}/related"), &[("limit", "30".to_string())]).await.unwrap_or(Value::Null);
                 let list = v["collection"].as_array().cloned().unwrap_or_default();
                 (*w, list.iter().filter(|t| playable(t)).map(map_track).collect::<Vec<Track>>())
             }))
             .await;
+            // discover's wave drops edits too
             engine::rank_related(&lists, &known.set, &known.songs, limit)
                 .into_iter()
+                .filter(|(t, _)| !is_edit(&style_text(t)))
                 .map(|(t, _)| {
                     let f = guess(&style_text(&t));
                     (t, f)
                 })
-                .filter(|(_, f)| p.family.as_ref().is_none_or(|x| f.contains(x)))
                 .collect()
         }
-        async fn yt_fresh(p: &Plan, known: &Known, limit: usize, guess: fn(&str) -> Vec<String>) -> Vec<(Track, Vec<String>)> {
-            let artists: HashSet<String> = p.own.iter().map(engine::artist_key).collect();
-            yt_related(p, known, limit * 2)
-                .await
-                .into_iter()
-                .filter(|(t, _)| !is_edit(&t.title))
-                .filter_map(|(t, hits)| {
-                    let a = artists.contains(&engine::artist_key(&t));
-                    engine::admit_related(p, guess(&style_text(&t)), hits, a).map(|f| (t, f))
-                })
-                .collect()
+        async fn yt_pool(p: &Plan, known: &Known, limit: usize, guess: fn(&str) -> Vec<String>) -> Vec<(Track, Vec<String>)> {
+            yt_related(p, known, limit * 2).await.into_iter().filter(|(t, _)| !is_edit(&t.title)).map(|(t, _)| { let f = guess(&style_text(&t)); (t, f) }).collect()
+        }
+        /// The old rule (family only; genre-less YouTube songs by any artist of the mix).
+        fn old_fit(p: &Plan, t: &Track, f: &[String]) -> bool {
+            match &p.family {
+                None => true,
+                Some(x) => f.contains(x) || (f.is_empty() && engine::is_yt(t) && p.own.iter().any(|o| engine::artist_key(o) == engine::artist_key(t))),
+            }
         }
 
         let mut known = Known::of(&items);
         known.set.extend(twins.values().map(|v| format!("yt:{v}")));
         let fam = family_twins(&plans, &twins);
         let t1 = Instant::now();
-        let mut shown = false;
         let test_style = |text: String| async move { (guess(&text), is_edit(&text)) };
-        // (title, tracks, % new, new SC, new YT) per mix, printed as a table at the end.
-        let mut table: Vec<(String, usize, usize, usize, usize)> = Vec::new();
+        let style_of_plan = |p: &Plan| engine::style_key(p.family.as_deref(), p.sub.as_deref());
+        // (title, style, tracks before -> after, % new before -> after, off / unsure dropped) per mix.
+        struct Row {
+            title: String,
+            style: String,
+            before: usize,
+            after: usize,
+            new_before: usize,
+            new_after: usize,
+            r: Rejects,
+        }
+        let mut table: Vec<Row> = Vec::new();
+        let pct = |n: usize, of: usize| n * 100 / of.max(1);
         for p in plans.iter().filter(|p| !engine::tops_up(&p.kind)) {
             let n = engine::finish(p, &[], now).map_or(0, |m| m.tracks.len());
-            table.push((p.title.clone(), n, 0, 0, 0));
+            table.push(Row { title: p.title.clone(), style: String::new(), before: n, after: n, new_before: 0, new_after: 0, r: Rejects::default() });
         }
+        let new_of = |p: &Plan, m: &Option<Mix>| -> Vec<Track> {
+            let own: HashSet<&str> = p.own.iter().map(|t| t.id.as_str()).collect();
+            m.as_ref().map(|m| m.tracks.iter().filter(|t| !own.contains(t.id.as_str())).cloned().collect()).unwrap_or_default()
+        };
         for p in plans.iter().filter(|p| p.decade > 0) {
             let t2 = Instant::now();
             let tp = with_twins(p, &twins, &fam, Sources::Both);
-            let fams = engine::era_families(&items, p.decade, 3);
-            let fresh = era_top_up(&sc, &ycache, &tp, &fams, &known, Sources::Both, &test_style).await;
-            let m = engine::finish(p, &fresh, now);
-            let own: HashSet<&str> = p.own.iter().map(|t| t.id.as_str()).collect();
-            let tracks = m.as_ref().map(|m| m.tracks.clone()).unwrap_or_default();
-            let new: Vec<&Track> = tracks.iter().filter(|t| !own.contains(t.id.as_str())).collect();
-            let (ns, ny) = (new.iter().filter(|t| engine::is_sc(t)).count(), new.iter().filter(|t| engine::is_yt(t)).count());
-            println!(
-                "  [era] {}: {} tracks = {} own + {} new (new SC/YT {ns}/{ny}); {} own in the decade, genres {fams:?}, YT seeds {} -> {}, {} ms",
-                p.title, tracks.len(), tracks.len() - new.len(), new.len(), p.own.len(), p.yt_seeds.len(), tp.yt_seeds.len(), t2.elapsed().as_millis()
-            );
-            for t in new.iter().take(14) {
-                println!("      new: {} - {} [{}] {}", t.artist, t.title, if engine::is_yt(t) { "YT" } else { "SC" }, t.url);
+            let mut open = tp.clone();
+            open.families.clear();
+            let (all, _) = era_top_up(&sc, &ycache, &open, &p.families, &known, Sources::Both, &test_style).await;
+            let before = engine::finish(p, &all, now);
+            let mut r = Rejects::default();
+            let fresh: Vec<(Track, Vec<String>)> =
+                all.iter().filter_map(|(t, f)| engine::admit_counted(&tp, t, f.clone(), &mut r).map(|f| (t.clone(), f))).collect();
+            let after = engine::finish(p, &fresh, now);
+            let (nb, na) = (new_of(p, &before), new_of(p, &after));
+            let (b, a) = (before.as_ref().map_or(0, |m| m.tracks.len()), after.as_ref().map_or(0, |m| m.tracks.len()));
+            println!("  [era] {}: families {:?}; {b} -> {a} tracks, {} -> {} new, {} off-genre dropped, {} ms", p.title, p.families, nb.len(), na.len(), r.off, t2.elapsed().as_millis());
+            for t in nb.iter().filter(|t| !na.iter().any(|x| x.id == t.id)).take(8) {
+                println!("      dropped: {} - {} [{}] genre {:?}", t.artist, t.title, if engine::is_yt(t) { "YT" } else { "SC" }, t.genre);
             }
-            table.push((p.title.clone(), tracks.len(), new.len() * 100 / tracks.len().max(1), ns, ny));
+            table.push(Row { title: p.title.clone(), style: format!("{:?}", p.families), before: b, after: a, new_before: nb.len(), new_after: na.len(), r });
         }
         for p in plans.iter().filter(|p| p.decade == 0 && engine::tops_up(&p.kind) && (!p.seeds.is_empty() || !p.yt_seeds.is_empty())) {
             let t2 = Instant::now();
             let limit = if p.kind == "daily" { 70 } else { 60 };
-            let sc_list = sc_fresh(&sc, p, &known, limit, guess).await;
-            // Before: YouTube only from the plan's own YouTube seeds, blended by its own share.
-            let old_share = match (!p.seeds.is_empty(), !p.yt_seeds.is_empty()) {
-                (true, false) => 0.0,
-                (false, true) => 1.0,
-                _ => p.yt_share,
-            };
-            let old_yt = if p.yt_seeds.is_empty() || old_share < 0.1 { Vec::new() } else { yt_fresh(p, &known, limit, guess).await };
-            let old_sc = if old_share > 0.9 { Vec::new() } else { sc_list.clone() };
-            let before = engine::finish(p, &engine::blend(old_sc, old_yt, old_share), now);
-            // After ("both"): twins seed YouTube, at least 35% each side.
             let tp = with_twins(p, &twins, &fam, Sources::Both);
-            let new_yt = if tp.yt_seeds.is_empty() { Vec::new() } else { yt_fresh(&tp, &known, limit, guess).await };
+            // Every candidate, genre-checked below: first round, then the second-round pool.
+            let mut open = tp.clone();
+            open.family = None;
+            open.sub = None;
             let share = match (!tp.seeds.is_empty(), !tp.yt_seeds.is_empty()) {
                 (true, false) => 0.0,
                 (false, true) => 1.0,
                 _ => engine::new_share(Sources::Both, tp.yt_share),
             };
-            let mut fresh = engine::blend(sc_list, new_yt, share);
-            let mut after = engine::finish(p, &fresh, now);
-            let first = after.as_ref().map_or(0, |m| m.tracks.len());
-            if first < MAX_TRACKS {
-                fresh.extend(more_related(&sc, &tp, &known, Sources::Both, 60, &test_style).await);
-                after = engine::finish(p, &fresh, now);
-            }
-            let own: HashSet<&str> = p.own.iter().map(|t| t.id.as_str()).collect();
-            let split = |m: &Option<Mix>| -> (usize, usize) {
-                m.as_ref().map_or((0, 0), |m| {
-                    let new: Vec<&Track> = m.tracks.iter().filter(|t| !own.contains(t.id.as_str())).collect();
-                    (new.iter().filter(|t| engine::is_sc(t)).count(), new.iter().filter(|t| engine::is_yt(t)).count())
-                })
-            };
-            let pct = |(s, y): (usize, usize)| if s + y == 0 { 0 } else { y * 100 / (s + y) };
-            let (b, a) = (split(&before), split(&after));
+            let yt_list = if tp.yt_seeds.is_empty() { Vec::new() } else { yt_pool(&tp, &known, limit, guess).await };
+            let mut pool = engine::blend(sc_pool(&sc, &tp, &known, limit, guess).await, yt_list, share);
+            pool.extend(more_related(&sc, &open, &known, Sources::Both, 60, &test_style).await.0);
+            let old: Vec<(Track, Vec<String>)> = pool.iter().filter(|(t, f)| old_fit(p, t, f)).cloned().collect();
+            let mut r = Rejects::default();
+            let fresh: Vec<(Track, Vec<String>)> =
+                pool.iter().filter_map(|(t, f)| engine::admit_counted(&tp, t, f.clone(), &mut r).map(|f| (t.clone(), f))).collect();
+            let (before, after) = (engine::finish(p, &old, now), engine::finish(p, &fresh, now));
+            let (nb, na) = (new_of(p, &before), new_of(p, &after));
+            let (b, a) = (before.as_ref().map_or(0, |m| m.tracks.len()), after.as_ref().map_or(0, |m| m.tracks.len()));
+            // New picks the old rule let in that the new check calls off-genre / unsure.
+            let bad_before = nb.iter().filter(|t| !matches!(engine::admit(&tp, t, guess(&style_text(t))), engine::Fit::Yes(_))).count();
             println!(
-                "  [{}] {} ({}): new SC/YT {}/{} ({}% YT) -> {}/{} ({}% YT); own YT share {:.0}%, YT seeds {} -> {}, {} ms",
-                p.kind, p.title, p.tag, b.0, b.1, pct(b), a.0, a.1, pct(a),
-                p.yt_share * 100.0, p.yt_seeds.len(), tp.yt_seeds.len(), t2.elapsed().as_millis()
+                "  [{}] {} ({}) style {}: {b} -> {a} tracks, {} -> {} new ({bad_before} of the old new picks fail the new check); pool {}, dropped {} off-genre + {} genre-less/unknown artist; own {}, known artists {}, YT seeds {} -> {}, {} ms",
+                p.kind, p.title, p.tag, style_of_plan(p), nb.len(), na.len(), pool.len(), r.off, r.unsure, p.own.len(), p.artists.len(),
+                p.yt_seeds.len(), tp.yt_seeds.len(), t2.elapsed().as_millis()
             );
-            let n = after.as_ref().map_or(0, |m| m.tracks.len());
-            println!("    tracks {} -> {n} (first top-up {first})", before.as_ref().map_or(0, |m| m.tracks.len()));
-            table.push((p.title.clone(), n, (a.0 + a.1) * 100 / n.max(1), a.0, a.1));
-            if !shown && p.kind == "daily" && p.yt_share < 0.15 && a.1 > 0 {
-                shown = true;
-                println!("    SoundCloud-heavy Daily Mix, YouTube picks (family {:?}):", p.family);
-                if let Some(m) = &after {
-                    for t in m.tracks.iter().filter(|t| engine::is_yt(t) && !own.contains(t.id.as_str())).take(10) {
-                        println!("      {} - {} ({}s) {}", t.artist, t.title, t.duration, t.url);
-                    }
+            if p.kind == "daily" && p.family.is_none() {
+                let own: Vec<String> = p.own.iter().take(8).map(|t| format!("{} - {} ({:?})", t.artist, t.title, t.genre)).collect();
+                println!("      own (no family): {own:?}");
+            }
+            let show = p.sub.as_deref() == Some("hardtekk") && p.kind == "genre" || p.kind == "daily";
+            if show {
+                for t in na.iter().take(if p.kind == "daily" { 16 } else { 30 }) {
+                    println!("      new: {} - {} [{}] genre {:?}", t.artist, t.title, if engine::is_yt(t) { "YT" } else { "SC" }, t.genre);
+                }
+                for t in nb.iter().filter(|t| !na.iter().any(|x| x.id == t.id)).take(10) {
+                    println!("      no longer in: {} - {} [{}] genre {:?}", t.artist, t.title, if engine::is_yt(t) { "YT" } else { "SC" }, t.genre);
                 }
             }
+            table.push(Row { title: p.title.clone(), style: style_of_plan(p), before: b, after: a, new_before: nb.len(), new_after: na.len(), r });
         }
         println!("top-ups for all plans in {} ms", t1.elapsed().as_millis());
-        println!("mix | tracks | % new | new SC/YT");
-        for (title, n, pct, s, y) in &table {
-            println!("{title} | {n} | {pct}% | {s}/{y}");
+        println!("mix | style | tracks before -> after | % new before -> after | off-genre / unsure dropped");
+        for x in &table {
+            println!(
+                "{} | {} | {} -> {} | {}% -> {}% | {} / {}",
+                x.title, x.style, x.before, x.after, pct(x.new_before, x.before), pct(x.new_after, x.after), x.r.off, x.r.unsure
+            );
         }
         assert!(!plans.is_empty());
     }
