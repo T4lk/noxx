@@ -222,10 +222,14 @@ document.addEventListener('pointerdown', (e) => {
 
 // ---------------------------------------------------------------- window controls
 
+// Linux desktop (WebKitGTK; Android's WebView doesn't say "X11"). It's far slower than
+// WebView2 at blur and full-window animation, so Performance mode starts on there.
+const IS_WEBKITGTK = /X11; Linux/.test(navigator.userAgent);
 $('#win-min').onclick = () => appWindow.minimize();
 $('#win-max').onclick = () => appWindow.toggleMaximize();
 $('#win-close').onclick = () => appWindow.close();
-document.querySelectorAll('.titlebar, .top-nav').forEach((bar) => bar.addEventListener('dblclick', (e) => { if (e.target.hasAttribute('data-tauri-drag-region')) appWindow.toggleMaximize(); }));
+// Windows only: elsewhere Tauri's drag region already maximizes on double-click.
+if (/Windows/.test(navigator.userAgent)) document.querySelectorAll('.titlebar, .top-nav').forEach((bar) => bar.addEventListener('dblclick', (e) => { if (e.target.hasAttribute('data-tauri-drag-region')) appWindow.toggleMaximize(); }));
 
 // The UI is drawn at riff's 0.9 zoom (--app-zoom on <body>). Pointer/rect coordinates are screen
 // pixels; lengths set from script are in zoomed CSS pixels, so divide by this when mixing them.
@@ -1555,7 +1559,7 @@ function applyBodyPrefs() {
   b.toggle('compact-engine-btns', !!pref('compactEngine', false));
   b.toggle('hide-engine-btns', !!pref('hideEngine', false));
   b.toggle('no-hand-cursor', !!pref('noHandCursor', true));
-  motion.perf = !!pref('perfMode', false);
+  motion.perf = !!pref('perfMode', IS_WEBKITGTK);
   b.toggle('perf', motion.perf);
   b.toggle('reduce-motion', !!pref('reduceMotion', false));
   b.toggle('hide-local-tab', !pref('showLocal', true));
@@ -1673,7 +1677,7 @@ const coreSettings = {
     },
     after() {
       SET.group([
-        SET.prefToggle('perfMode', false, 'Performance mode', 'Disables visualizers, animated gradient and blur effects, limits animations to 30 FPS', applyBodyPrefs),
+        SET.prefToggle('perfMode', IS_WEBKITGTK, 'Performance mode', 'Disables visualizers, animated gradient and blur effects, limits animations to 30 FPS', applyBodyPrefs),
       ]);
     },
   },

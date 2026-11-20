@@ -30,7 +30,7 @@
   const PREF = {
     cover: ['npCover', 'large'],       // 'large' | 'shaped'
     align: ['npAlign', 'left'],        // 'left' | 'center'
-    glow: ['npGlow', true],
+    glow: ['npGlow', !/X11; Linux/.test(navigator.userAgent)], // Web Audio glow: off by default on WebKitGTK
     intensity: ['npGlowIntensity', 60],
     tint: ['npTint', true],
     next: ['npShowNext', true],        // show the "Up next" list in the panel

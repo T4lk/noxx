@@ -512,6 +512,9 @@ body.perf :is(.btn, .pill-btn, .ctrl-btn, .nav-item, .nav-ind, .track-row, .tile
 body.perf :is([class*="mesh"], .organic-bg) { animation: none !important; }
 body.perf #cover-bg { display: none; }
 body.perf .dc-wave-ambient { filter: none !important; opacity: .3; }
+/* the full-window layers that cost the most on WebKitGTK: blurred mesh, aurora, karaoke backdrop */
+body.perf :is(.th-mesh, .th-mesh-preview-bg, .tvk-bg, .dc-wave-card) { filter: none !important; animation: none !important; }
+body:is(.perf, .reduce-motion) .th-aurora { animation: none !important; }
 /* Reduce motion: simple fades instead of springs */
 body.reduce-motion :is(.tracks.intro .track-row, .view.enter .tile, .view.enter .card, .ripple, .settings-pane.settings-in) { animation: none !important; }
 body.reduce-motion .view.enter { animation: rm-fade .18s ease both !important; }

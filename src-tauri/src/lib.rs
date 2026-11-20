@@ -346,6 +346,12 @@ fn boot_log(step: &str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // WebKitGTK's DMABUF renderer is slow or blank on many Wayland / NVIDIA setups (Hyprland,
+    // Sway). The shared-memory path is reliable everywhere. A value the user set wins.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     boot_log(&format!("start {}", std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()));
     if let Some(dir) = portable_dir() {
         let web = dir.join("webview");

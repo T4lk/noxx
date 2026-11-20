@@ -49,7 +49,8 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { tray_on_close: true, media_keys: true, multi_instance: false }
+        // Linux: many bars (Hyprland, Sway...) have no tray, so closing really closes.
+        Settings { tray_on_close: !cfg!(target_os = "linux"), media_keys: true, multi_instance: false }
     }
 }
 
@@ -220,7 +221,9 @@ fn desktop_setup(app: &AppHandle) {
     if let Err(e) = build_tray(app) {
         eprintln!("[system] tray: {e}");
     }
-    if settings().media_keys && std::env::var_os("RIFF_SELFTEST").is_none() {
+    // Global shortcuts are X11-only on Linux; Wayland compositors don't allow grabbing keys.
+    let wayland = cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some();
+    if settings().media_keys && !wayland && std::env::var_os("RIFF_SELFTEST").is_none() {
         if let Err(e) = apply_media_keys(app, true) {
             eprintln!("[system] media keys: {e}");
         }
@@ -494,7 +497,45 @@ mod mem {
     }
 }
 
-#[cfg(not(windows))]
+/// Linux: proportional set size (Pss, shared pages split fairly) of noxx and its WebKit
+/// child processes, from /proc.
+#[cfg(target_os = "linux")]
+mod mem {
+    fn pss(pid: u32) -> u64 {
+        std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup"))
+            .ok()
+            .and_then(|s| s.lines().find(|l| l.starts_with("Pss:")).and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok()))
+            .map(|kb| kb * 1024)
+            .unwrap_or(0)
+    }
+    fn parent(pid: u32) -> Option<u32> {
+        let s = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        s.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()
+    }
+    pub fn usage() -> serde_json::Value {
+        let me = std::process::id();
+        let mut tree = vec![me];
+        let pids: Vec<u32> = std::fs::read_dir("/proc")
+            .map(|rd| rd.flatten().filter_map(|e| e.file_name().to_str()?.parse().ok()).collect())
+            .unwrap_or_default();
+        // children, grandchildren... (WebKitWebProcess / WebKitNetworkProcess)
+        let mut grew = true;
+        while grew {
+            grew = false;
+            for &p in &pids {
+                if !tree.contains(&p) && parent(p).is_some_and(|pp| tree.contains(&pp)) {
+                    tree.push(p);
+                    grew = true;
+                }
+            }
+        }
+        let app = pss(me);
+        let web: u64 = tree.iter().skip(1).map(|&p| pss(p)).sum();
+        serde_json::json!({ "total": app + web, "app": app, "web": web, "processes": tree.len(), "engine": "WebKit" })
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 mod mem {
     pub fn usage() -> serde_json::Value {
         serde_json::json!({ "total": 0, "app": 0, "web": 0, "processes": 0 })

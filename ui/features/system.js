@@ -66,6 +66,16 @@
   }
   R.addStreamResolver(resolveAlt);
 
+  // Linux: SoundCloud streams are AAC, which WebKitGTK decodes through GStreamer's gst-libav.
+  // Arch and others don't install it with webkit2gtk, and without it every track fails silently.
+  if (/X11; Linux/.test(navigator.userAgent)) {
+    R.on('ready', () => {
+      let aac = true;
+      try { aac = !!(window.MediaSource && MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"')); } catch (e) {}
+      if (!aac) R.toast('SoundCloud needs AAC playback: install gst-libav (Arch: sudo pacman -S gst-libav) and restart noxx', 'error');
+    });
+  }
+
   // Hearts are mirrored to SoundCloud likes in the background; say so when that fails.
   R.listen('sc-like-error', (e) => R.toast(String(e.payload || "Couldn't update the like on SoundCloud")));
   R.listen('media-key', (e) => {
@@ -212,7 +222,8 @@
       if (!g.isConnected) return;
       R.call('system.memory').then((m) => {
         total.textContent = mb(m.total);
-        parts.textContent = `App ${mb(m.app)} · WebView2 ${mb(m.web)} · ${m.processes} ${m.processes === 1 ? 'process' : 'processes'}`;
+        if (!m.processes) { g.hidden = true; return; } // not measurable on this system
+        parts.textContent = `App ${mb(m.app)} · ${m.engine || 'WebView2'} ${mb(m.web)} · ${m.processes} ${m.processes === 1 ? 'process' : 'processes'}`;
       }).catch(() => { total.textContent = 'Unavailable'; });
       setTimeout(tick, 2000);
     };
