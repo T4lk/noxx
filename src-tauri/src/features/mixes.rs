@@ -41,19 +41,27 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::soundcloud::{artwork, id_of, map_track, playable, str_of, write_json, SoundCloud, Track};
-use engine::{Item, Mix, Plan, Sources};
+use crate::soundcloud::{artwork, collection, id_of, map_track, playable, str_of, unwrap_item, write_json, SoundCloud, Track};
+use engine::{Item, Mix, Plan, Sources, MAX_TRACKS};
 
 const FILE: &str = "mixes.json";
 const SOURCES_FILE: &str = "mixes-sources.json";
 // 3: YouTube seeds top up with YouTube Music radio; YouTube Music years
 // 4: new songs from SoundCloud and YouTube by default (YouTube Music twins of SoundCloud seeds)
-const VERSION: u32 = 4;
+// 5: every mix but On Repeat / Repeat Rewind fills to 50 with about half new songs; era mixes get new songs of their decade
+const VERSION: u32 = 5;
 /// SoundCloud seeds per plan that get a YouTube Music twin (more are tried when some have none).
 const TWIN_SEEDS: usize = 4;
 const TWIN_TRIES: usize = 6;
 /// Twin searches per build and how long they may take (found / missed twins are cached).
-const TWIN_LOOKUPS: usize = 80;
+const TWIN_LOOKUPS: usize = 100;
+/// Era top-ups: year lookups per era mix and platform, and how long each may take.
+const ERA_LOOKUPS: usize = 120;
+const ERA_BUDGET: Duration = Duration::from_secs(20);
+/// Seeds whose related tracks / radios feed an era mix or a mix still under 50 tracks.
+const MORE_SEEDS: usize = 10;
+/// Artists whose other songs feed an era mix.
+const ERA_ARTISTS: usize = 6;
 const TWIN_BUDGET: Duration = Duration::from_secs(15);
 /// Year lookups per build (highest weight first) and how long each kind may take.
 const YEAR_LOOKUPS: usize = 200;
@@ -533,11 +541,16 @@ fn with_twins(p: &Plan, twins: &HashMap<String, String>, fam: &HashMap<String, V
 
 /// YouTube Music radios of a plan's best YouTube seeds, merged: (track, seeds it is related to).
 async fn yt_related(plan: &Plan, known: &Known, limit: usize) -> Vec<(Track, usize)> {
+    yt_radios(plan, known, limit, YT_SEEDS).await
+}
+
+/// `yt_related` over the best `seeds` YouTube seeds.
+async fn yt_radios(plan: &Plan, known: &Known, limit: usize, seeds: usize) -> Vec<(Track, usize)> {
     if plan.yt_seeds.is_empty() || limit == 0 {
         return Vec::new();
     }
     let yt = super::youtube::Yt::global();
-    let lists: Vec<(f64, Vec<Track>)> = join_all(plan.yt_seeds.iter().take(YT_SEEDS).map(|(id, w)| async move {
+    let lists: Vec<(f64, Vec<Track>)> = join_all(plan.yt_seeds.iter().take(seeds).map(|(id, w)| async move {
         match yt.related(id, 50).await {
             Ok(list) => (*w, list),
             Err(e) => {
@@ -564,7 +577,7 @@ async fn top_up(app: &AppHandle, plan: &Plan, known: &Known, src: Sources) -> Ve
         _ => engine::new_share(src, plan.yt_share),
     };
     // Daily Mixes are mostly new songs, so they need a bigger pool (some get dropped by the genre filter).
-    let limit = if plan.kind == "daily" { 70 } else { 40 };
+    let limit = if plan.kind == "daily" { 70 } else { 60 };
     let fits = |fams: &[String]| plan.family.as_ref().is_none_or(|f| fams.contains(f));
 
     let sc = async {
@@ -604,6 +617,275 @@ async fn top_up(app: &AppHandle, plan: &Plan, known: &Known, src: Sources) -> Ve
     };
     let (sc, yt) = futures::join!(sc, yt);
     engine::blend(sc, yt, share)
+}
+
+/// The YouTube share of a plan's new songs when one side may have nothing.
+fn side_share(plan: &Plan, src: Sources, has_sc: bool, has_yt: bool) -> f64 {
+    match (has_sc, has_yt) {
+        (true, false) => 0.0,
+        (false, true) => 1.0,
+        _ => engine::new_share(src, plan.yt_share),
+    }
+}
+
+/// More new songs for a mix still under 50 tracks: SoundCloud related tracks of up to
+/// `MORE_SEEDS` SoundCloud seeds and YouTube Music radios of as many YouTube seeds, with the
+/// same genre checks as `top_up` (`style` = discover's style: families, is an edit).
+async fn more_related<S, F>(sc: &SoundCloud, plan: &Plan, known: &Known, src: Sources, limit: usize, style: S) -> Vec<(Track, Vec<String>)>
+where
+    S: Fn(String) -> F,
+    F: std::future::Future<Output = (Vec<String>, bool)>,
+{
+    let has_sc = !plan.seeds.is_empty() && src != Sources::Yt;
+    let has_yt = !plan.yt_seeds.is_empty() && src != Sources::Sc;
+    if !has_sc && !has_yt {
+        return Vec::new();
+    }
+    let fits = |fams: &[String]| plan.family.as_ref().is_none_or(|f| fams.contains(f));
+    let sc_side = async {
+        if !has_sc {
+            return Vec::new();
+        }
+        let lists: Vec<(f64, Vec<Track>)> = join_all(plan.seeds.iter().take(MORE_SEEDS).map(|(id, w)| async move {
+            let v = sc.api(&format!("/tracks/{id}/related"), &[("limit", "50".to_string())]).await.unwrap_or(Value::Null);
+            (*w, sc_rows(&v).into_iter().map(|(t, ..)| t).collect::<Vec<Track>>())
+        }))
+        .await;
+        let mut out = Vec::new();
+        for (t, _) in engine::rank_related(&lists, &known.set, &known.songs, limit * 2) {
+            let (f, _) = style(style_text(&t)).await;
+            if fits(&f) {
+                out.push((t, f));
+            }
+        }
+        out
+    };
+    let yt_side = async {
+        if !has_yt {
+            return Vec::new();
+        }
+        let artists: HashSet<String> = plan.own.iter().map(engine::artist_key).collect();
+        let mut out = Vec::new();
+        for (t, hits) in yt_radios(plan, known, limit * 2, MORE_SEEDS).await {
+            let (f, junk) = style(style_text(&t)).await;
+            if junk {
+                continue;
+            }
+            if let Some(f) = engine::admit_related(plan, f, hits, artists.contains(&engine::artist_key(&t))) {
+                out.push((t, f));
+            }
+        }
+        out
+    };
+    let (a, b) = futures::join!(sc_side, yt_side);
+    let share = side_share(plan, src, !a.is_empty(), !b.is_empty());
+    engine::blend(a, b, share)
+}
+
+/// Playable SoundCloud tracks of an API answer: (track, year, year is only the upload date).
+fn sc_rows(v: &Value) -> Vec<(Track, Option<u16>, bool)> {
+    collection(v)
+        .iter()
+        .map(|r| unwrap_item(r, "track"))
+        .filter(|r| playable(r))
+        .map(|r| (map_track(r), engine::year_of(r), engine::upload_year_only(r)))
+        .collect()
+}
+
+/// Lists taken in turns (first item of each, then the second ...).
+fn round_robin<T>(lists: Vec<Vec<T>>) -> Vec<T> {
+    let mut its: Vec<_> = lists.into_iter().map(|l| l.into_iter()).collect();
+    let mut out = Vec::new();
+    loop {
+        let before = out.len();
+        for it in its.iter_mut() {
+            out.extend(it.next());
+        }
+        if out.len() == before {
+            return out;
+        }
+    }
+}
+
+/// An era top-up candidate: (track, SoundCloud year, upload-date-only, families).
+type EraCand = (Track, Option<u16>, bool, Vec<String>);
+
+/// New songs for an era mix, all from its decade, one platform at a time: (a) related tracks /
+/// YouTube Music radio of its own tracks, (b) other songs by its artists, (c) "<decade> <genre>"
+/// searches in the user's top genres of that decade (`fams`). Every candidate's year is checked:
+/// SoundCloud dates, YouTube Music album years for YouTube songs and for SoundCloud songs dated
+/// only by their upload (cached, at most `ERA_LOOKUPS` new lookups / `ERA_BUDGET` per platform).
+#[allow(clippy::too_many_arguments)]
+async fn era_top_up<S, F>(sc: &SoundCloud, dir: &std::path::Path, plan: &Plan, fams: &[String], known: &Known, src: Sources, style: S) -> Vec<(Track, Vec<String>)>
+where
+    S: Fn(String) -> F,
+    F: std::future::Future<Output = (Vec<String>, bool)>,
+{
+    let decade = plan.decade;
+    let queries = engine::era_queries(decade, fams);
+    let need = MAX_TRACKS.saturating_sub(plan.own.len().min(plan.max_own));
+    // Plenty of spares: some fall to dedupe / per-artist caps in `finish`.
+    let want = need + 10;
+    let mut uids: Vec<String> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    for t in &plan.own {
+        if engine::is_sc(t) && !t.artist_id.is_empty() && !uids.contains(&t.artist_id) && uids.len() < ERA_ARTISTS {
+            uids.push(t.artist_id.clone());
+        }
+        let n = engine::name_key(&t.artist);
+        if !n.is_empty() && n != "unknown artist" && !names.contains(&n) && names.len() < ERA_ARTISTS {
+            names.push(n);
+        }
+    }
+    let rank = |lists: Vec<(f64, Vec<Track>)>| -> Vec<Track> {
+        engine::rank_related(&lists, &known.set, &known.songs, 300).into_iter().map(|(t, _)| t).collect()
+    };
+
+    let sc_side = async {
+        if src == Sources::Yt {
+            return Vec::new();
+        }
+        let get = |path: String, params: Vec<(&'static str, String)>, w: f64| async move {
+            let v = sc.api(&path, &params).await.unwrap_or(Value::Null);
+            (w, sc_rows(&v))
+        };
+        let lim = || ("limit", "50".to_string());
+        let (rel, by, found) = futures::join!(
+            join_all(plan.seeds.iter().take(MORE_SEEDS).map(|(id, w)| get(format!("/tracks/{id}/related"), vec![lim()], *w))),
+            join_all(uids.iter().map(|u| get(format!("/users/{u}/tracks"), vec![lim()], 1.0))),
+            join_all(queries.iter().map(|q| get("/search/tracks".into(), vec![("q", q.clone()), lim()], 1.0))),
+        );
+        let mut info: HashMap<String, (Option<u16>, bool)> = HashMap::new();
+        let mut strip = |groups: Vec<(f64, Vec<(Track, Option<u16>, bool)>)>| -> Vec<(f64, Vec<Track>)> {
+            groups
+                .into_iter()
+                .map(|(w, rows)| {
+                    (w, rows.into_iter().map(|(t, y, up)| {
+                        info.insert(t.id.clone(), (y, up));
+                        t
+                    }).collect())
+                })
+                .collect()
+        };
+        let lists = vec![rank(strip(rel)), rank(strip(by)), rank(strip(found))];
+        let mut out: Vec<EraCand> = Vec::new();
+        for t in round_robin(lists) {
+            let (y, up) = info.get(&t.id).copied().unwrap_or((None, false));
+            out.push((t, y, up, Vec::new()));
+        }
+        out
+    };
+    let yt_side = async {
+        if src == Sources::Sc {
+            return Vec::new();
+        }
+        let yt = super::youtube::Yt::global();
+        let search = |q: String, artist: Option<String>| async move {
+            let list = yt.search(super::youtube::Src::Music, &q, 0).await.unwrap_or_else(|e| {
+                log(&format!("youtube music search {q:?}: {e}"));
+                Vec::new()
+            });
+            // An artist's search also finds other artists' songs that name them: keep theirs.
+            let list = list.into_iter().filter(|t| artist.as_ref().is_none_or(|a| engine::name_key(&t.artist) == *a)).collect::<Vec<_>>();
+            (1.0, list)
+        };
+        let radios = async {
+            let lists: Vec<(f64, Vec<Track>)> = join_all(plan.yt_seeds.iter().take(MORE_SEEDS).map(|(id, w)| async move {
+                (*w, yt.related(id, 50).await.unwrap_or_default())
+            }))
+            .await;
+            lists
+        };
+        let (rel, by, found) = futures::join!(
+            radios,
+            join_all(names.iter().map(|n| search(n.clone(), Some(n.clone())))),
+            join_all(queries.iter().map(|q| search(q.clone(), None))),
+        );
+        round_robin(vec![rank(rel), rank(by), rank(found)]).into_iter().map(|t| (t, None, false, Vec::new())).collect::<Vec<EraCand>>()
+    };
+    let (sc_c, yt_c) = futures::join!(sc_side, yt_side);
+
+    // Songs only (no edits, DJ sets or clips), each song once across both platforms.
+    let mut songs: HashSet<String> = HashSet::new();
+    let mut clean = |list: Vec<EraCand>| {
+        let mut keep = Vec::new();
+        for c in list {
+            let d = c.0.duration;
+            let keys = engine::song_keys(&c.0);
+            if (d > 0 && !(60..=900).contains(&d)) || keys.iter().any(|k| songs.contains(k)) {
+                continue;
+            }
+            songs.extend(keys);
+            keep.push(c);
+        }
+        keep
+    };
+    let (sc_c, yt_c) = (clean(sc_c), clean(yt_c));
+    let n_cands = (sc_c.len(), yt_c.len());
+    let (a, b) = futures::join!(era_dated(dir, sc_c, decade, want, false, &style), era_dated(dir, yt_c, decade, want, true, &style));
+    log(&format!(
+        "{}: {} + {} SoundCloud / YouTube candidates -> {} + {} of the {} (want {need})",
+        plan.title, n_cands.0, n_cands.1, a.len(), b.len(), engine::decade_word(decade)
+    ));
+    let share = side_share(plan, src, !a.is_empty(), !b.is_empty());
+    engine::blend(a, b, share)
+}
+
+/// The candidates of one platform that are songs of `decade`, in order, until `want` are
+/// found. Years come in chunks (cache hits are free; new lookups are bounded).
+async fn era_dated<S, F>(dir: &std::path::Path, cands: Vec<EraCand>, decade: u16, want: usize, youtube: bool, style: &S) -> Vec<(Track, Vec<String>)>
+where
+    S: Fn(String) -> F,
+    F: std::future::Future<Output = (Vec<String>, bool)>,
+{
+    let yt = super::youtube::Yt::global();
+    let deadline = Instant::now() + ERA_BUDGET;
+    let mut lookups = ERA_LOOKUPS;
+    let mut out = Vec::new();
+    for chunk in cands.chunks(20) {
+        if out.len() >= want {
+            break;
+        }
+        // Edits / non-songs out before spending lookups on them.
+        let mut keep: Vec<&EraCand> = Vec::new();
+        let mut fams: Vec<Vec<String>> = Vec::new();
+        for c in chunk {
+            let (f, junk) = style(style_text(&c.0)).await;
+            if !junk {
+                keep.push(c);
+                fams.push(f);
+            }
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        let years = if youtube {
+            let reqs: Vec<(String, String, String, u64)> =
+                keep.iter().map(|c| (c.0.id.trim_start_matches("yt:").to_string(), c.0.title.clone(), c.0.artist.clone(), c.0.duration)).collect();
+            let (y, n) = yt.video_years(dir, &reqs, lookups, left).await;
+            lookups = lookups.saturating_sub(n);
+            y
+        } else {
+            let reqs: Vec<(String, String, String, u64)> = keep
+                .iter()
+                .filter(|c| c.2 && c.1.is_some_and(|y| engine::decade_of(y) >= decade))
+                .map(|c| (c.0.id.clone(), c.0.title.clone(), c.0.artist.clone(), c.0.duration))
+                .collect();
+            let (y, n) = if reqs.is_empty() { (HashMap::new(), 0) } else { yt.song_years(dir, &reqs, lookups, left).await };
+            lookups = lookups.saturating_sub(n);
+            y
+        };
+        for (c, f) in keep.into_iter().zip(fams) {
+            let key = if youtube { c.0.id.trim_start_matches("yt:") } else { c.0.id.as_str() };
+            let ytm = years.get(key).copied();
+            if !youtube && c.2 && ytm.is_none() && engine::reupload(&c.0) {
+                continue;
+            }
+            let y = engine::candidate_year(c.1, c.2, ytm);
+            if engine::in_decade(y, decade) && out.len() < want {
+                out.push((c.0.clone(), f));
+            }
+        }
+    }
+    out
 }
 
 /// Release years from YouTube Music (cached forever, bounded per build, highest weight
@@ -769,11 +1051,36 @@ async fn build(app: &AppHandle) -> Result<Cache, String> {
     let known = &known;
     let fam = &family_twins(&plans, &twins);
     let twins = &twins;
+    // Era mixes search the user's top genres of their decade.
+    let era_fams: HashMap<u16, Vec<String>> =
+        plans.iter().filter(|p| p.decade > 0).map(|p| (p.decade, engine::era_families(&items, p.decade, 3))).collect();
+    let era_fams = &era_fams;
+    let (scr, dir): (&SoundCloud, &std::path::Path) = (&*sc, dir.as_path());
+    let style = |text: String| async move { style_of(app, &text).await };
+    let style = &style;
     let mut built: Vec<Mix> = Vec::new();
     for group in plans.chunks(3) {
         let done = join_all(group.iter().map(|p| async move {
-            let fresh = top_up(app, &with_twins(p, twins, fam, src), known, src).await;
-            engine::finish(p, &fresh, now)
+            let tp = with_twins(p, twins, fam, src);
+            let mix = if p.decade > 0 {
+                let fams = era_fams.get(&p.decade).map(Vec::as_slice).unwrap_or(&[]);
+                let fresh = era_top_up(scr, dir, &tp, fams, known, src, style).await;
+                engine::finish(p, &fresh, now)
+            } else {
+                let mut fresh = top_up(app, &tp, known, src).await;
+                let mut mix = engine::finish(p, &fresh, now);
+                // Still under 50: more related tracks from more seeds.
+                if engine::tops_up(&p.kind) && mix.as_ref().map_or(0, |m| m.tracks.len()) < MAX_TRACKS {
+                    fresh.extend(more_related(scr, &tp, known, src, 60, style).await);
+                    mix = engine::finish(p, &fresh, now);
+                }
+                mix
+            };
+            let n = mix.as_ref().map_or(0, |m| m.tracks.len());
+            if engine::tops_up(&p.kind) && n < MAX_TRACKS {
+                log(&format!("{}: {n} tracks, not enough new songs passed the genre / decade checks", p.title));
+            }
+            mix
         }))
         .await;
         built.extend(done.into_iter().flatten());
@@ -1028,9 +1335,35 @@ mod tests {
         let fam = family_twins(&plans, &twins);
         let t1 = Instant::now();
         let mut shown = false;
-        for p in plans.iter().filter(|p| !p.seeds.is_empty() || !p.yt_seeds.is_empty()) {
+        let test_style = |text: String| async move { (guess(&text), is_edit(&text)) };
+        // (title, tracks, % new, new SC, new YT) per mix, printed as a table at the end.
+        let mut table: Vec<(String, usize, usize, usize, usize)> = Vec::new();
+        for p in plans.iter().filter(|p| !engine::tops_up(&p.kind)) {
+            let n = engine::finish(p, &[], now).map_or(0, |m| m.tracks.len());
+            table.push((p.title.clone(), n, 0, 0, 0));
+        }
+        for p in plans.iter().filter(|p| p.decade > 0) {
             let t2 = Instant::now();
-            let limit = if p.kind == "daily" { 70 } else { 40 };
+            let tp = with_twins(p, &twins, &fam, Sources::Both);
+            let fams = engine::era_families(&items, p.decade, 3);
+            let fresh = era_top_up(&sc, &ycache, &tp, &fams, &known, Sources::Both, &test_style).await;
+            let m = engine::finish(p, &fresh, now);
+            let own: HashSet<&str> = p.own.iter().map(|t| t.id.as_str()).collect();
+            let tracks = m.as_ref().map(|m| m.tracks.clone()).unwrap_or_default();
+            let new: Vec<&Track> = tracks.iter().filter(|t| !own.contains(t.id.as_str())).collect();
+            let (ns, ny) = (new.iter().filter(|t| engine::is_sc(t)).count(), new.iter().filter(|t| engine::is_yt(t)).count());
+            println!(
+                "  [era] {}: {} tracks = {} own + {} new (new SC/YT {ns}/{ny}); {} own in the decade, genres {fams:?}, YT seeds {} -> {}, {} ms",
+                p.title, tracks.len(), tracks.len() - new.len(), new.len(), p.own.len(), p.yt_seeds.len(), tp.yt_seeds.len(), t2.elapsed().as_millis()
+            );
+            for t in new.iter().take(14) {
+                println!("      new: {} - {} [{}] {}", t.artist, t.title, if engine::is_yt(t) { "YT" } else { "SC" }, t.url);
+            }
+            table.push((p.title.clone(), tracks.len(), new.len() * 100 / tracks.len().max(1), ns, ny));
+        }
+        for p in plans.iter().filter(|p| p.decade == 0 && engine::tops_up(&p.kind) && (!p.seeds.is_empty() || !p.yt_seeds.is_empty())) {
+            let t2 = Instant::now();
+            let limit = if p.kind == "daily" { 70 } else { 60 };
             let sc_list = sc_fresh(&sc, p, &known, limit, guess).await;
             // Before: YouTube only from the plan's own YouTube seeds, blended by its own share.
             let old_share = match (!p.seeds.is_empty(), !p.yt_seeds.is_empty()) {
@@ -1049,7 +1382,13 @@ mod tests {
                 (false, true) => 1.0,
                 _ => engine::new_share(Sources::Both, tp.yt_share),
             };
-            let after = engine::finish(p, &engine::blend(sc_list, new_yt, share), now);
+            let mut fresh = engine::blend(sc_list, new_yt, share);
+            let mut after = engine::finish(p, &fresh, now);
+            let first = after.as_ref().map_or(0, |m| m.tracks.len());
+            if first < MAX_TRACKS {
+                fresh.extend(more_related(&sc, &tp, &known, Sources::Both, 60, &test_style).await);
+                after = engine::finish(p, &fresh, now);
+            }
             let own: HashSet<&str> = p.own.iter().map(|t| t.id.as_str()).collect();
             let split = |m: &Option<Mix>| -> (usize, usize) {
                 m.as_ref().map_or((0, 0), |m| {
@@ -1064,6 +1403,9 @@ mod tests {
                 p.kind, p.title, p.tag, b.0, b.1, pct(b), a.0, a.1, pct(a),
                 p.yt_share * 100.0, p.yt_seeds.len(), tp.yt_seeds.len(), t2.elapsed().as_millis()
             );
+            let n = after.as_ref().map_or(0, |m| m.tracks.len());
+            println!("    tracks {} -> {n} (first top-up {first})", before.as_ref().map_or(0, |m| m.tracks.len()));
+            table.push((p.title.clone(), n, (a.0 + a.1) * 100 / n.max(1), a.0, a.1));
             if !shown && p.kind == "daily" && p.yt_share < 0.15 && a.1 > 0 {
                 shown = true;
                 println!("    SoundCloud-heavy Daily Mix, YouTube picks (family {:?}):", p.family);
@@ -1075,6 +1417,10 @@ mod tests {
             }
         }
         println!("top-ups for all plans in {} ms", t1.elapsed().as_millis());
+        println!("mix | tracks | % new | new SC/YT");
+        for (title, n, pct, s, y) in &table {
+            println!("{title} | {n} | {pct}% | {s}/{y}");
+        }
         assert!(!plans.is_empty());
     }
 }

@@ -21,6 +21,8 @@ pub const RECENT_MS: u64 = 30 * DAY_MS;
 const MAX_DAILY: usize = 6;
 const MAX_GENRE: usize = 8;
 const MAX_ARTIST: usize = 6;
+/// New songs per artist in one mix (an artist mix's own artist is not capped).
+pub const NEW_PER_ARTIST: usize = 3;
 
 /// discover.rs genre family keys (same order: most specific first) with display names.
 pub const FAMILY_NAMES: &[(&str, &str)] = &[
@@ -138,13 +140,68 @@ pub fn decade_of(year: u16) -> u16 {
     year / 10 * 10
 }
 
+/// "2000s", "2010s", "90s": the decade as people say (and search) it.
+pub fn decade_word(decade: u16) -> String {
+    if decade >= 2000 {
+        format!("{decade}s")
+    } else {
+        format!("{:02}s", decade % 100)
+    }
+}
+
 /// "2000s Mix", "2010s Mix", "90s Mix".
 pub fn era_title(decade: u16) -> String {
-    if decade >= 2000 {
-        format!("{decade}s Mix")
-    } else {
-        format!("{:02}s Mix", decade % 100)
+    format!("{} Mix", decade_word(decade))
+}
+
+/// Mixes that get new songs (and fill up to `MAX_TRACKS`): all but On Repeat / Repeat Rewind.
+pub fn tops_up(kind: &str) -> bool {
+    !matches!(kind, "repeat" | "rewind")
+}
+
+/// Release year of an era top-up candidate: a SoundCloud release / display date is
+/// trusted; an upload-date-only year gives way to an older YouTube Music year; YouTube
+/// tracks have only the YouTube Music year.
+pub fn candidate_year(sc_year: Option<u16>, upload_only: bool, ytm_year: Option<u16>) -> Option<u16> {
+    match (sc_year, ytm_year) {
+        (Some(y), _) if !upload_only => Some(y),
+        (Some(y), Some(m)) => Some(y.min(m)),
+        (y, m) => y.or(m),
     }
+}
+
+/// A SoundCloud upload of someone else's song ("Artist - Song" by another uploader): its
+/// upload year says nothing about the song, so era top-ups need a YouTube Music year for it.
+pub fn reupload(t: &Track) -> bool {
+    t.title.split_once(" - ").is_some_and(|(a, _)| name_key(a) != name_key(&t.artist))
+}
+
+pub fn in_decade(year: Option<u16>, decade: u16) -> bool {
+    year.is_some_and(|y| y >= 1900 && decade_of(y) == decade)
+}
+
+/// The user's top genre families inside a decade (by weight), at most `n`.
+pub fn era_families(items: &[Item], decade: u16, n: usize) -> Vec<String> {
+    let mut w: HashMap<&str, f64> = HashMap::new();
+    for it in items.iter().filter(|it| in_decade(it.year, decade)) {
+        if let Some(f) = &it.family {
+            *w.entry(f.as_str()).or_insert(0.0) += it.weight.max(0.5);
+        }
+    }
+    let mut v: Vec<(&str, f64)> = w.into_iter().collect();
+    v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(family_rank(a.0).cmp(&family_rank(b.0))));
+    v.into_iter().take(n).map(|(f, _)| f.to_string()).collect()
+}
+
+/// Searches for a decade's songs in the user's genres: "90s hip hop", "2000s pop".
+pub fn era_queries(decade: u16, families: &[String]) -> Vec<String> {
+    families.iter().map(|f| format!("{} {}", decade_word(decade), family_label(f).to_lowercase())).collect()
+}
+
+/// Artist name for per-artist caps across platforms ("Nas - Topic" == "nas").
+pub fn name_key(name: &str) -> String {
+    let n = name.trim().to_lowercase();
+    n.strip_suffix(" - topic").unwrap_or(&n).trim().to_string()
 }
 
 /// "a", "a and b", "a, b and c", "a, b, c and more".
@@ -557,6 +614,8 @@ pub struct Plan {
     pub new_run: usize,
     /// The artist an artist mix is about (always credited first).
     pub lead: String,
+    /// Era mixes: the decade (1990, 2000 ...); 0 = not an era mix.
+    pub decade: u16,
 }
 
 impl Plan {
@@ -578,6 +637,7 @@ impl Plan {
             own_run: 2,
             new_run: 1,
             lead: String::new(),
+            decade: 0,
         }
     }
 }
@@ -621,6 +681,14 @@ fn set_seeds(p: &mut Plan, list: &[&Item], n: usize) {
     let w = |f: fn(&Track) -> bool| list.iter().filter(|it| f(&it.track)).map(|it| it.weight.max(0.5)).sum::<f64>();
     let (sc, yt) = (w(is_sc), w(is_yt));
     p.yt_share = if sc + yt > 0.0 { yt / (sc + yt) } else { 0.0 };
+}
+
+/// About half new songs: one own track, one new one, own tracks up to half the mix
+/// (more own tracks fill in when there aren't enough new songs, see `finish`).
+fn half_new(p: &mut Plan) {
+    p.max_own = MAX_TRACKS / 2;
+    p.own_run = 1;
+    p.new_run = 1;
 }
 
 pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: u64) -> Vec<Plan> {
@@ -671,6 +739,7 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
                 set_seeds(&mut p, &list, 10);
                 p.own = list.iter().map(|it| it.track.clone()).collect();
                 p.family = Some(f.clone());
+                half_new(&mut p);
                 genre.push((list.iter().map(|it| it.weight).sum(), p));
             }
         }
@@ -685,13 +754,15 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
             set_seeds(&mut p, &list, 10);
             p.own = list.iter().map(|it| it.track.clone()).collect();
             p.family = Some(f.clone());
+            half_new(&mut p);
             genre.push((list.iter().map(|it| it.weight).sum(), p));
         }
     }
     genre.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.id.cmp(&b.1.id)));
     out.extend(genre.into_iter().take(MAX_GENRE).map(|(_, p)| p));
 
-    // Era mixes: own tracks only (their year is known), no related top-up.
+    // Era mixes: own tracks of the decade, topped up with new songs of the same decade
+    // (mixes.rs checks each new song's year).
     let mut decades: HashMap<u16, Vec<usize>> = HashMap::new();
     for (i, it) in items.iter().enumerate() {
         if let Some(y) = it.year {
@@ -704,9 +775,11 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
         let list = sorted_by_weight(items, m.into_iter());
         let mut p = Plan::new(format!("era-{d}s"), "era", era_title(d));
         p.tag = format!("{d}s");
+        set_seeds(&mut p, &list, 10);
         p.own = list.iter().map(|it| it.track.clone()).collect();
-        p.max_own = MAX_TRACKS;
         p.own_cap = 5;
+        p.decade = d;
+        half_new(&mut p);
         out.push(p);
     }
 
@@ -743,8 +816,7 @@ pub fn plans(items: &[Item], cooc: &HashMap<String, HashMap<String, u32>>, now: 
         }
         p.family = fams.into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)).map(|(f, _)| f.to_string());
         p.own_cap = 0;
-        p.max_own = 15;
-        p.own_run = 1;
+        half_new(&mut p);
         p.lead = name;
         out.push(p);
     }
@@ -826,8 +898,11 @@ pub fn finish(plan: &Plan, fresh: &[(Track, Vec<String>)], now: u64) -> Option<M
     let mut seen_key = HashSet::new();
     let mut per_artist: HashMap<String, usize> = HashMap::new();
     let mut own = Vec::new();
+    // Own tracks past `max_own` fill in when there aren't enough new songs
+    // (On Repeat / Repeat Rewind stop at `max_own`).
+    let mut spare = Vec::new();
     for t in &plan.own {
-        if own.len() >= plan.max_own {
+        if own.len() >= plan.max_own && (!tops_up(&plan.kind) || own.len() + spare.len() >= MAX_TRACKS) {
             break;
         }
         if !seen_id.insert(t.id.clone()) || !seen_key.insert(song_key(t)) {
@@ -839,9 +914,15 @@ pub fn finish(plan: &Plan, fresh: &[(Track, Vec<String>)], now: u64) -> Option<M
         }
         *n += 1;
         seen_key.extend(song_keys(t));
-        own.push(t.clone());
+        if own.len() < plan.max_own {
+            own.push(t.clone());
+        } else {
+            spare.push(t.clone());
+        }
     }
     let mut new = Vec::new();
+    let mut per_new: HashMap<String, usize> = HashMap::new();
+    let lead = name_key(&plan.lead);
     for (t, fams) in fresh {
         if let Some(f) = &plan.family {
             if !fams.contains(f) {
@@ -849,12 +930,22 @@ pub fn finish(plan: &Plan, fresh: &[(Track, Vec<String>)], now: u64) -> Option<M
             }
         }
         let keys = song_keys(t);
-        if keys.iter().any(|k| seen_key.contains(k)) || !seen_id.insert(t.id.clone()) {
+        if keys.iter().any(|k| seen_key.contains(k)) || seen_id.contains(&t.id) {
             continue;
         }
+        // No artist fills a mix (an artist mix's own artist excepted).
+        let a = name_key(&t.artist);
+        let n = per_new.entry(a.clone()).or_insert(0);
+        if *n >= NEW_PER_ARTIST && (lead.is_empty() || a != lead) {
+            continue;
+        }
+        *n += 1;
+        seen_id.insert(t.id.clone());
         seen_key.extend(keys);
         new.push(t.clone());
     }
+    let room = MAX_TRACKS.saturating_sub(own.len() + new.len());
+    own.extend(spare.into_iter().take(room));
     // Interleave: `own_run` own tracks, then `new_run` fresh ones, until MAX_TRACKS.
     let mut tracks = Vec::new();
     let (mut oi, mut ni) = (0, 0);
@@ -1346,7 +1437,7 @@ mod tests {
             .collect();
         let m = finish(&p, &fresh, 0).unwrap();
         assert_eq!(m.subtitle, "celadon, shk and expe");
-        assert_eq!(m.tracks.len(), 10);
+        assert_eq!(m.tracks.len(), 9, "at most NEW_PER_ARTIST new songs by shk");
     }
 
     #[test]
@@ -1498,6 +1589,94 @@ mod tests {
         }
         let items = items_from(&likes, &[], 0);
         assert_eq!(artist_name(&items.iter().collect::<Vec<_>>()), "Daft Punk");
+    }
+
+    #[test]
+    fn decade_filter_for_era_top_ups() {
+        // SoundCloud release dates are trusted; upload-only years give way to older YouTube Music years.
+        assert_eq!(candidate_year(Some(1996), false, Some(2012)), Some(1996));
+        assert_eq!(candidate_year(Some(2014), true, Some(1995)), Some(1995));
+        assert_eq!(candidate_year(Some(2014), true, Some(2019)), Some(2014));
+        assert_eq!(candidate_year(Some(2014), true, None), Some(2014));
+        assert_eq!(candidate_year(None, false, Some(1999)), Some(1999));
+        assert_eq!(candidate_year(None, false, None), None);
+        assert!(in_decade(Some(1990), 1990) && in_decade(Some(1999), 1990));
+        assert!(!in_decade(Some(2000), 1990) && !in_decade(Some(1989), 1990) && !in_decade(None, 1990));
+        assert!(in_decade(candidate_year(Some(2016), true, Some(1994)), 1990), "a 90s song re-uploaded in 2016");
+        assert!(!in_decade(candidate_year(Some(2016), true, None), 1990), "no older year: stays out");
+        assert!(reupload(&tr("1", "Matt", "Initial D - Movin' Up", "")));
+        assert!(!reupload(&tr("1", "DEADLIGHT", "Deadlight - UROBOROS", "")), "the artist's own upload");
+        assert!(!reupload(&tr("1", "cold", "TASTE MY BLOOD", "")));
+        assert_eq!(decade_word(1990), "90s");
+        assert_eq!(decade_word(2000), "2000s");
+        assert_eq!(era_queries(1990, &["rap".into(), "rnb".into()]), vec!["90s hip hop", "90s r&b"]);
+        // Top families inside the decade only.
+        let mut likes: Vec<Track> = (0..5).map(|i| tr(&format!("1{i}"), &format!("R{i}"), &format!("r {i}"), "Hip hop")).collect();
+        likes.extend((0..3).map(|i| tr(&format!("2{i}"), &format!("H{i}"), &format!("h {i}"), "House")));
+        likes.extend((0..9).map(|i| tr(&format!("3{i}"), &format!("T{i}"), &format!("t {i}"), "Techno")));
+        let mut items = items_from(&likes, &[], 0);
+        for it in items.iter_mut() {
+            it.year = Some(if it.track.id.starts_with('3') { 2015 } else { 1997 });
+        }
+        assert_eq!(era_families(&items, 1990, 3), vec!["rap", "house"]);
+        assert_eq!(era_families(&items, 2010, 1), vec!["techno"]);
+    }
+
+    #[test]
+    fn mixes_fill_to_fifty_with_new_songs() {
+        let own: Vec<Track> = (0..12).map(|i| tr(&format!("{i}"), &format!("A{i}"), &format!("own {i}"), "")).collect();
+        let fresh: Vec<(Track, Vec<String>)> =
+            (0..60).map(|i| (tr(&format!("n{i}"), &format!("N{}", i / 4), &format!("new {i}"), ""), vec![])).collect();
+        let mut p = Plan::new("era-1990s".into(), "era", era_title(1990));
+        p.own = own.clone();
+        p.own_cap = 5;
+        half_new(&mut p);
+        let m = finish(&p, &fresh, 0).unwrap();
+        assert_eq!(m.tracks.len(), MAX_TRACKS, "12 own tracks still make 50");
+        assert_eq!(m.tracks[0].id, "0", "own first");
+        assert_eq!(m.tracks.iter().filter(|t| !t.id.starts_with('n')).count(), 12);
+        // At most NEW_PER_ARTIST new songs per artist (N0..N14 have four each).
+        let mut per: HashMap<String, usize> = HashMap::new();
+        for t in m.tracks.iter().filter(|t| t.id.starts_with('n')) {
+            *per.entry(t.artist.clone()).or_default() += 1;
+        }
+        assert!(per.values().all(|n| *n <= NEW_PER_ARTIST), "{per:?}");
+
+        // Many own tracks: about half new.
+        p.own = (0..80).map(|i| tr(&format!("{i}"), &format!("A{i}"), &format!("own {i}"), "")).collect();
+        let m = finish(&p, &fresh, 0).unwrap();
+        let new = m.tracks.iter().filter(|t| t.id.starts_with('n')).count();
+        assert_eq!((m.tracks.len(), new), (50, 25));
+        // Few new songs: more own tracks fill the mix up to 50.
+        let m = finish(&p, &fresh[..8], 0).unwrap();
+        assert_eq!(m.tracks.len(), 50);
+        assert_eq!(m.tracks.iter().filter(|t| t.id.starts_with('n')).count(), 6, "N0 x3 + N1 x3");
+
+        // On Repeat stays own-only and stops at max_own.
+        let mut r = Plan::new("on-repeat".into(), "repeat", "On Repeat".into());
+        r.own = p.own.clone();
+        r.max_own = 30;
+        r.own_cap = 0;
+        let m = finish(&r, &[], 0).unwrap();
+        assert_eq!(m.tracks.len(), 30);
+    }
+
+    #[test]
+    fn era_plans_get_seeds_and_half_new() {
+        let (likes, hist) = sample();
+        let now = 1000 * DAY_MS;
+        let mut items = items_from(&likes, &hist, now);
+        for it in items.iter_mut() {
+            it.year = Some(1996);
+        }
+        let plans = plans(&items, &cooccurrence(&hist), now);
+        let era = plans.iter().find(|p| p.kind == "era").expect("era plan");
+        assert_eq!((era.title.as_str(), era.decade), ("90s Mix", 1990));
+        assert!(!era.seeds.is_empty() && era.family.is_none());
+        assert_eq!((era.max_own, era.own_run, era.new_run), (25, 1, 1));
+        let g = plans.iter().find(|p| p.kind == "genre").unwrap();
+        assert_eq!((g.max_own, g.new_run), (25, 1));
+        assert!(plans.iter().filter(|p| !tops_up(&p.kind)).all(|p| p.seeds.is_empty()));
     }
 
     #[test]
