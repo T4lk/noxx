@@ -115,8 +115,9 @@
   let redrawQueued = false;
   let viewDirty = false;
   function changed(j) {
-    // Progress ticks update rows in place; anything else re-renders the view.
-    if (!j || !isActive(j) || !document.querySelector(`.dl-job[data-id="${CSS.escape(j.id)}"]`)) viewDirty = true;
+    // Everything on an open Downloads page is patched in place (no re-render, so no flash);
+    // only a page without its sections yet is rendered again.
+    if (!j) viewDirty = true;
     if (redrawQueued) return;
     redrawQueued = true;
     requestAnimationFrame(() => {
@@ -125,7 +126,8 @@
       updateBadge();
       updateListButtons();
       if (R.state.view === 'downloads') {
-        if (viewDirty) R.render(true); else updateJobRows();
+        if (!document.querySelector('#view .dl-page')) R.render(true);
+        else patchView(viewDirty);
       }
       viewDirty = false;
     });
@@ -225,32 +227,98 @@
 
   function jobStatus(j) {
     if (j.state === 'queued') return 'Waiting';
-    if (j.state === 'saving') return 'Saving…';
+    if (j.state === 'saving') return 'Saving';
     if (j.state === 'error') return j.error || 'Failed';
-    return j.total > 0 ? `${pct(j)}%` : 'Downloading…';
+    return j.total > 0 ? `${pct(j)}%` : 'Starting';
   }
-  const barWidth = (j) => (j.state === 'saving' ? 100 : pct(j)) + '%';
+  const barWidth = (j) => (j.state === 'saving' ? 100 : j.state === 'queued' ? 0 : pct(j)) + '%';
   function jobRow(j) {
     const t = j.track || {};
-    return `<div class="dl-job ${esc(j.state)}" data-id="${esc(j.id)}">
+    return `<div class="dl-job ${esc(j.state)}" data-id="${esc(j.id)}" style="--p:${barWidth(j)}">
       <div class="dl-art" style="${R.bg(R.small(t.artwork))}"></div>
       <div class="dl-i"><div class="a">${esc(t.title)}</div>
-        <div class="b"><span class="dl-artist">${esc(t.artist)}</span><span class="dl-status">${esc(jobStatus(j))}</span></div>
-        <div class="dl-bar"><i style="width:${barWidth(j)}"></i></div></div>
+        <div class="b"><span class="dl-artist">${esc(t.artist)}</span></div></div>
+      <span class="dl-status">${esc(jobStatus(j))}</span>
       ${j.state === 'error' ? `<button class="pill-btn" data-act="retry" title="Retry">${IC.retry}</button>` : ''}
       <button class="pill-btn" data-act="cancel" title="${j.state === 'error' ? 'Dismiss' : 'Cancel'}">${IC.close}</button>
     </div>`;
   }
+  function paintRow(row, j) {
+    row.className = `dl-job ${j.state}`;
+    row.style.setProperty('--p', barWidth(j));
+    row.querySelector('.dl-status').textContent = jobStatus(j);
+    const hasRetry = !!row.querySelector('[data-act=retry]');
+    if ((j.state === 'error') !== hasRetry) row.outerHTML = jobRow(j);
+  }
   function updateJobRows() {
     for (const row of document.querySelectorAll('#view .dl-job')) {
       const j = jobs.get(row.dataset.id);
-      if (!j) continue;
-      row.querySelector('.dl-status').textContent = jobStatus(j);
-      row.querySelector('.dl-bar i').style.width = barWidth(j);
-      row.className = `dl-job ${j.state}`;
+      if (j) paintRow(row, j);
     }
-    const n = document.querySelector('#view .dl-jobs-count');
-    if (n) n.textContent = activeCount() ? `${activeCount()} in progress` : '';
+    paintSummary();
+  }
+
+  /** Overall line: "3 of 12 · 41%" with one bar for the whole queue. */
+  function paintSummary() {
+    const sec = document.querySelector('#view .dl-sec');
+    if (!sec) return;
+    const list = [...jobs.values()];
+    const active = activeCount();
+    const failed = list.filter((j) => j.state === 'error').length;
+    const totalPct = list.length ? list.reduce((n, j) => n + (j.state === 'error' ? 100 : j.state === 'saving' ? 100 : j.state === 'queued' ? 0 : pct(j)), 0) / list.length : 0;
+    sec.querySelector('.dl-jobs-count').textContent = active ? `${active} left${failed ? ` · ${failed} failed` : ''}` : failed ? `${failed} failed` : '';
+    sec.querySelector('.dl-total i').style.width = `${Math.round(totalPct)}%`;
+    sec.querySelector('[data-a=cancel-all]').textContent = active ? 'Cancel all' : 'Clear';
+    const retry = sec.querySelector('[data-a=retry-all]');
+    if (retry) retry.hidden = !failed;
+  }
+
+  function headSub(tracks) {
+    return `${plural(tracks.length, 'track')} · ${fmtSize(totalSize())} · <span class="dl-folder">${esc(folder.folder)}</span>`;
+  }
+  const doneTracks = () => [...items.values()].sort((a, b) => (b.at || 0) - (a.at || 0)).map((e) => e.track);
+  let doneShown = '';
+
+  function paintDone(box, tracks) {
+    doneShown = tracks.map((t) => t.id).join(',');
+    box.innerHTML = '';
+    if (!tracks.length) {
+      box.innerHTML = `<div class="empty"><div>${esc('Nothing downloaded yet. Use Download in a track\'s ⋯ menu, the player bar, or "Download all" on Likes and playlists.')}</div></div>`;
+      return;
+    }
+    R.trackList(box, tracks, { removable: true, onRemove: (i) => removeDownload(tracks[i]) });
+    box.querySelectorAll('.tracks').forEach((l) => l.classList.remove('intro')); // no entrance animation on refresh
+  }
+
+  /** Brings an open Downloads page up to date without rebuilding it. */
+  function patchView(full) {
+    const page = document.querySelector('#view .dl-page');
+    if (!page) return;
+    const tracks = doneTracks();
+    page.querySelector('.dl-sub').innerHTML = headSub(tracks);
+    const jobsSec = page.querySelector('.dl-jobs-wrap');
+    const box = page.querySelector('.dl-jobs');
+    const list = [...jobs.values()];
+    // leaving rows slide out
+    for (const row of box.querySelectorAll('.dl-job:not(.leaving)')) {
+      if (!jobs.has(row.dataset.id)) {
+        row.classList.add('leaving');
+        row.style.height = `${row.offsetHeight}px`;
+        requestAnimationFrame(() => { row.style.height = '0px'; });
+        setTimeout(() => row.remove(), 320);
+      }
+    }
+    // new rows slide in
+    for (const j of list) {
+      if (!box.querySelector(`.dl-job[data-id="${CSS.escape(j.id)}"]`)) {
+        box.insertAdjacentHTML('beforeend', jobRow(j));
+        box.lastElementChild.classList.add('entering');
+      }
+    }
+    updateJobRows();
+    jobsSec.classList.toggle('empty', !list.length);
+    const ids = tracks.map((t) => t.id).join(',');
+    if (full || ids !== doneShown) paintDone(page.querySelector('.dl-done'), tracks);
   }
 
   async function renderDownloads(token) {
@@ -259,40 +327,42 @@
     await ready;
     if (R.stale(token)) return;
     R.view.innerHTML = '';
-    const entries = [...items.values()].sort((a, b) => (b.at || 0) - (a.at || 0));
-    const tracks = entries.map((e) => e.track);
-    const head = R.add(`<div class="head-row"><div><div class="page-title">Downloads</div>
-      <div class="page-sub">${plural(tracks.length, 'track')} · ${fmtSize(totalSize())} · <span class="dl-folder">${esc(folder.folder)}</span></div></div>
+    const tracks = doneTracks();
+    const page = R.add('<div class="dl-page"></div>');
+    const head = R.el(`<div class="head-row"><div><div class="page-title">Downloads</div>
+      <div class="page-sub dl-sub">${headSub(tracks)}</div></div>
       <div class="actions">${tracks.length ? R.listActions() : ''}<button class="btn outline" data-a="folder">${IC.folder}Open folder</button></div></div>`);
+    page.append(head);
     R.wireActions(head, tracks, { folder: () => reveal('') });
 
     const list = [...jobs.values()];
-    if (list.length) {
-      const failed = list.filter((j) => j.state === 'error');
-      const sec = R.add(`<div class="section-title dl-sec">Downloading <span class="dl-jobs-count">${activeCount() ? `${activeCount()} in progress` : ''}</span>
-        <span class="dl-sec-actions">${failed.length ? '<button class="btn outline" data-a="retry-all">Retry failed</button>' : ''}<button class="btn outline" data-a="cancel-all">${activeCount() ? 'Cancel all' : 'Clear'}</button></span></div>`);
-      sec.addEventListener('click', (e) => {
-        const a = e.target.closest('[data-a]')?.dataset.a;
-        if (a === 'cancel-all') cancel('');
-        else if (a === 'retry-all') start(failed.map((j) => j.track));
-      });
-      const box = R.add(`<div class="dl-jobs">${list.map(jobRow).join('')}</div>`);
-      box.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-act]');
-        const row = e.target.closest('.dl-job');
-        if (!b || !row) return;
-        const j = jobs.get(row.dataset.id);
-        if (b.dataset.act === 'cancel') cancel(row.dataset.id);
-        else if (b.dataset.act === 'retry' && j) start([j.track]);
-      });
-    }
+    const wrap = R.el(`<div class="dl-jobs-wrap${list.length ? '' : ' empty'}">
+      <div class="section-title dl-sec">Downloading <span class="dl-jobs-count"></span>
+        <span class="dl-sec-actions"><button class="btn outline" data-a="retry-all" hidden>Retry failed</button><button class="btn outline" data-a="cancel-all">Cancel all</button></span>
+        <div class="dl-total"><i></i></div></div>
+      <div class="dl-jobs">${list.map(jobRow).join('')}</div></div>`);
+    page.append(wrap);
+    wrap.querySelector('.dl-sec').addEventListener('click', (e) => {
+      const a = e.target.closest('[data-a]')?.dataset.a;
+      if (a === 'cancel-all') cancel('');
+      else if (a === 'retry-all') start([...jobs.values()].filter((j) => j.state === 'error').map((j) => j.track));
+    });
+    wrap.querySelector('.dl-jobs').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-act]');
+      const row = e.target.closest('.dl-job');
+      if (!b || !row) return;
+      const j = jobs.get(row.dataset.id);
+      if (b.dataset.act === 'cancel') cancel(row.dataset.id);
+      else if (b.dataset.act === 'retry' && j) start([j.track]);
+    });
+    paintSummary();
 
-    R.add('<div class="section-title">Downloaded</div>');
-    if (!tracks.length) {
-      R.emptyMsg('Nothing downloaded yet. Use Download in a track\'s ⋯ menu, the player bar, or "Download all" on Likes and playlists.');
-      return;
-    }
-    R.trackList(R.view, tracks, { removable: true, onRemove: (i) => removeDownload(tracks[i]) });
+    page.append(R.el('<div class="section-title">Downloaded</div>'));
+    const done = R.el('<div class="dl-done"></div>');
+    page.append(done);
+    paintDone(done, tracks);
+    // first render keeps the list's normal entrance animation
+    done.querySelectorAll('.tracks').forEach((l) => l.classList.add('intro'));
   }
 
   R.registerView('downloads', { title: 'Downloads', icon: IC.download, nav: true, render: renderDownloads });

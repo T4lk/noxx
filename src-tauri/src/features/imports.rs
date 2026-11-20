@@ -156,6 +156,15 @@ fn order(prefer: &str) -> [Plat; 2] {
     }
 }
 
+/// The same song on YouTube Music / YouTube, for SoundCloud tracks that won't stream
+/// (playback fallback and downloads).
+pub async fn youtube_alt(sc: &SoundCloud, title: &str, artist: &str, duration: u64) -> Option<Track> {
+    if title.trim().is_empty() {
+        return None;
+    }
+    match_one(sc, "alt", &Item::new(title.to_string(), artist.to_string(), duration)).await.ok().flatten()
+}
+
 /// Ok(None) = searched fine but nothing close enough. Err = every search failed.
 async fn match_one(sc: &SoundCloud, prefer: &str, it: &Item) -> Result<Option<Track>, String> {
     if let Some(t) = &it.track {

@@ -524,7 +524,21 @@ async fn fetch_audio(app: &AppHandle, http: &reqwest::Client, track: &Track, can
         if attempt > 0 {
             sc.forget_stream(&track.id);
         }
-        let info = sc.stream(&track.id).await.map_err(|e| Fail::Fatal(e.to_string()))?;
+        let info = match sc.stream(&track.id).await {
+            Ok(i) => i,
+            Err(e) => {
+                // Not streamable on SoundCloud (region, Go+, removed): save the same song from YouTube.
+                let msg = e.to_string();
+                return match super::imports::youtube_alt(&sc, &track.title, &track.artist, track.duration).await {
+                    Some(alt) => {
+                        let mut a = fetch_youtube(app, &alt, on).await?;
+                        a.preset = format!("youtube fallback, {}", a.preset);
+                        Ok(a)
+                    }
+                    None => Err(Fail::Fatal(format!("{msg} (no YouTube match either)"))),
+                };
+            }
+        };
         let got = if info.protocol == "hls" {
             fetch_hls(http, &info.url, cancel, on).await
         } else {
