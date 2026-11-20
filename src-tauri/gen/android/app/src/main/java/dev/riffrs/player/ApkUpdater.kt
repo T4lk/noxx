@@ -44,6 +44,9 @@ object ApkUpdater {
         conn.instanceFollowRedirects = true
         conn.connectTimeout = 15000
         conn.readTimeout = 30000
+        if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+          throw java.io.IOException("server answered ${conn.responseCode}")
+        }
         val total = conn.contentLengthLong
         var done = 0L
         var last = 0L

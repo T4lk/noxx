@@ -146,6 +146,10 @@ fn set_status(f: impl FnOnce(&mut Status)) {
 }
 
 pub fn setup(app: &AppHandle) {
+    // No Discord desktop client to talk to on a phone.
+    if cfg!(mobile) {
+        return;
+    }
     let file = app.state::<crate::AppState>().data_dir.join("discord.json");
     let saved = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Saved>(&b).ok());
     let enabled = saved.as_ref().map(|s| s.enabled).unwrap_or(true); // on by default, like riff

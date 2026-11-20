@@ -54,6 +54,7 @@
     } catch (e) {
       const msg = errText(e);
       if (/YTDLP_MISSING/.test(msg)) {
+        if (window.noxxAndroid) throw new Error("YouTube won't stream this track on a phone");
         toolsModal(t);
         throw new Error('YouTube needs yt-dlp for this track');
       }
@@ -180,7 +181,8 @@
     setCard.querySelector('.b').textContent = busy ? `Downloading yt-dlp… ${s.percent || 0}%`
       : s.ytdlp ? `Direct streams, yt-dlp as fallback: ${s.ytdlp}`
       : 'Direct streams. yt-dlp is not installed (only needed when YouTube blocks a direct stream).';
-    setCard.querySelector('[data-a=dl]').hidden = !!s.ytdlp || busy;
+    setCard.querySelector('[data-a=dl]').hidden = !!s.ytdlp || busy || !!window.noxxAndroid;
+    if (window.noxxAndroid) setCard.querySelector('.b').textContent = 'Direct streams';
   }
   R.addSettings(() => {
     R.add('<div class="section-title">YouTube</div>');

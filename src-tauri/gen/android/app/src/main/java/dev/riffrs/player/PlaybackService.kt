@@ -5,8 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -61,8 +64,8 @@ class PlaybackService : Service() {
     }
     session = MediaSessionCompat(this, "noxx").apply {
       setCallback(object : MediaSessionCompat.Callback() {
-        override fun onPlay() = key("playpause")
-        override fun onPause() = key("playpause")
+        override fun onPlay() = key("play")
+        override fun onPause() = key("pause")
         override fun onSkipToNext() = key("next")
         override fun onSkipToPrevious() = key("prev")
         override fun onStop() = key("stop")
@@ -73,7 +76,12 @@ class PlaybackService : Service() {
       .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "noxx:playback").apply { setReferenceCounted(false) }
     @Suppress("DEPRECATION")
     wifi = (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager)
-      .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "noxx:playback").apply { setReferenceCounted(false) }
+      .createWifiLock(
+        if (Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY else WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+        "noxx:playback",
+      ).apply { setReferenceCounted(false) }
+    // Headphones unplugged / Bluetooth gone: pause instead of blasting the speaker.
+    ContextCompat.registerReceiver(this, noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
     running = this
   }
 
@@ -85,6 +93,10 @@ class PlaybackService : Service() {
         return START_NOT_STICKY
       }
     }
+    if (state.title.isEmpty()) { // stopped before the service got going
+      shutdown()
+      return START_NOT_STICKY
+    }
     refresh()
     return START_NOT_STICKY
   }
@@ -95,7 +107,14 @@ class PlaybackService : Service() {
     super.onTaskRemoved(rootIntent)
   }
 
+  private val noisy = object : BroadcastReceiver() {
+    override fun onReceive(c: Context?, i: Intent?) {
+      if (state.playing) key("pause")
+    }
+  }
+
   override fun onDestroy() {
+    try { unregisterReceiver(noisy) } catch (e: Exception) {}
     running = null
     session.release()
     wake?.release()
@@ -136,10 +155,22 @@ class PlaybackService : Service() {
     session.setMetadata(meta.build())
 
     val n = notification(s)
-    if (Build.VERSION.SDK_INT >= 29) {
-      startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+    if (s.playing) {
+      try {
+        if (Build.VERSION.SDK_INT >= 29) {
+          startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+          startForeground(ID, n)
+        }
+      } catch (e: Exception) {
+        // Android 12+ refuses a foreground start from the background; keep the notification.
+        android.util.Log.w("noxx", "startForeground: $e")
+        getSystemService(NotificationManager::class.java).notify(ID, n)
+      }
     } else {
-      startForeground(ID, n)
+      // Paused: the notification stays (swipe to dismiss) but the service may be stopped.
+      ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+      getSystemService(NotificationManager::class.java).notify(ID, n)
     }
 
     if (s.playing) {
@@ -173,6 +204,12 @@ class PlaybackService : Service() {
       .setLargeIcon(if (s.artwork == artUrl) art else null)
       .setContentIntent(open)
       .setOngoing(s.playing)
+      .setDeleteIntent(
+        PendingIntent.getService(
+          this, 9, Intent(this, PlaybackService::class.java).setAction(ACTION_STOP),
+          PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        ),
+      )
       .setSilent(true)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .addAction(btn(android.R.drawable.ic_media_previous, "Previous", "prev", 1))
@@ -197,7 +234,14 @@ class PlaybackService : Service() {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 8000
         c.readTimeout = 8000
-        c.inputStream.use { BitmapFactory.decodeStream(it) }
+        // small enough for the notification / media session (binder limit ~1 MB)
+        val raw = c.inputStream.use { BitmapFactory.decodeStream(it) }
+        if (raw != null && (raw.width > 320 || raw.height > 320)) {
+          val k = 320f / maxOf(raw.width, raw.height)
+          Bitmap.createScaledBitmap(raw, (raw.width * k).toInt(), (raw.height * k).toInt(), true)
+        } else {
+          raw
+        }
       } catch (e: Exception) {
         null
       }
@@ -235,6 +279,7 @@ class PlaybackService : Service() {
           try {
             ContextCompat.startForegroundService(ctx, Intent(ctx, PlaybackService::class.java))
           } catch (e: Exception) {
+            android.util.Log.w("noxx", "playback service start: $e")
           }
         }
       }

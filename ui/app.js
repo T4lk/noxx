@@ -1199,7 +1199,7 @@ function renderPlatformSwitch() {
   box.innerHTML = `${cur.icon || ''}<span>${esc(cur.label)}</span>${svg('<polyline points="6 9 12 15 18 9"/>')}`;
   box.dataset.p = cur.id;
   box.dataset.order = searchProviders.map((p) => p.id).join(',');
-  searchInput.placeholder = 'What do you want to play?';
+  searchInput.placeholder = window.noxxAndroid ? 'Search' : 'What do you want to play?';
   fitSearchBox();
 }
 
@@ -1542,8 +1542,9 @@ document.addEventListener('click', (e) => {
 // ---- preferences that change the core look (riff's Interface / Tracks / Advanced toggles)
 
 function applyUiScale(v = pref('uiScale', 100)) {
-  // 100% is riff's own 0.9 base zoom.
-  document.documentElement.style.setProperty('--app-zoom', String(+(0.9 * v / 100).toFixed(4)));
+  // 100% is riff's own 0.9 base zoom (1.0 on phones, where the layout is already compact).
+  const base = window.noxxAndroid ? 1 : 0.9;
+  document.documentElement.style.setProperty('--app-zoom', String(+(base * v / 100).toFixed(4)));
   requestAnimationFrame(() => {
     window.dispatchEvent(new Event('resize'));
     sizeWave(); redrawLists(); fitMarquee(); updateNavIndicator(false); fitSearchBox();

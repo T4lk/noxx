@@ -45,10 +45,13 @@ class MainActivity : TauriActivity() {
     // Edge-to-edge: hand the status / navigation bar heights to the page (ui/features/mobile.css).
     ViewCompat.setOnApplyWindowInsetsListener(webView) { v, insets ->
       val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
       val d = resources.displayMetrics.density
       insetTop = Math.round(bars.top / d)
       insetBottom = Math.round(bars.bottom / d)
-      (v as WebView).evaluateJavascript("window.__noxxInsets && window.__noxxInsets($insetTop, $insetBottom)", null)
+      // keyboard height above the navigation bar, so dialogs can move up
+      val kb = Math.round(maxOf(0, ime.bottom - bars.bottom) / d)
+      (v as WebView).evaluateJavascript("window.__noxxInsets && window.__noxxInsets($insetTop, $insetBottom, $kb)", null)
       insets
     }
   }
@@ -68,8 +71,10 @@ class MainActivity : TauriActivity() {
 
   /** Notification / headset button -> the page's media-key handler. */
   fun mediaKey(key: String) {
-    if (key !in setOf("playpause", "next", "prev", "stop")) return
+    if (key !in setOf("playpause", "play", "pause", "next", "prev", "stop")) return
     runOnUiThread {
+      // A paused WebView (noxx in the background while paused) wouldn't start playing again.
+      if (key != "pause" && key != "stop") webView?.onResume()
       webView?.evaluateJavascript("window.__noxxMediaKey && window.__noxxMediaKey('$key')", null)
     }
   }

@@ -1025,7 +1025,8 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             if !ok {
                 return Err("youtube.open: not a YouTube URL".into());
             }
-            tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())?;
+            use tauri_plugin_opener::OpenerExt;
+            app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
         _ => Err(format!("youtube: unknown command {cmd}")),

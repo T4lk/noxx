@@ -5,9 +5,9 @@ html.riff-android, html.riff-android body { width: 100%; max-width: 100vw; overf
 html.riff-android body {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  padding-top: var(--sat, 0px);
-  padding-bottom: calc(58px + var(--sab, 0px));
-  zoom: 1;
+  /* --sat / --sab are real screen px; body is zoomed by UI scale, so divide them back */
+  padding-top: calc(var(--sat, 0px) / var(--app-zoom, 1));
+  padding-bottom: calc(58px + var(--sab, 0px) / var(--app-zoom, 1));
 }
 html.riff-android .titlebar,
 html.riff-android .top-nav .brand,
@@ -168,3 +168,32 @@ html.riff-android .hero .cover { width: 168px; height: 168px; align-self: center
 html.riff-android .hero .meta { width: 100%; min-width: 0; }
 html.riff-android .hero h1 { font-size: 30px; overflow-wrap: anywhere; }
 html.riff-android .hero .actions { flex-wrap: wrap; gap: 8px; }
+
+/* search: the source chip shows just its icon, the box keeps the full width for typing */
+html.riff-android .search-box .src-chip { margin-left: 0; padding: 0 8px; gap: 2px; height: 36px; flex: none; }
+html.riff-android .search-box .src-chip > span,
+html.riff-android .search-box > svg { display: none; }
+
+/* insets inside zoomed fixed layers */
+html.riff-android .rail { padding-bottom: calc(6px + var(--sab, 0px) / var(--app-zoom, 1)); }
+html.riff-android .tvk { padding-top: calc(var(--sat, 0px) / var(--app-zoom, 1)); padding-bottom: calc(var(--sab, 0px) / var(--app-zoom, 1)); }
+html.riff-android .toasts { bottom: calc(140px + var(--sab, 0px) / var(--app-zoom, 1)); }
+/* the on-screen keyboard (--sak) shouldn't cover dialog inputs */
+html.riff-android .modal-wrap { padding-bottom: calc(var(--sak, 0px) / var(--app-zoom, 1)); }
+html.riff-android .menu { max-height: calc(100vh / var(--app-zoom, 1) - 160px); overflow-y: auto; }
+
+/* touch targets: at least ~40 px */
+html.riff-android :is(.search-clear, .sync-mini, .fx-chip-act) { min-width: 40px; min-height: 40px; }
+html.riff-android .pill-btn { min-width: 40px; min-height: 40px; }
+html.riff-android :is(.btn, .ctrl-btn) { min-height: 40px; }
+html.riff-android .ctrl-btn { min-width: 40px; }
+html.riff-android .dc-ah-nav { opacity: 1 !important; width: 40px; height: 40px; }
+
+/* desktop-only bits */
+html.riff-android :is(.dc-card, .dc-custom, .dc-sub) { display: none !important; }
+html.riff-android .section-title:has(+ .dc-card) { display: none !important; }
+html.riff-android .settings-nav-btn:is([data-cat="custom-themes"], [data-cat="plugins"]) { display: none !important; }
+html.riff-android .sys-cache { min-width: 0 !important; }
+/* tabs shrink to fit at bigger UI scales */
+html.riff-android .rail .nav-item { min-width: 0; flex: 1 1 0; }
+html.riff-android .rail .nav-ind { width: min(52px, 100%); }

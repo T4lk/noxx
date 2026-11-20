@@ -10,17 +10,21 @@
 
   // Status / navigation bar heights (CSS px) for the edge-to-edge layout; MainActivity calls
   // this again whenever they change.
-  window.__noxxInsets = (top, bottom) => {
+  window.__noxxInsets = (top, bottom, keyboard) => {
     root.style.setProperty('--sat', `${Number(top) || 0}px`);
     root.style.setProperty('--sab', `${Number(bottom) || 0}px`);
+    root.style.setProperty('--sak', `${Number(keyboard) || 0}px`);
   };
   try { const [t, b] = String(bridge.insets()).split(','); window.__noxxInsets(t, b); } catch (e) {}
 
   // SoundCloud sign-in screen (LoginActivity.kt): resolves with the oauth token, rejects when closed.
   let pendingLogin = null;
   window.noxxLogin = (force) => new Promise((resolve, reject) => {
+    if (pendingLogin) pendingLogin.reject('Sign-in was restarted.');
     pendingLogin = { resolve, reject };
-    try { bridge.login(!!force); } catch (e) { pendingLogin = null; reject(e); }
+    let started = false;
+    try { started = bridge.login(!!force) !== false; } catch (e) { started = false; }
+    if (!started) { pendingLogin = null; reject("Couldn't open the sign-in screen."); }
   });
   window.__noxxLoginDone = (token) => {
     const p = pendingLogin; pendingLogin = null;
@@ -134,6 +138,8 @@
   // ------------------------------------------------------------ back button
   // MainActivity asks this first; false sends noxx to the background (music keeps playing).
   window.__noxxBack = () => {
+    const dd = document.querySelector('.th-dd.open');
+    if (dd) { dd.classList.remove('open'); return true; }
     if (riff.nowPlayingOpen && riff.nowPlayingOpen()) { riff.closeNowPlaying(); return true; }
     const modal = document.getElementById('modal');
     if (modal && !modal.hidden) { riff.closeModal(); return true; }
@@ -154,10 +160,14 @@
     'Show My files tab', 'Required tools', 'Music folder', 'Download folder',
     'Keyboard shortcuts', 'Logs', 'Memory', 'Minimize to tray on close', 'Capture media keys (Windows)',
     'Allow multiple instances',
-  ]);
+    // no effect in the phone layout, or need a desktop file picker
+    'Glow behind the now playing cover', 'Glow intensity', 'Track banners', 'Banner media', 'Background media',
+    'Wavy progress bar', 'Progress bar knob', 'Progress bar background', 'Compact engine buttons', 'Hide engine buttons',
+    'CSS editor',
+  ].map((s) => s.toLowerCase()));
   function pruneSettings() {
     for (const n of document.querySelectorAll('.view .th-item .th-name')) {
-      if (PHONE_HIDDEN.has(n.textContent.trim())) n.closest('.th-item').style.display = 'none';
+      if (PHONE_HIDDEN.has(n.textContent.trim().toLowerCase())) n.closest('.th-item').style.display = 'none';
     }
   }
   const pruneSoon = () => { pruneSettings(); setTimeout(pruneSettings, 120); setTimeout(pruneSettings, 600); };

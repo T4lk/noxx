@@ -84,7 +84,8 @@
     if (k === 'playpause') { if (now - lastPlayState > 350) R.togglePlay(); }
     else if (k === 'next') { if (now - lastTrackChange > 350) R.next(false); }
     else if (k === 'prev') { if (now - lastTrackChange > 350) R.prev(); }
-    else if (k === 'stop') R.audio.pause();
+    else if (k === 'stop' || k === 'pause') R.audio.pause();
+    else if (k === 'play') { if (R.audio.paused) R.togglePlay(); }
   });
 
   // ------------------------------------------------------------ Advanced

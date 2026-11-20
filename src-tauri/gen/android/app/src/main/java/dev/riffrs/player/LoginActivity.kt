@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -66,6 +67,11 @@ class LoginActivity : Activity() {
       insets
     }
     setContentView(web)
+    if (Build.VERSION.SDK_INT >= 33) {
+      onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
+        if (web.canGoBack()) web.goBack() else finishWith(null)
+      }
+    }
     web.loadUrl("https://soundcloud.com/signin")
     main.postDelayed(poll, 1500)
   }

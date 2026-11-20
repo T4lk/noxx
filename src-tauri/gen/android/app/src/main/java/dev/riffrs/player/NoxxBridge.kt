@@ -19,9 +19,10 @@ class NoxxBridge(private val ctx: Context) {
 
   /** Opens the SoundCloud sign-in screen; the token comes back through window.__noxxLoginDone. */
   @JavascriptInterface
-  fun login(force: Boolean) {
-    val a = MainActivity.instance ?: return
+  fun login(force: Boolean): Boolean {
+    val a = MainActivity.instance ?: return false
     a.runOnUiThread { LoginActivity.start(a, force) }
+    return true
   }
 
   /** Downloads a release APK and opens the system installer (ApkUpdater). */
