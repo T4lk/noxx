@@ -30,6 +30,11 @@ pub struct LibraryData {
     /// "unliked on SoundCloud" apart from "hearted locally".
     #[serde(default)]
     pub synced_like_ids: Vec<String>,
+    /// When each favorite was liked (unix ms): hearts in noxx and SoundCloud's like dates.
+    /// Favorites are kept newest-first by this; ones without a time (liked before it was
+    /// recorded) keep their place at the end.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub liked_at: HashMap<String, i64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -63,8 +68,11 @@ impl Library {
     pub fn toggle_favorite(&mut self, track: Track) -> bool {
         let now_fav = if let Some(pos) = self.data.favorites.iter().position(|t| t.id == track.id) {
             self.data.favorites.remove(pos);
+            self.data.liked_at.remove(&track.id);
             false
         } else {
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+            self.data.liked_at.insert(track.id.clone(), now);
             self.data.favorites.insert(0, track);
             true
         };
@@ -87,7 +95,13 @@ impl Library {
     /// liked tracks first in SoundCloud's order (newest like on top), then
     /// favorites that never came from SoundCloud. Tracks that came from an
     /// earlier sync but are no longer liked are removed.
-    pub fn apply_likes(&mut self, liked: Vec<Track>) -> SyncResult {
+    pub fn apply_likes(&mut self, liked: Vec<(Track, i64)>) -> SyncResult {
+        for (t, at) in &liked {
+            if *at > 0 {
+                self.data.liked_at.insert(t.id.clone(), *at);
+            }
+        }
+        let liked: Vec<Track> = liked.into_iter().map(|(t, _)| t).collect();
         let liked_ids: Vec<String> = liked.iter().map(|t| t.id.clone()).collect();
         let liked_set: HashSet<&str> = liked_ids.iter().map(String::as_str).collect();
         let prev_set: HashSet<&str> = self.data.synced_like_ids.iter().map(String::as_str).collect();
@@ -108,6 +122,12 @@ impl Library {
         // Fresh SoundCloud metadata replaces whatever was saved before.
         let mut next = liked;
         next.extend(others);
+        // Newest like first across SoundCloud and noxx hearts; undated ones stay after the dated
+        // ones in their current order (stable sort).
+        let at = &self.data.liked_at;
+        next.sort_by_key(|t| std::cmp::Reverse(at.get(&t.id).copied().unwrap_or(0)));
+        let keep: HashSet<&str> = next.iter().map(|t| t.id.as_str()).collect();
+        self.data.liked_at.retain(|id, _| keep.contains(id.as_str()));
         let after: Vec<String> = next.iter().map(|t| t.id.clone()).collect();
         let changed = before != after;
 
@@ -180,28 +200,50 @@ mod tests {
         Track { id: id.into(), title: id.into(), artist: "a".into(), duration: 1, artwork: String::new(), url: String::new(), artist_id: String::new(), artist_url: String::new(), genre: String::new(), style: String::new(), source: String::new(), path: String::new() }
     }
 
+    fn undated(v: Vec<Track>) -> Vec<(Track, i64)> {
+        v.into_iter().map(|t| (t, 0)).collect()
+    }
+
     fn ids(lib: &Library) -> Vec<&str> {
         lib.data.favorites.iter().map(|t| t.id.as_str()).collect()
     }
 
     #[test]
     fn likes_mirror_order_removals_and_keep_local() {
-        let dir = std::env::temp_dir().join(format!("riff-rs-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("noxx-test-{}", std::process::id()));
         let mut lib = Library { path: dir.join("library.json"), data: LibraryData::default() };
         lib.toggle_favorite(t("local"));
+        lib.data.liked_at.clear(); // a heart from before like times were recorded
 
-        let r = lib.apply_likes(vec![t("3"), t("2"), t("1")]);
+        let r = lib.apply_likes(undated(vec![t("3"), t("2"), t("1")]));
         assert_eq!((r.added, r.removed), (3, 0));
         assert_eq!(ids(&lib), vec!["3", "2", "1", "local"]);
 
         // "2" unliked on SoundCloud, "4" newly liked.
-        let r = lib.apply_likes(vec![t("4"), t("3"), t("1")]);
+        let r = lib.apply_likes(undated(vec![t("4"), t("3"), t("1")]));
         assert_eq!((r.added, r.removed), (1, 1));
         assert_eq!(ids(&lib), vec!["4", "3", "1", "local"]);
 
         // Same likes again: nothing changes.
-        let r = lib.apply_likes(vec![t("4"), t("3"), t("1")]);
+        let r = lib.apply_likes(undated(vec![t("4"), t("3"), t("1")]));
         assert!(!r.changed);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn likes_sorted_by_like_date() {
+        let dir = std::env::temp_dir().join(format!("noxx-likes-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let mut lib = Library::load(&dir);
+        lib.data = LibraryData::default();
+        // hearted in noxx "now", then a sync with older and newer SoundCloud likes
+        lib.toggle_favorite(t("local"));
+        let now = *lib.data.liked_at.get("local").unwrap();
+        lib.apply_likes(vec![(t("new"), now + 10_000), (t("old"), now - 10_000)]);
+        assert_eq!(ids(&lib), vec!["new", "local", "old"]);
+        // unliking drops its time
+        lib.toggle_favorite(t("local"));
+        assert!(!lib.data.liked_at.contains_key("local"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

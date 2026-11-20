@@ -637,13 +637,14 @@ impl SoundCloud {
         Ok(self.hydrate(&data["tracks"]).await.iter().filter(|t| listable(t)).map(map_track).collect())
     }
 
-    /// All liked tracks in SoundCloud's order (newest like first).
-    pub async fn liked_tracks(&self, max: usize) -> Result<Vec<Track>> {
+    /// All liked tracks in SoundCloud's order (newest like first), each with when it was
+    /// liked (unix ms, 0 when SoundCloud didn't say).
+    pub async fn liked_tracks(&self, max: usize) -> Result<Vec<(Track, i64)>> {
         let user_id = self.user_id()?;
         self.liked_tracks_of(&user_id, max).await
     }
 
-    async fn liked_tracks_of(&self, user_id: &str, max: usize) -> Result<Vec<Track>> {
+    async fn liked_tracks_of(&self, user_id: &str, max: usize) -> Result<Vec<(Track, i64)>> {
         let mut out = Vec::new();
         let mut next = String::new();
         while out.len() < max {
@@ -653,7 +654,10 @@ impl SoundCloud {
                 self.api(&next, &[]).await?
             };
             let raw = collection(&data);
-            out.extend(raw.iter().map(|i| unwrap_item(i, "track")).filter(|t| listable(t)).map(map_track));
+            out.extend(raw.iter().filter_map(|i| {
+                let t = unwrap_item(i, "track");
+                listable(t).then(|| (map_track(t), i["created_at"].as_str().map(iso_ms).unwrap_or(0)))
+            }));
             next = str_of(&data, "next_href").unwrap_or_default();
             if next.is_empty() || raw.is_empty() {
                 break;
@@ -769,6 +773,26 @@ pub(crate) fn collection(v: &Value) -> &[Value] {
 }
 
 /// Search / likes items are sometimes wrapped (`{track: {...}}`).
+/// "2024-05-01T12:34:56Z" -> unix ms (0 if it doesn't parse).
+pub(crate) fn iso_ms(s: &str) -> i64 {
+    let b = s.as_bytes();
+    let num = |a: usize, n: usize| -> Option<i64> { s.get(a..a + n)?.parse().ok() };
+    let (Some(y), Some(mo), Some(d)) = (num(0, 4), num(5, 2), num(8, 2)) else { return 0 };
+    if b.len() < 10 || !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
+        return 0;
+    }
+    let (h, mi, se) = (num(11, 2).unwrap_or(0), num(14, 2).unwrap_or(0), num(17, 2).unwrap_or(0));
+    // days from civil (Howard Hinnant)
+    let y2 = if mo <= 2 { y - 1 } else { y };
+    let era = if y2 >= 0 { y2 } else { y2 - 399 } / 400;
+    let yoe = y2 - era * 400;
+    let mp = (mo + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+    ((days * 86400) + h * 3600 + mi * 60 + se) * 1000
+}
+
 pub(crate) fn unwrap_item<'a>(item: &'a Value, key: &str) -> &'a Value {
     if item[key].is_object() {
         &item[key]
@@ -878,6 +902,14 @@ fn rank_transcodings(list: &Value) -> Vec<&Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iso_dates() {
+        assert_eq!(iso_ms("1970-01-01T00:00:00Z"), 0);
+        assert_eq!(iso_ms("2024-05-01T12:34:56Z"), 1_714_566_896_000);
+        assert_eq!(iso_ms("2000-02-29T00:00:00Z"), 951_782_400_000);
+        assert_eq!(iso_ms("nope"), 0);
+    }
     use serde_json::json;
 
     #[test]
@@ -963,7 +995,7 @@ mod tests {
         let id = id_of(&user).unwrap();
         println!("user {id} likes_count={}", user["likes_count"]);
         let started = Instant::now();
-        let likes = sc.liked_tracks_of(&id, 450).await.expect("likes");
+        let likes: Vec<Track> = sc.liked_tracks_of(&id, 450).await.expect("likes").into_iter().map(|(t, _)| t).collect();
         println!("likes: {} in {:?}; first: {} / {}", likes.len(), started.elapsed(), likes[0].title, likes[0].artist);
         assert!(!likes.is_empty());
         let unique: std::collections::HashSet<_> = likes.iter().map(|t| &t.id).collect();

@@ -434,5 +434,5 @@ pub fn run() {
             feature,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running riff-rs");
+        .expect("error while running noxx");
 }

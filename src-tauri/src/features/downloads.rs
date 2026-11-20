@@ -53,7 +53,7 @@ struct Entry {
 
 #[derive(Default, Serialize, Deserialize)]
 struct Index {
-    /// Custom folder; empty = default (Music/riff-rs).
+    /// Custom folder; empty = default (Music/noxx).
     #[serde(default)]
     folder: String,
     #[serde(default)]
@@ -97,6 +97,30 @@ struct Dl {
 
 static DL: OnceLock<Arc<Dl>> = OnceLock::new();
 
+/// Downloads from before the rename lived in Music/riff-rs. Move that folder to Music/noxx and
+/// point the index at the new paths; if it can't be moved (a file in use), keep using it.
+fn migrate_old_folder(saved: &mut Index, old: &Path, new: &Path, index_file: &Path) {
+    if !saved.folder.trim().is_empty() || !old.is_dir() || new.exists() {
+        return;
+    }
+    if std::fs::rename(old, new).is_err() {
+        saved.folder = old.to_string_lossy().into_owned();
+        write_json(&index_file.to_path_buf(), saved);
+        return;
+    }
+    let (o, n) = (old.to_string_lossy().into_owned(), new.to_string_lossy().into_owned());
+    let fix = |p: &mut String| {
+        if let Some(rest) = p.strip_prefix(&o) {
+            *p = format!("{n}{rest}");
+        }
+    };
+    for e in &mut saved.items {
+        fix(&mut e.path);
+        fix(&mut e.track.path);
+    }
+    write_json(&index_file.to_path_buf(), saved);
+}
+
 fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -104,16 +128,13 @@ fn now_secs() -> u64 {
 fn dl(app: &AppHandle) -> Arc<Dl> {
     DL.get_or_init(|| {
         let data_dir = app.state::<crate::AppState>().data_dir.clone();
-        let default_folder = app
-            .path()
-            .audio_dir()
-            .or_else(|_| app.path().download_dir())
-            .unwrap_or_else(|_| data_dir.clone())
-            .join("riff-rs");
-        let saved: Index = std::fs::read(data_dir.join(INDEX_FILE))
+        let music = app.path().audio_dir().or_else(|_| app.path().download_dir()).unwrap_or_else(|_| data_dir.clone());
+        let default_folder = music.join("noxx");
+        let mut saved: Index = std::fs::read(data_dir.join(INDEX_FILE))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
+        migrate_old_folder(&mut saved, &music.join("riff-rs"), &default_folder, &data_dir.join(INDEX_FILE));
         let items = saved.items.into_iter().map(|e| (e.track.id.clone(), e)).collect();
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
@@ -805,6 +826,25 @@ async fn probe(app: &AppHandle, d: &Dl, id: &str) -> super::Out {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn downloads_old_folder_moves_to_noxx() {
+        let base = std::env::temp_dir().join(format!("noxx-dl-migrate-{}", std::process::id()));
+        let (old, new) = (base.join("riff-rs"), base.join("noxx"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("a.m4a"), b"x").unwrap();
+        let p = old.join("a.m4a").to_string_lossy().into_owned();
+        let mut t: Track = serde_json::from_value(serde_json::json!({"id":"1","title":"a","artist":"b","duration":1,"artwork":"","url":""})).unwrap();
+        t.path = p.clone();
+        let mut idx = Index { folder: String::new(), items: vec![Entry { track: t, path: p, size: 1, at: 1 }] };
+        migrate_old_folder(&mut idx, &old, &new, &base.join("downloads.json"));
+        assert!(new.join("a.m4a").is_file() && !old.exists());
+        assert_eq!(idx.items[0].path, new.join("a.m4a").to_string_lossy());
+        assert_eq!(idx.items[0].track.path, new.join("a.m4a").to_string_lossy());
+        assert!(idx.folder.is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     fn track(id: &str, artist: &str, title: &str) -> Track {
         serde_json::from_value(json!({ "id": id, "title": title, "artist": artist, "duration": 0, "artwork": "", "url": "" })).unwrap()

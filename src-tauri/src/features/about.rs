@@ -5,8 +5,8 @@
 //! - `open_logs` → opens the logs folder in the file manager
 //! - `log_tail {lines?}` → last lines of the log file (for "Copy diagnostics")
 //!
-//! `log_js` (lib.rs) and `line()` append to `<app data>/logs/riff-rs.log`; the file is
-//! started fresh when it grows past 2 MB (the previous one is kept as riff-rs.old.log).
+//! `log_js` (lib.rs) and `line()` append to `<app data>/logs/noxx.log`; the file is
+//! started fresh when it grows past 2 MB (the previous one is kept as noxx.old.log).
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -22,11 +22,11 @@ fn log_dir(app: &AppHandle) -> PathBuf {
     app.state::<crate::AppState>().data_dir.join("logs")
 }
 fn log_file(app: &AppHandle) -> PathBuf {
-    log_dir(app).join("riff-rs.log")
+    log_dir(app).join("noxx.log")
 }
 
 pub fn setup(app: &AppHandle) {
-    line(app, "info", &format!("riff-rs {} started", app.package_info().version));
+    line(app, "info", &format!("noxx {} started", app.package_info().version));
 }
 
 /// Append one line to the log file (also echoed to stderr).
@@ -36,7 +36,7 @@ pub fn line(app: &AppHandle, level: &str, message: &str) {
     let path = log_file(app);
     let _ = std::fs::create_dir_all(log_dir(app));
     if std::fs::metadata(&path).map(|m| m.len() > MAX_LOG).unwrap_or(false) {
-        let _ = std::fs::rename(&path, log_dir(app).join("riff-rs.old.log"));
+        let _ = std::fs::rename(&path, log_dir(app).join("noxx.old.log"));
     }
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
         let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);

@@ -281,10 +281,10 @@ fn wait_for_code(listener: TcpListener, state: &str) -> Result<String, String> {
                 let get = |k: &str| q.as_ref().and_then(|u| u.query_pairs().find(|(a, _)| a == k).map(|(_, v)| v.to_string()));
                 let (msg, res) = match (get("code"), get("state"), get("error")) {
                     (_, _, Some(e)) => ("Spotify login was cancelled. You can close this tab.", Err(format!("Spotify login: {e}"))),
-                    (Some(c), Some(s), _) if s == state => ("Spotify is connected. You can close this tab and go back to riff-rs.", Ok(c)),
+                    (Some(c), Some(s), _) if s == state => ("Spotify is connected. You can close this tab and go back to noxx.", Ok(c)),
                     _ => ("Something went wrong. Close this tab and try again.", Err("Spotify login: bad callback".to_string())),
                 };
-                let html = format!("<!doctype html><meta charset=utf-8><title>riff-rs</title><body style=\"font:16px system-ui;background:#111;color:#eee;display:grid;place-items:center;height:90vh\">{msg}</body>");
+                let html = format!("<!doctype html><meta charset=utf-8><title>noxx</title><body style=\"font:16px system-ui;background:#111;color:#eee;display:grid;place-items:center;height:90vh\">{msg}</body>");
                 let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{html}", html.len()).as_bytes());
                 return res;
             }

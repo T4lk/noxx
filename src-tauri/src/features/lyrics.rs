@@ -44,7 +44,7 @@ fn http() -> &'static reqwest::Client {
     static C: OnceLock<reqwest::Client> = OnceLock::new();
     C.get_or_init(|| {
         reqwest::Client::builder()
-            .user_agent(concat!("riff-rs/", env!("CARGO_PKG_VERSION"), " (desktop music player)"))
+            .user_agent(concat!("noxx/", env!("CARGO_PKG_VERSION"), " (https://github.com/T4lk/noxx)"))
             .timeout(Duration::from_secs(8))
             .connect_timeout(Duration::from_secs(5))
             .gzip(true)
