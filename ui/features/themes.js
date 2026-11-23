@@ -1016,7 +1016,7 @@
       ${item(top('Palette style') + dropdown('style') + '<div class="th-dots"></div>', ' data-th-glass-lock')}
       ${item(top('Accent color', '<span class="th-val" data-th-accent></span>') + `<div class="th-swatches">
         ${SWATCHES.map(([c, n]) => `<button type="button" class="th-swatch" data-color="${c}" title="${n}" style="background:${c}"></button>`).join('')}
-        <label class="th-custom" title="Choose custom color"><input type="color">${PLUS}</label></div>`, ' data-th-glass-lock')}
+        <label class="th-pick" title="Choose custom color"><input type="color">${PLUS}</label></div>`, ' data-th-glass-lock')}
       ${item(top('Hue', val('hue')) + `<div class="th-sl th-hue"><div class="th-hue-track">${Array.from({ length: 12 }, (_, i) => `<i style="background:linear-gradient(90deg,hsl(${i * 30} 75% 55%),hsl(${(i + 1) * 30} 75% 55%))"></i>`).join('')}</div><input type="range" data-th-k="hue" min="0" max="360" step="1"></div>`, ' data-th-glass-lock')}
       ${item(top('Intensity', val('intensity')) + slider('intensity', 0, 100, 1) + hints('Gray', 'Soft', 'Vivid'), ' data-th-auto-lock data-th-glass-lock')}
       ${item(top('Brightness', val('brightness')) + slider('brightness', 0, 100, 1) + hints('Dark', 'Default', 'Bright'), ' data-th-auto-lock data-th-glass-lock')}
