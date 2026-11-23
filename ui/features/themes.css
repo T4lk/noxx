@@ -111,16 +111,17 @@ html:not(.th-highlight) .btn.primary:hover { background: var(--container-highest
 
 /* accent swatches */
 .th-swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
-.th-swatch, .th-custom {
+/* .th-pick, not .th-custom: html.th-custom marks "a custom theme is on" and would get these styles */
+.th-swatch, .th-pick {
   width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; position: relative;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
   transition: transform .2s var(--ease);
 }
-.th-swatch:hover, .th-custom:hover { transform: scale(1.08); }
+.th-swatch:hover, .th-pick:hover { transform: scale(1.08); }
 .th-swatch.active { outline: 3px solid var(--on-surface); outline-offset: 3px; }
-.th-custom { background: var(--container-highest); color: var(--on-surface); overflow: hidden; }
-.th-custom svg { width: 14px; height: 14px; pointer-events: none; }
-.th-custom input[type="color"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; padding: 0; border: 0; }
+.th-pick { background: var(--container-highest); color: var(--on-surface); overflow: hidden; }
+.th-pick svg { width: 14px; height: 14px; pointer-events: none; }
+.th-pick input[type="color"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; padding: 0; border: 0; }
 
 /* palette style dropdown (riff's m3-dropdown) + preview dots */
 .th-dd { position: relative; width: 100%; }
@@ -281,8 +282,8 @@ html:not(.th-highlight) .btn.primary:hover { background: var(--container-highest
 /* ======================================================================
    Custom themes (riff themes). themes.js mirrors every palette value into riff's
    --md-sys-color-* names; a riff theme overrides those with !important and the
-   rules below feed them back into riff-rs's tokens. Riff's class names that
-   themes target are also present as aliases on the matching riff-rs elements
+   rules below feed them back into noxx's tokens. Riff's class names that
+   themes target are also present as aliases on the matching noxx elements
    (.sidebar, .track-title, .btn-play-pause, .setting-item, .context-menu, ...).
    ====================================================================== */
 :root { --ui-alpha: 100%; --text-alpha: 100%; --font-scale: var(--fs); }
