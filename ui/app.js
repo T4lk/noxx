@@ -824,6 +824,59 @@ function addToQueue(t, next) {
   queueChanged();
 }
 
+// ---------------------------------------------------------------- never play: songs / artists the user blocked
+// Matched by id and by artist + title (so the same song on the other platform or a reupload is
+// caught too). Radio, My Wave, mixes and autoplay leave them out; the queue skips past them.
+const nameKey = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function songKey(t) {
+  let a = t.artist || '', ti = String(t.title || '');
+  const dash = ti.match(/^(.+?)\s+[-–]\s+(.+)$/);
+  if (dash) { a = dash[1]; ti = dash[2]; }
+  return `${nameKey(a)}|${nameKey(ti.replace(/\s*[[(].*$/, ''))}`;
+}
+const artistKey = (t) => nameKey(String(t.title || '').match(/^(.+?)\s+[-–]\s+/)?.[1] || t.artist);
+const blockedList = () => { const v = pref('blocked', []); return Array.isArray(v) ? v : []; };
+let blockIndex = null;
+function blockSets() {
+  if (!blockIndex) {
+    blockIndex = { ids: new Set(), songs: new Set(), artists: new Set() };
+    for (const b of blockedList()) {
+      if (b.kind === 'artist') blockIndex.artists.add(b.key);
+      else { if (b.id) blockIndex.ids.add(b.id); if (b.key) blockIndex.songs.add(b.key); }
+    }
+  }
+  return blockIndex;
+}
+function isBlocked(t) {
+  if (!t) return false;
+  const s = blockSets();
+  if (!s.ids.size && !s.songs.size && !s.artists.size) return false;
+  return s.ids.has(t.id) || s.songs.has(songKey(t)) || s.artists.has(nameKey(t.artist)) || s.artists.has(artistKey(t));
+}
+function saveBlocked(list) { setPref('blocked', list); blockIndex = null; emit('blocked', list); }
+function block(t, kind) {
+  const list = blockedList();
+  if (kind === 'artist') {
+    const key = artistKey(t);
+    if (!key || list.some((b) => b.kind === 'artist' && b.key === key)) return;
+    const name = String(t.title || '').match(/^(.+?)\s+[-–]\s+/)?.[1] || t.artist;
+    list.unshift({ kind: 'artist', key, name, at: Date.now() });
+    toast(`You won't hear ${name} again`);
+  } else {
+    if (isBlocked(t)) return;
+    list.unshift({ kind: 'song', id: t.id, key: songKey(t), title: t.title, artist: t.artist, at: Date.now() });
+    toast(`You won't hear ${t.title} again`);
+  }
+  saveBlocked(list.slice(0, 2000));
+  // Drop it from what's lined up, and move on if it's playing now.
+  player.userQueue = player.userQueue.filter((x) => !isBlocked(x));
+  queueChanged();
+  if (player.current && isBlocked(player.current)) next(false);
+}
+function unblock(entry) {
+  saveBlocked(blockedList().filter((b) => !(b.kind === entry.kind && b.key === entry.key && b.id === entry.id)));
+}
+
 function trackMenu(t, x, y, opts = {}, i = -1) {
   const items = [
     { label: 'Play next', run: () => addToQueue(t, true) },
@@ -833,6 +886,9 @@ function trackMenu(t, x, y, opts = {}, i = -1) {
   ];
   if (opts.removable && opts.onRemove && i >= 0) items.push({ label: 'Remove from this list', run: () => opts.onRemove(i) });
   for (const fn of ext.trackMenu) { try { const more = fn(t, opts) || []; if (more.length) items.push('-', ...more); } catch (e) { log('error', errText(e)); } }
+  const who = String(t.title || '').match(/^(.+?)\s+[-–]\s+/)?.[1] || t.artist;
+  items.push('-', { label: 'Don\'t play this song', run: () => block(t, 'song') });
+  if (who && !/^unknown/i.test(who)) items.push({ label: `Don't play ${who}`, run: () => block(t, 'artist') });
   if (t.url) items.push('-', { label: 'Copy link', run: () => navigator.clipboard.writeText(t.url).then(() => toast('Link copied')).catch(() => {}) });
   showMenu(items, x, y);
 }
@@ -1938,7 +1994,7 @@ async function continueQueue(play) {
     for (let p = player.pos; p >= 0 && recent.length < 6; p--) { const t = player.context[player.order[p]]; if (t) recent.push(t); }
     if (!recent.length) recent.push(player.current);
     const have = new Set(player.context.map((t) => t.id));
-    const fresh = (list) => (list || []).filter((t) => t && t.id && !have.has(t.id) && (have.add(t.id), true));
+    const fresh = (list) => (list || []).filter((t) => t && t.id && !have.has(t.id) && !isBlocked(t) && (have.add(t.id), true));
     let found = [];
     for (const fn of ext.continuations) {
       try { found = fresh(await fn(recent, [...have])); } catch (e) { log('warn', `autoplay: ${fn.label || 'provider'} failed: ${errText(e)}`); found = []; }
@@ -1963,8 +2019,13 @@ bus.addEventListener('trackchange', () => { if (!peekNext() && player.repeat ===
 
 function next(auto) {
   if (auto && player.repeat === 'one' && player.current) { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+  while (player.userQueue.length && isBlocked(player.userQueue[0])) player.userQueue.shift();
   if (player.userQueue.length) { playTrack(player.userQueue.shift()); queueChanged(); return; }
-  if (player.pos + 1 < player.order.length) { player.pos++; playTrack(player.context[player.order[player.pos]]); return; }
+  // Songs you said never to play are skipped (a whole blocked list just runs on to autoplay).
+  let skip = 1;
+  while (player.pos + skip < player.order.length && isBlocked(player.context[player.order[player.pos + skip]])) skip++;
+  if (player.pos + skip < player.order.length) { player.pos += skip; playTrack(player.context[player.order[player.pos]]); return; }
+  if (skip > 1) player.pos += skip - 1;
   if (player.repeat === 'all' && player.order.length) {
     if (player.shuffle) buildOrder(player.order[0]);
     player.pos = 0;
@@ -3058,6 +3119,8 @@ window.riff = {
     }
   },
   addTrackMenu(fn) { ext.trackMenu.push(fn); },
+  /** Songs / artists the user chose never to hear: isBlocked(track), block(track, 'song'|'artist'). */
+  isBlocked, block, unblock, blockedList,
   addListTool(tool) { ext.listTools.push(tool); },
   /** fn(paneEl) renders rows into a settings tab: cat = interface|theme|banners|tracks|integrations|storage|advanced|about|custom-themes|plugins (default advanced). */
   addSettings(fn, cat = 'advanced') { ext.settings.push({ fn, cat: SETTINGS_CAT_IDS.has(cat) ? cat : 'advanced' }); if (state.view === 'settings' && settingsCat === cat) render(true); },
