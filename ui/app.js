@@ -2607,7 +2607,8 @@ audio.addEventListener('pause', () => { if (!audio.ended) xfadeCancel(); });
 audio.addEventListener('seeking', () => { if (xfade.nextTimer && audio.currentTime < duration() - crossfadeSecs()) { xfadeCancel(); xfade.triggered = false; } });
 // Real overlap: the last X seconds of this song keep playing on a second, plain <audio> (the
 // "tail") while the next song starts on the main one. The tail fades out, the next song fades in.
-function startTail(s, at, muted) {
+/** A second, paused <audio> buffering this song from `at`; started by the crossfade handoff. */
+function startTail(s, at) {
   const el = new Audio();
   el.preload = 'auto';
   let h = null;
@@ -2620,8 +2621,7 @@ function startTail(s, at, muted) {
     el.src = s.url;
     el.addEventListener('loadedmetadata', () => { el.currentTime = at; }, { once: true });
   }
-  el.volume = muted ? 0 : audio.volume;
-  el.play().catch(() => {});
+  el.volume = audio.volume;
   return { el, stop() { try { el.pause(); } catch (e) {} if (h) { try { h.destroy(); } catch (e) {} } el.removeAttribute('src'); try { el.load(); } catch (e) {} } };
 }
 function fadeTail(tail, secs) {
@@ -2632,16 +2632,19 @@ function fadeTail(tail, secs) {
     if (k >= 1 || tail.el.ended) { clearInterval(iv); tail.stop(); }
   }, 50);
 }
+// Real overlap, without a seek or a gap: XFADE_LEAD seconds before the crossfade point, a second
+// <audio> (the "tail") starts buffering this song, paused, at that point. When the main player
+// reaches it the tail starts playing and carries the old song out (fading) while the next song
+// starts on the main player and fades in.
+const XFADE_LEAD = 3;
 function xfadeCheck() {
   const X = crossfadeSecs(), d = duration(), cur = audio.currentTime;
-  if (!X || xfade.triggered || audio.paused || player.repeat === 'one' || !player.current || !(d > X) || cur < d - X) return;
+  if (!X || xfade.triggered || audio.paused || player.repeat === 'one' || !player.current || !(d > X + 1) || cur < d - X - XFADE_LEAD) return;
   if (!peekNext()) return;
   xfade.triggered = true;
   const s = player.stream, from = player.current;
-  // The tail starts silent a little ahead of the main player; when the main player reaches the
-  // tail's position the tail takes over (no seek, so no re-buffer stutter), then the next song
-  // starts on the main player and fades in while the tail fades out.
-  const tail = s && !s.local ? startTail(s, Math.min(cur + 1.2, d - 0.3), true) : null;
+  const at = Math.max(cur + 0.5, d - X);
+  const tail = s && !s.local ? startTail(s, at) : null;
   if (!tail) { // no second stream possible: the old fade-out, then the next song
     xfade.fadeInPending = true;
     rampVolume(0, X / 2);
@@ -2651,8 +2654,16 @@ function xfadeCheck() {
   let iv = 0;
   const handoff = () => {
     clearInterval(iv); xfade.handoff = null;
-    const ready = !tail.el.paused && tail.el.readyState >= 3;
-    if (ready) { tail.el.volume = audio.volume; fadeTail(tail, X); } else tail.stop();
+    // Buffered at the right spot: it plays on from exactly where the main player is.
+    const ready = tail.el.readyState >= 3 && Math.abs(tail.el.currentTime - audio.currentTime) < 0.5;
+    if (ready) {
+      tail.el.volume = audio.volume;
+      tail.el.play().catch(() => {});
+      fadeTail(tail, Math.max(0.5, duration() - audio.currentTime));
+    } else {
+      tail.stop();
+      log('warn', `crossfade: tail not ready (state ${tail.el.readyState}, at ${tail.el.currentTime.toFixed(1)} vs ${audio.currentTime.toFixed(1)})`);
+    }
     xfade.fadeInPending = true;
     xfade.fadeInSecs = ready ? X : Math.min(1, X);
     xfade.gain = 0; applyVolume();
@@ -2662,9 +2673,8 @@ function xfadeCheck() {
   xfade.handoff = handoff;
   iv = setInterval(() => {
     if (player.current !== from || audio.paused) { clearInterval(iv); xfade.handoff = null; tail.stop(); return; }
-    const ready = !tail.el.paused && tail.el.readyState >= 3;
-    if ((ready && audio.currentTime >= tail.el.currentTime - 0.03) || audio.currentTime >= duration() - 0.12) handoff();
-  }, 20);
+    if (audio.currentTime >= at - 0.02 || audio.currentTime >= duration() - 0.12) handoff();
+  }, 15);
 }
 function xfadeAdvance() {
   if (!xfade.nextTimer) return;
