@@ -196,3 +196,22 @@
 /* riff: with no lyrics the cover and title sit centred in the panel */
 .right-panel.ly-none .rp-art-box { margin-top: auto; }
 .right-panel.ly-none .ly-section { margin-bottom: auto; }
+
+/* lyrics timing popover */
+.ly-timing {
+  position: fixed; z-index: 8000; min-width: 250px; padding: 12px; border-radius: var(--r-l);
+  background: var(--surface-bright); border: 1px solid var(--outline-variant); color: var(--on-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .4); display: flex; flex-direction: column; gap: 6px;
+}
+.ly-timing-head { font-weight: 600; font-size: calc(13px * var(--fs)); margin-bottom: 2px; }
+.ly-timing-row { display: flex; align-items: center; gap: 6px; font-size: calc(13px * var(--fs)); }
+.ly-timing-row > span { flex: 1; color: var(--on-variant); }
+.ly-timing-row b { min-width: 62px; text-align: center; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ly-timing-row button {
+  width: 28px; height: 28px; border-radius: 9999px; border: 0; display: grid; place-items: center;
+  background: var(--container-high); color: var(--on-surface); font-size: 16px; line-height: 1;
+}
+.ly-timing-row button:hover { background: var(--primary); color: var(--on-primary); }
+.ly-timing-row .ly-timing-reset svg { width: 14px; height: 14px; }
+.ly-timing-hint { color: var(--outline); font-size: calc(11px * var(--fs)); }
+.lyrics-action-btn.active { background: var(--primary); color: var(--on-primary); }

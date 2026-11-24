@@ -1,4 +1,4 @@
-package dev.riffrs.player
+package dev.noxx.player
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -257,8 +257,8 @@ class PlaybackService : Service() {
   companion object {
     private const val CHANNEL = "playback"
     private const val ID = 1
-    private const val ACTION_KEY = "dev.riffrs.player.KEY"
-    private const val ACTION_STOP = "dev.riffrs.player.STOP"
+    private const val ACTION_KEY = "dev.noxx.player.KEY"
+    private const val ACTION_STOP = "dev.noxx.player.STOP"
 
     @Volatile
     var state = State()

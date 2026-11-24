@@ -478,7 +478,7 @@ body.perf .pb-viz { display: none !important; }
 .settings-credits a { color: var(--on-variant); }
 .settings-version-tag { background: var(--container-high); color: var(--on-variant); padding: 2px 10px; border-radius: 99px; font-weight: 500; }
 /* keyboard shortcuts dialog */
-.modal.shortcuts-modal { width: min(440px, 90vw); max-height: 80vh; display: flex; flex-direction: column; }
+.modal.shortcuts-modal { width: min(560px, 92vw); max-height: 84vh; display: flex; flex-direction: column; }
 .sc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .sc-head h3 { margin: 0 !important; }
 .sc-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: calc(13px * var(--fs)); padding-right: 4px; }
@@ -873,3 +873,45 @@ body.reduce-motion :is(.rl-list.rl-intro > *, .app-layout, .rail, .top-nav) { an
 .vol-range:hover::-webkit-slider-thumb { transform: scale(1); margin-top: -3px; }
 .vol-range:active::-webkit-slider-thumb { transform: scale(1.2); margin-top: -3px; box-shadow: 0 0 0 5px rgba(255, 255, 255, .12), 0 1px 4px rgba(0, 0, 0, .5); }
 .vol-range:focus-visible::-webkit-slider-thumb { transform: scale(1); box-shadow: 0 0 0 3px rgba(255, 255, 255, .35); }
+
+/* recent searches under the search box */
+.search-history {
+  position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 500; padding: 6px;
+  background: var(--surface-bright); border: 1px solid var(--outline-variant); border-radius: var(--r-l);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .4); display: flex; flex-direction: column;
+}
+.sh-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px 6px; font-size: calc(12px * var(--fs)); color: var(--outline); }
+.sh-clear { color: var(--on-variant); font-size: calc(12px * var(--fs)); padding: 2px 6px; border-radius: 6px; }
+.sh-clear:hover { color: var(--on-surface); background: var(--container-high); }
+.sh-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r-m); color: var(--on-surface); cursor: default; font-size: calc(14px * var(--fs)); }
+.sh-item > svg { width: 16px; height: 16px; color: var(--outline); }
+.sh-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sh-item:hover, .sh-item.active { background: var(--container-high); }
+.sh-del { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: var(--on-variant); opacity: 0; }
+.sh-item:hover .sh-del, .sh-item.active .sh-del { opacity: 1; }
+.sh-del:hover { background: var(--container-highest); }
+.sh-del svg { width: 12px; height: 12px; }
+
+/* offline mode chip (features/offline.js) */
+.offline-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9999px;
+  background: var(--container-high); color: var(--on-surface); font-size: calc(13px * var(--fs)); font-weight: 500;
+}
+.offline-chip svg { width: 16px; height: 16px; }
+.offline-chip:hover { background: var(--container-highest); }
+.offline-chip.busy { opacity: .6; }
+.offline-chip[hidden] { display: none; }
+
+/* rebindable shortcuts */
+.sc-cols { display: grid; grid-template-columns: 1fr 150px 150px; gap: 8px; padding: 0 4px 6px 0; color: var(--outline); font-size: calc(11px * var(--fs)); text-transform: uppercase; letter-spacing: .04em; }
+.sc-cols span { text-align: center; }
+.shortcuts-modal .sc-row { display: grid; grid-template-columns: 1fr 150px 150px; gap: 8px; }
+.shortcuts-modal .sc-keys { display: contents; }
+.sc-bind { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; min-height: 34px; padding: 4px 6px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--on-surface); }
+.sc-bind:hover { background: var(--container-high); border-color: var(--outline-variant); }
+.sc-bind.rec { border-color: var(--primary); background: var(--container-high); }
+.sc-bind.bad { border-color: #e5484d; }
+.sc-none { color: var(--outline); font-size: calc(12px * var(--fs)); text-align: center; }
+.sc-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.sc-msg { color: var(--on-variant); font-size: calc(12px * var(--fs)); }
+.sc-msg.bad { color: #ff6b6b; }

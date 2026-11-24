@@ -93,6 +93,8 @@
 
   async function autoCheck() {
     if (R.load('updates.auto', true) === false) return;
+    // Selftest runs (RIFF_SELFTEST=1) never offer an update: installing one closes every noxx.
+    try { if (await R.invoke('selftest_mode')) return; } catch (e) { /* older core */ }
     if (Date.now() - Number(R.load('updates.lastCheck', 0)) < DAY) return;
     try {
       const u = await check();

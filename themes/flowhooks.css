@@ -1,0 +1,407 @@
+/*
+ * @name FlowHooks
+ * @author Talk
+ * @description The old FlowHooks menu: near-black etched frame, gradient title band, dark tab strip with orange-topped tabs, grey page, etched group boxes, orange square checkboxes, block-handle sliders, gradient buttons, Verdana with a black outline.
+ */
+
+/* Everything here comes from xhook's local_hud.lua (its P palette and the "FlowHooks kit":
+   window, tabs, group, checkbox_box, button_box, field, combo_box, slider_box, header,
+   status_bar, draw_popup, draw_table). G(n) there = rgb(n, n, n).
+   Change --fh-accent to recolour; --fh-accent-edge is accent * 0.33 (the checkbox edge). */
+:root {
+  --fh-accent: #e88216;              /* 232, 130, 22 */
+  --fh-accent-edge: #4d2b07;         /* accent * 0.33 */
+  --fh-sel-text: #5a0000;            /* 90, 0, 0: text on an orange row */
+  --fh-black: #000;
+  --fh-edge: #121212;                /* G(18) */
+  --fh-edge-light: #3e3e3e;          /* G(62) */
+  --fh-frame: #1e1e1e;               /* G(30) */
+  --fh-page-line: #0d0d0d;           /* G(13) */
+  --fh-title-top: #282828;           /* G(40) */
+  --fh-title-bot: #1e1e1e;           /* G(30) */
+  --fh-sep: #060606;                 /* G(6) */
+  --fh-strip: #161616;               /* G(22) */
+  --fh-strip-line: #0f0f0f;          /* G(15) */
+  --fh-body: #2d2d2d;                /* G(45) */
+  --fh-text: #e1e1e1;                /* G(225) */
+  --fh-dim: #969696;                 /* G(150) */
+  --fh-faint: #6e6e6e;               /* G(110) */
+  --fh-box-off: #1b1b1b;             /* G(27) */
+  --fh-field: #131313;               /* G(19) */
+  --fh-field-line: #060606;          /* G(6) */
+  --fh-arrow: #252525;               /* G(37) */
+  --fh-arrow-line: #080808;          /* G(8) */
+  --fh-handle: #464646;              /* G(70) */
+  --fh-track: #141414;               /* G(20) */
+  --fh-track-line: #0a0a0a;          /* G(10) */
+  --fh-value-box: #111111;           /* G(17) */
+  --fh-value-line: #1e1e1e;          /* G(30) */
+  --fh-btn-top: #424242;             /* G(66) */
+  --fh-btn-bot: #0c0c0c;             /* G(12) */
+  --fh-btn-hot: #545454;             /* G(84) */
+  --fh-btn-line: #040404;            /* G(4) */
+  --fh-status: #3a3a3a;              /* G(58) */
+  --fh-status-line: #131313;         /* G(19) */
+  --fh-header: #3a3a3a;              /* G(58) */
+  --fh-row: #181818;                 /* G(24) */
+  --fh-hover: #212121;               /* G(33) */
+  --fh-red: #cd2323;                 /* 205, 35, 35 */
+  --fh-font: Verdana, Tahoma, "DejaVu Sans", sans-serif;
+  --fh-outline: 1px 0 0 #000, -1px 0 0 #000, 0 1px 0 #000, 0 -1px 0 #000;
+  --fh-wall: 8px;                    /* FRAME 7 + the page's 1 px black line */
+}
+
+/* noxx tokens. themes.js writes its palette inline on <html> and, while a custom theme is on,
+   html.th-custom feeds --md-sys-color-* back into these with !important, so they need both
+   !important and a selector that outranks html.th-custom. */
+:root, html.th-custom:root {
+  --bg: var(--fh-body) !important;
+  --surface: var(--fh-body) !important;
+  --container: var(--fh-body) !important;
+  --container-high: var(--fh-hover) !important;
+  --container-highest: var(--fh-edge-light) !important;
+  --on-surface: var(--fh-text) !important;
+  --on-variant: var(--fh-dim) !important;
+  --outline: var(--fh-faint) !important;
+  --outline-variant: var(--fh-edge) !important;
+  --surface-bright: var(--fh-handle) !important;
+  --primary: var(--fh-accent) !important;
+  --on-primary: var(--fh-sel-text) !important;
+  --error: var(--fh-red) !important;
+  --nav-active: var(--fh-body) !important;
+  --on-nav-active: var(--fh-text) !important;
+  --panel-bg: var(--fh-strip) !important;
+  --page-bg: var(--fh-body) !important;
+  --th-surface-solid: var(--fh-body) !important;
+  --th-container-solid: var(--fh-body) !important;
+  --th-container-high-solid: var(--fh-hover) !important;
+  --th-container-highest-solid: var(--fh-edge-light) !important;
+  --th-primary-container: var(--fh-body) !important;
+  --th-on-primary-container: var(--fh-text) !important;
+  --th-secondary-container: var(--fh-body) !important;
+  --th-on-secondary-container: var(--fh-text) !important;
+  --th-outline-variant: var(--fh-edge) !important;
+  --th-btn-bg: var(--fh-btn-top) !important;
+  --th-btn-fg: var(--fh-text) !important;
+  --th-btn-hover: var(--fh-btn-hot) !important;
+  --btn-primary-bg: var(--fh-btn-top) !important;
+  --btn-primary-fg: var(--fh-accent) !important;
+  --btn-primary-hover: var(--fh-btn-hot) !important;
+  --th-glow: transparent !important;
+  --th-font: var(--fh-font) !important;
+  --font-family: var(--fh-font) !important;
+  --r-m: 0px !important;
+  --r-l: 0px !important;
+  --r-xl: 0px !important;
+  color-scheme: dark !important;
+
+  --md-sys-color-background: var(--fh-body) !important;
+  --md-sys-color-surface: var(--fh-body) !important;
+  --md-sys-color-surface-container-low: var(--fh-body) !important;
+  --md-sys-color-surface-container: var(--fh-body) !important;
+  --md-sys-color-surface-container-high: var(--fh-hover) !important;
+  --md-sys-color-surface-container-highest: var(--fh-edge-light) !important;
+  --md-sys-color-surface-bright: var(--fh-handle) !important;
+  --md-sys-color-on-surface: var(--fh-text) !important;
+  --md-sys-color-on-surface-variant: var(--fh-dim) !important;
+  --md-sys-color-outline: var(--fh-faint) !important;
+  --md-sys-color-outline-variant: var(--fh-edge) !important;
+  --md-sys-color-primary: var(--fh-accent) !important;
+  --md-sys-color-on-primary: var(--fh-sel-text) !important;
+  --md-sys-color-primary-container: var(--fh-body) !important;
+  --md-sys-color-on-primary-container: var(--fh-text) !important;
+  --md-sys-color-secondary-container: var(--fh-body) !important;
+  --md-sys-color-on-secondary-container: var(--fh-text) !important;
+  --md-sys-color-error: var(--fh-red) !important;
+}
+
+/* noxx 0.1.14 and older: the accent picker's .th-custom styles (36px round box, overflow hidden,
+   scale on hover) also hit <html> while a custom theme is on and collapse the window. Undo them. */
+html.th-custom, html.th-custom:hover {
+  width: auto !important; height: 100% !important; flex: none !important; position: static !important;
+  display: block !important; overflow: visible !important; transform: none !important;
+  cursor: auto !important; transition: none !important; color: inherit !important;
+  background: var(--fh-edge) !important;
+}
+
+/* ---------- square, Verdana 12, black-outlined text (T() draws with draw.flags.OUTLINE) ---------- */
+/* :not(#\#) gives these id weight, so no noxx rule (e.g. the side bar pill's 16px !important) rounds a corner back */
+*:not(#\#):not(.spinner):not(.ripple),
+*:not(#\#)::before, *:not(#\#)::after { border-radius: 0 !important; }
+body, button, input, select, textarea { font-family: var(--fh-font) !important; }
+body { color: var(--fh-text); text-shadow: var(--fh-outline); }
+input, textarea, .th-css-text, svg { text-shadow: none; }
+::selection { background: var(--fh-accent); color: var(--fh-sel-text); text-shadow: none; }
+.organic-bg, .th-mesh, .th-aurora, .th-grain { display: none !important; }
+
+/* ---------- the window (window()): etched edge, G(30) frame, 1 px black line round the page ---------- */
+html { background: var(--fh-edge); }
+body { padding: var(--fh-wall); background: var(--fh-body) !important; }
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 1000; pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px var(--fh-edge),
+    inset 0 0 0 2px var(--fh-edge-light),
+    inset 0 0 0 7px var(--fh-frame),
+    inset 0 0 0 8px var(--fh-page-line);
+}
+body.docked .rail { left: var(--fh-wall); top: var(--fh-wall); bottom: calc(var(--pb-h) + var(--fh-wall)); }
+body.docked .rail::before, body.docked .rail::after, body.docked .playbar::after { display: none !important; }
+
+/* top bar = the title band: G(40) -> G(30) gradient, black line under it */
+body.docked .top-nav.top-panel, .top-nav.top-panel, .titlebar {
+  background: linear-gradient(var(--fh-title-top), var(--fh-title-bot)) !important;
+  box-shadow: 0 1px 0 var(--fh-page-line) !important;
+}
+.noxx-logo, .noxx-word { color: var(--fh-accent) !important; }
+.win-btn { color: var(--fh-dim); }
+.win-btn:hover { background: var(--fh-hover); color: var(--fh-text); }
+.win-btn.close:hover { background: var(--fh-red); color: #fff; }
+
+/* ---------- scrollbars (draw_table's): dark track with a black edge, button-style thumb ---------- */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: var(--fh-track); box-shadow: inset 1px 0 0 #000; }
+::-webkit-scrollbar-thumb { background: linear-gradient(90deg, var(--fh-btn-top), var(--fh-btn-bot)); border: 1px solid var(--fh-btn-line); }
+::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, var(--fh-btn-hot), var(--fh-btn-bot)); }
+::-webkit-scrollbar-corner { background: var(--fh-track); }
+.view::-webkit-scrollbar-track { margin: 0; }
+
+/* ---------- side bar = the tab strip (tabs()), stood on end: G(22), the active tab opens into the
+   page with a black edge and the orange line on its outer side ---------- */
+.rail, .rail.labelled, body.docked .rail {
+  background: var(--fh-strip) !important;
+  box-shadow: inset -1px 0 0 var(--fh-strip-line) !important;
+}
+.rail.labelled { padding-left: 0; padding-right: 0; }
+.rail .nav-ind, .rail.labelled .nav-label { color: #c8c8c8; }
+.rail .nav-item:hover .nav-ind, .rail.labelled .nav-item:hover .nav-label { color: #fff; }
+.rail .nav-item.active .nav-ind, .rail.labelled .nav-item.active .nav-label { color: var(--fh-text); }
+.rail .nav-item:hover .nav-ind,
+.rail.labelled .nav-item:not(.active):hover { background: var(--fh-hover) !important; }
+.rail .nav-item.active:hover .nav-ind { background: transparent !important; }
+.rail.labelled .nav-item { padding-left: 12px; }
+.rail.labelled .nav-label { font-size: 12px; font-weight: 400; }
+.nav-active-ind, .rail.labelled .nav-active-ind, .rail.rail-icons .nav-active-ind {
+  left: 0 !important; right: -1px !important; width: auto !important; margin-left: 0 !important;
+  background: var(--fh-body) !important;
+  box-shadow: inset 0 0 0 1px #000, inset 2px 0 0 var(--fh-accent) !important;
+}
+.rail-divider, .rail.labelled .rail-divider { background: var(--fh-sep); box-shadow: 0 1px 0 var(--fh-edge-light); height: 1px; }
+.nav-badge { background: var(--fh-accent); color: var(--fh-sel-text); text-shadow: none; }
+.rl-pins-head, .rl-title { color: var(--fh-text); font-weight: 400; font-size: 11px; letter-spacing: 0; text-transform: none; }
+.sb-pin-row, .sb-lib-row { color: #c8c8c8; }
+.sb-pin-row:hover, .sb-lib-row:hover { background: var(--fh-hover) !important; color: var(--fh-text); }
+.sb-pin-row.active, .sb-lib-row.active { background: var(--fh-body) !important; box-shadow: inset 0 0 0 1px #000, inset 2px 0 0 var(--fh-accent); }
+.rl-cover { box-shadow: 0 0 0 1px #000; }
+.rail-resize-edge::after { background: var(--fh-accent); }
+
+/* ---------- fields (field() / combo_box()): G(6) edge, G(19) fill ---------- */
+.search-box, .account-pill, .hist-btn, .top-home, .src-chip, .rl-create, .rl-chip, .rl-filter, .rl-sort,
+.th-dd-trigger, .modal input, .keycap {
+  background: var(--fh-field) !important;
+  box-shadow: inset 0 0 0 1px var(--fh-field-line) !important;
+  color: var(--fh-text);
+}
+.search-box:hover, .search-box:focus-within, .account-pill:hover, .hist-btn:hover:not(:disabled), .top-home:hover, .top-home.active,
+.src-chip:hover, .rl-create:hover, .rl-chip:hover, .rl-filter:hover, .rl-filter:focus-within, .rl-sort:hover,
+.th-dd-trigger:hover, .modal input:focus {
+  background: var(--fh-box-off) !important;
+}
+.search-box, .top-panel .search-box { height: 22px; }
+.search-box input, .rl-filter input { color: var(--fh-text); font-size: 12px; }
+.search-box input::placeholder, .rl-filter input::placeholder { color: var(--fh-faint); }
+.rl-chip.on { background: var(--fh-accent) !important; color: var(--fh-sel-text) !important; text-shadow: none; }
+.account-pill .av { box-shadow: 0 0 0 1px #000; }
+
+/* ---------- page ---------- */
+.main-content, body.docked .main-content { background: var(--fh-body); }
+.page-title { font-size: 15px; font-weight: 700; color: var(--fh-text); }
+.page-sub, .hero .page-sub { color: var(--fh-dim); font-size: 11px; }
+.section-title { font-size: 12px; font-weight: 400; color: var(--fh-text); }
+.hero h1 { font-size: 22px; color: var(--fh-text); }
+.hero .kicker { color: var(--fh-accent); letter-spacing: 0; }
+.hero .cover, .rp-art, .card .c, .tile .t, .tr-thumb, .pb-art, .mini-row .t, .set-card .av {
+  box-shadow: 0 0 0 1px var(--fh-edge), 0 0 0 2px var(--fh-edge-light) !important;
+}
+.empty { color: var(--fh-faint); }
+.spinner { border-color: var(--fh-track); border-top-color: var(--fh-accent); }
+
+/* ---------- group boxes (group()): G(18) line, G(62) line inside it, page grey fill ---------- */
+.th-group, .set-card, .tile, .right-panel, .settings-nav, .th-ct-card, .hero.has-banner {
+  background: var(--fh-body) !important;
+  border: 1px solid var(--fh-edge) !important;
+  box-shadow: inset 0 0 0 1px var(--fh-edge-light) !important;
+}
+.right-panel, body.docked .right-panel { background: var(--fh-body) !important; }
+/* the group's title is cut into its top edge */
+.section-title:has(+ .th-group) {
+  position: relative; z-index: 1; width: fit-content; margin-bottom: -8px; margin-left: 6px;
+  padding: 0 3px; background: var(--fh-body); line-height: 14px;
+}
+.th-group { gap: 0; padding: 8px 0 4px; }
+.th-item, .th-group > .th-item { background: transparent !important; padding: 8px 14px; }
+.th-item:hover { background: transparent !important; }
+.th-name { color: var(--fh-text); font-weight: 400; }
+.th-desc, .th-hints { color: var(--fh-faint); }
+.th-val { color: var(--fh-text); }
+.set-card .a { color: var(--fh-text); }
+.set-card .b { color: var(--fh-faint); }
+.rp-next-title { color: var(--fh-text); font-weight: 400; font-size: 12px; }
+.rp-title { color: var(--fh-text); font-weight: 700; font-size: 13px; }
+.rp-artist, .rp-info { color: var(--fh-dim); }
+#rp-banner::after { background: linear-gradient(to bottom, rgba(45, 45, 45, .3), rgba(45, 45, 45, .8) 45%, var(--fh-body)) !important; }
+.mini-row:hover { background: var(--fh-hover); }
+
+/* settings tabs: the tab strip again */
+.settings-nav { background: var(--fh-strip) !important; padding: 4px 0; gap: 0; }
+.settings-nav-btn { color: #c8c8c8; font-size: 12px; height: 26px; }
+.settings-nav-btn:hover { background: var(--fh-hover) !important; color: #fff; }
+.settings-nav-btn.active {
+  background: var(--fh-body) !important; color: var(--fh-text); font-weight: 400;
+  box-shadow: inset 0 0 0 1px #000, inset 2px 0 0 var(--fh-accent);
+}
+.settings-version-tag { background: var(--fh-field); box-shadow: inset 0 0 0 1px var(--fh-field-line); }
+
+/* horizontal tab strips (segmented pills, the platform switch): G(22) strip, the active tab
+   page grey with a black edge and a 2 px orange top */
+.th-seg, .platform-switch { background: var(--fh-strip) !important; padding: 3px 0 0 !important; gap: 0 !important; box-shadow: inset 0 -1px 0 var(--fh-strip-line) !important; }
+.th-seg-btn, .platform-btn { color: #c8c8c8; font-size: 12px; font-weight: 400; padding: 3px 10px; }
+.th-seg-btn:hover, .platform-btn:hover { background: transparent !important; color: #fff; }
+.th-seg-btn.active, .platform-btn.active {
+  background: var(--fh-body) !important; color: var(--fh-text) !important; font-weight: 400;
+  box-shadow: inset 1px 0 0 #000, inset -1px 0 0 #000, inset 0 1px 0 #000, inset 0 3px 0 var(--fh-accent);
+}
+
+/* ---------- checkboxes (checkbox_box): 12 px, G(27) off, orange with an accent*0.33 edge on ---------- */
+.switch {
+  width: 12px !important; height: 12px !important; border: 0 !important; overflow: visible;
+  background: var(--fh-box-off) !important; box-shadow: none !important;
+}
+.switch::after { content: ""; position: absolute; inset: -6px; }
+.switch.active { background: var(--fh-accent) !important; box-shadow: inset 0 0 0 1px var(--fh-accent-edge) !important; }
+.switch .thumb { display: none !important; }
+.switch:focus-visible { outline: 1px solid var(--fh-accent); outline-offset: 2px; }
+.menu-check { color: var(--fh-accent); }
+
+/* ---------- sliders (slider_box): 4 px dark track, a 7 x 13 grey block handle, value in a dark box ---------- */
+.nx-range { --nx-h: 4px !important; --nx-accent: var(--fh-handle); }
+.nx-track { background: var(--fh-track) !important; box-shadow: 0 0 0 1px var(--fh-track-line); }
+.nx-fill, :is(.nx-range:hover, .nx-range.nx-drag, .nx-range:has(input:focus-visible)) .nx-fill { background: transparent !important; box-shadow: none !important; }
+.nx-thumb, :is(.nx-range:hover, .nx-range.nx-drag, .nx-range:has(input:focus-visible)) .nx-thumb {
+  width: 7px; height: 13px; margin: -6.5px 0 0 -3.5px; transform: none !important;
+  background: var(--fh-handle) !important; box-shadow: 0 0 0 1px #000 !important;
+}
+.nx-tip {
+  background: var(--fh-value-box) !important; box-shadow: inset 0 0 0 1px var(--fh-value-line) !important;
+  color: var(--fh-text) !important; font-family: var(--fh-font); font-weight: 400; font-size: 11px;
+  text-shadow: var(--fh-outline); padding: 1px 6px;
+}
+.nx-bipolar .nx-detent { background: var(--fh-edge-light) !important; width: 1px; }
+.th-sl-off {
+  left: 0 !important; right: 0 !important; width: auto !important; top: 12px !important; height: 4px !important;
+  background: var(--fh-track) !important; box-shadow: 0 0 0 1px var(--fh-track-line) !important;
+}
+.th-sl-on { display: none !important; }
+.th-sl input[type="range"] { position: relative; z-index: 2; }
+.th-sl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 7px !important; height: 13px !important; margin-top: 7.5px !important;
+  background: var(--fh-handle) !important; border: 1px solid #000 !important; box-shadow: none !important; opacity: 1;
+}
+.vol-range::-webkit-slider-runnable-track, .vol-range:hover::-webkit-slider-runnable-track, .vol-range:active::-webkit-slider-runnable-track {
+  height: 4px; background: var(--fh-track); box-shadow: 0 0 0 1px var(--fh-track-line);
+}
+.vol-range::-webkit-slider-thumb, .vol-range:hover::-webkit-slider-thumb, .vol-range:active::-webkit-slider-thumb {
+  width: 7px; height: 13px; margin-top: -4.5px; transform: none;
+  background: var(--fh-handle); box-shadow: 0 0 0 1px #000;
+}
+
+/* ---------- dropdowns (combo_box + draw_popup) ---------- */
+.th-dd-trigger { height: 19px; padding: 0 4px; font-size: 12px; }
+.th-dd-arrow { width: 13px; height: 13px; padding: 2px; background: var(--fh-arrow); box-shadow: 0 0 0 1px var(--fh-arrow-line); color: #a0a0a0; }
+.th-dd.open .th-dd-arrow { transform: none; }
+.th-dd-menu { background: var(--fh-field) !important; box-shadow: 0 0 0 1px var(--fh-field-line) !important; padding: 0 !important; }
+.th-dd-opt { color: var(--fh-text); font-size: 12px; padding: 2px 4px; }
+.th-dd-opt:hover { background: var(--fh-hover) !important; }
+.th-dd-opt.selected { background: var(--fh-accent) !important; color: var(--fh-sel-text) !important; text-shadow: none; font-weight: 400; }
+.th-dd-opt.selected::before { display: none; }
+
+/* ---------- buttons (button_box): G(4) edge, G(66) -> G(12), hot G(84) ---------- */
+.btn, .th-mini, .set-group .set-btn, .play-btn {
+  height: 19px; padding: 0 12px; font-weight: 400; font-size: 12px; color: var(--fh-text);
+  background: linear-gradient(var(--fh-btn-top), var(--fh-btn-bot)) !important;
+  box-shadow: inset 0 0 0 1px var(--fh-btn-line) !important;
+}
+.btn:not(:disabled):hover, .th-mini:hover, .play-btn:hover { background: linear-gradient(var(--fh-btn-hot), var(--fh-btn-bot)) !important; }
+.btn:active, .play-btn:active { transform: none; }
+.btn.primary, .th-highlight .btn.primary { color: var(--fh-accent) !important; }
+.btn:disabled { color: var(--fh-faint); opacity: 1; }
+.btn.outline { background: transparent !important; }
+
+.pill-btn, .track-row .pill-btn, .pb-left .pill-btn, .pb-right .pill-btn { background: transparent !important; color: #c8c8c8; box-shadow: none !important; }
+.pill-btn:hover { background: linear-gradient(var(--fh-btn-hot), var(--fh-btn-bot)) !important; color: #fff; box-shadow: inset 0 0 0 1px var(--fh-btn-line) !important; }
+.pill-btn.on, .pill-btn.heart.on { color: var(--fh-accent); }
+.ctrl-btn { color: #c8c8c8; }
+.ctrl-btn:hover { background: transparent; color: #fff; }
+.ctrl-btn.on { color: var(--fh-accent); }
+.ctrl-btn.on::after { width: 4px; height: 2px; bottom: 4px; }
+.sync-mini:hover, .search-clear:hover, .rl-pin:hover { background: var(--fh-hover); }
+.rl-pin.on, .rl-pinned { color: var(--fh-accent); }
+
+/* ---------- tiles / cards ---------- */
+.tile:hover { background: var(--fh-hover) !important; }
+.tile .a, .card .a { color: var(--fh-text); font-weight: 400; font-size: 12px; }
+.tile .b, .card .b { color: var(--fh-dim); }
+.card:hover { background: var(--fh-hover); }
+
+/* ---------- track list = draw_table's rows: hover G(33), the selected row orange with dark red text ---------- */
+.track-row:hover { background: var(--fh-hover) !important; }
+.track-row:active { transform: none; }
+.track-row.playing { background: var(--fh-accent) !important; box-shadow: none !important; text-shadow: none; }
+.track-row.playing :is(.tr-title, .tr-artist, .tr-index, .tr-dur, .tr-fav) { color: var(--fh-sel-text) !important; font-weight: 400; }
+.track-row.playing .pill-btn { color: var(--fh-sel-text); }
+.tr-title { color: var(--fh-text); font-weight: 400; }
+.tr-artist { color: var(--fh-dim); }
+.tr-artist:hover { color: #fff; }
+.tr-index, .tr-dur, .time { color: var(--fh-faint); font-size: 11px; }
+
+/* ---------- player bar = status_bar(): G(19) line, G(58) bar ---------- */
+.playbar, body.docked .playbar {
+  background: var(--fh-status) !important;
+  box-shadow: inset 0 1px 0 var(--fh-status-line) !important;
+}
+.pb-title { color: var(--fh-text); font-weight: 400; font-size: 12px; }
+.pb-artist { color: #c8c8c8; font-size: 11px; }
+.pb-cover { filter: none; }
+.play-btn, .play-btn.is-playing { width: 34px; height: 24px; padding: 0; color: var(--fh-accent); }
+.play-btn svg { width: 14px; height: 14px; }
+.pb-left .pill-btn, .pb-right .pill-btn, .ctrl-btn { color: var(--fh-text); }
+.wave-tip { background: var(--fh-value-box); box-shadow: inset 0 0 0 1px var(--fh-value-line); color: var(--fh-text); }
+
+/* ---------- menus, modals, toasts ---------- */
+.menu, .th-glass .menu { background: var(--fh-field) !important; box-shadow: 0 0 0 1px var(--fh-field-line) !important; padding: 0 !important; }
+.menu button { color: var(--fh-text); font-size: 12px; padding: 3px 6px; }
+.menu button:hover { background: var(--fh-accent) !important; color: var(--fh-sel-text); text-shadow: none; }
+.menu .sep { background: var(--fh-sep); box-shadow: 0 1px 0 var(--fh-edge-light); margin: 2px 0; }
+.modal-wrap { background: rgba(0, 0, 0, .55); }
+/* a modal is a small window(): etched edge, G(30) frame, title band, the page */
+.modal, .toast {
+  position: relative; background: var(--fh-body) !important; border: 0 !important;
+  box-shadow:
+    0 0 0 1px var(--fh-page-line),
+    0 0 0 7px var(--fh-frame),
+    0 0 0 8px var(--fh-edge-light),
+    0 0 0 9px var(--fh-edge) !important;
+}
+.modal { padding: 18px 20px 16px; margin-top: 16px; }
+.modal::before {
+  content: ""; position: absolute; left: -7px; right: -7px; top: -24px; height: 16px; pointer-events: none;
+  background: linear-gradient(var(--fh-title-top), var(--fh-title-bot));
+}
+.modal h3 { color: var(--fh-text); font-size: 12px; font-weight: 700; }
+.modal p { color: var(--fh-dim); font-size: 12px; }
+.modal input { color: var(--fh-text); padding: 3px 5px; }
+.toast { color: var(--fh-text) !important; font-size: 12px; font-weight: 400; padding: 6px 14px; }
+.toast.error { color: var(--fh-red) !important; }
+
+/* ---------- custom CSS editor ---------- */
+.th-css-text { background: var(--fh-field) !important; color: var(--fh-text); box-shadow: inset 0 0 0 1px var(--fh-field-line); font-family: Consolas, "Lucida Console", monospace !important; }

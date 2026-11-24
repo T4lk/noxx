@@ -1,5 +1,8 @@
-//! Spotify: public links through the embed page (no login), and the user's own
-//! library through the official Web API with their own app's Client ID (PKCE).
+//! Spotify: public links through the embed page plus the web player's guest API for
+//! whole playlists (no login), and the user's own library through the official Web API
+//! with their own app's Client ID (PKCE).
+
+mod guest;
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -35,8 +38,9 @@ fn s(v: &Value) -> String {
     v.as_str().unwrap_or("").trim().to_string()
 }
 
-/// Public playlist/album/track. Uses the Web API when an account is connected (full lists),
-/// otherwise the embed page (playlists stop at 100 tracks there).
+/// Public playlist/album/track. Uses the Web API when an account is connected, otherwise
+/// the embed page (name, cover; playlists stop at 100 tracks there) and, for longer
+/// playlists, the web player's guest API for the rest.
 pub async fn fetch(data_dir: &Path, kind: &str, id: &str) -> Result<Remote, String> {
     if Auth::connected(data_dir) {
         match web_fetch(data_dir, kind, id).await {
@@ -45,7 +49,40 @@ pub async fn fetch(data_dir: &Path, kind: &str, id: &str) -> Result<Remote, Stri
             Err(e) => eprintln!("[imports] spotify web api {kind}/{id}: {e}"),
         }
     }
-    embed(kind, id).await
+    if kind != "playlist" {
+        return embed(kind, id).await;
+    }
+    // The embed's "first 100" can hold fewer songs (local files are dropped), so its count
+    // can't tell whether the list is cut: always ask the guest API too, at the same time.
+    let (page, full) = tokio::join!(embed(kind, id), guest::playlist(id));
+    match page {
+        Ok(r) => Ok(whole(r, full, id)),
+        // Embed blocked or changed: the guest API alone still gives the tracks.
+        Err(e) => {
+            let base = Remote { name: "Spotify playlist".into(), cover: String::new(), source: "spotify", total: 0, partial: true, note: String::new(), tracks: Vec::new() };
+            let r = whole(base, full, id);
+            if r.tracks.is_empty() { Err(e) } else { Ok(r) }
+        }
+    }
+}
+
+/// Replaces the embed's first 100 tracks with the whole playlist when the guest API answered.
+fn whole(mut r: Remote, full: Result<(Vec<Item>, usize), String>, id: &str) -> Remote {
+    match full {
+        Ok((tracks, total)) if tracks.len() >= r.tracks.len() && !tracks.is_empty() => {
+            r.partial = tracks.len() < total;
+            r.note = if r.partial {
+                format!("Spotify returned {} of {} tracks. Connect Spotify in Settings → Integrations to import the rest.", tracks.len(), total)
+            } else {
+                String::new()
+            };
+            r.total = total.max(tracks.len());
+            r.tracks = tracks;
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("[imports] spotify guest {id}: {e}"),
+    }
+    r
 }
 
 pub async fn embed(kind: &str, id: &str) -> Result<Remote, String> {
@@ -492,6 +529,15 @@ mod tests {
         assert_eq!(parse_link("https://open.spotify.com/intl-de/album/4m2880jivSbbyEGAKfITCa"), Some(("album".into(), "4m2880jivSbbyEGAKfITCa".into())));
         assert_eq!(parse_link("spotify:track:2Foc5Q5nqNiosCNqttzHof"), Some(("track".into(), "2Foc5Q5nqNiosCNqttzHof".into())));
         assert!(parse_link("https://example.com").is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_whole_playlist_without_account() {
+        let dir = std::env::temp_dir().join("noxx-spotify-guest-test");
+        let r = fetch(&dir, "playlist", "6yPiKpy7evrwvZodByKvM9").await.expect("fetch");
+        println!("'{}': {} tracks, total {}, partial={}, cover={}, note='{}'", r.name, r.tracks.len(), r.total, r.partial, !r.cover.is_empty(), r.note);
+        assert!(r.tracks.len() > 100 && !r.partial);
     }
 
     #[test]

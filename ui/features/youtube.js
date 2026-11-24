@@ -45,10 +45,26 @@
 
   // ---------------------------------------------------------------- playback
 
+  // A music video from plain YouTube plays the audio of its album track when YouTube Music has
+  // the same song at the same length (no intro, skit or outro). The song shown stays the same.
+  const albumOf = new Map(); // video id -> YouTube Music song id | '' (none)
+  const isVideo = (t) => /(^|\/\/)(www\.|m\.)?youtube\.com\/watch|youtu\.be\//.test(String(t.url || ''));
+  async function playableId(t) {
+    if (!R.pref('albumVersion', true) || !isVideo(t) || !t.duration) return t.id;
+    if (!albumOf.has(t.id)) {
+      let hit = null;
+      try { hit = await R.call('youtube.album_version', { id: t.id, title: t.title, artist: t.artist, duration: Math.round(t.duration) }); } catch (e) { R.log('warn', `album version for ${t.id}: ${errText(e)}`); return t.id; }
+      albumOf.set(t.id, hit && hit.id ? hit.id : '');
+      if (hit && hit.id) R.log('info', `album version: ${t.id} "${t.title}" -> ${hit.id} "${hit.title}" / ${hit.artist} (${hit.duration}s vs ${t.duration}s)`);
+    }
+    return albumOf.get(t.id) || t.id;
+  }
+
   async function resolveYt(t, fresh) {
     if (!isYt(t)) return null;
     try {
-      const r = await R.call('youtube.resolve', { id: t.id, fresh: !!fresh });
+      const id = await playableId(t);
+      const r = await R.call('youtube.resolve', { id, fresh: !!fresh });
       R.log('info', `youtube ${vid(t)} via ${r.method} itag ${r.itag} in ${r.ms}ms`);
       return { url: r.url, protocol: 'progressive', preset: `youtube/${r.method}` };
     } catch (e) {
@@ -191,6 +207,7 @@
       <button class="btn outline" data-a="dl" hidden>Download yt-dlp</button></div>`);
     setCard.querySelector('[data-a=dl]').onclick = () => toolsModal(null);
     R.call('youtube.tools').then((s) => { tools = s; paintSettings(); }).catch(() => {});
+    if (R.settingsRow) R.settingsRow.group([R.settingsRow.prefToggle('albumVersion', true, 'Album version of music videos', 'A YouTube music video plays the audio of its album track when YouTube Music has the same song at the same length, so there are no intros or skits')]);
   }, 'integrations');
 
   // ---------------------------------------------------------------- selftest

@@ -1,0 +1,420 @@
+/*
+ * @name Gamesense
+ * @author Talk
+ * @description The gamesense menu look: framed black window, rainbow top bar, dark grey group boxes, Verdana, square gradient checkboxes and sliders, green accent.
+ */
+
+/* Colours and sizes come from xhook's gamesense_menu.lua (COL table, draw_window, checkbox_box,
+   draw_combo, draw_slider, draw_group). G(n) there = rgb(n, n, n).
+   Change --gs-accent to recolour; --gs-accent-dark is the bottom of its gradient (x 0.72). */
+:root {
+  --gs-accent: #9ac527;              /* 154, 197, 39 */
+  --gs-accent-dark: #6f8e1c;         /* accent * 0.72 */
+  --gs-black: #000;
+  --gs-frame-out: #0a0a0a;           /* G(10) */
+  --gs-frame-line: #3c3c3c;          /* G(60) */
+  --gs-frame: #282828;               /* G(40) */
+  --gs-content: #131313;             /* G(19) */
+  --gs-sidebar: #0c0c0c;             /* G(12) */
+  --gs-group: #171717;               /* G(23) */
+  --gs-group-line: #2a2a2a;          /* G(42) */
+  --gs-label: #cdcdcd;               /* G(205) */
+  --gs-dim: #9a9a9a;                 /* G(154) */
+  --gs-hotkey: #6e6e6e;              /* G(110) */
+  --gs-disabled: #5a5a5a;            /* G(90) */
+  --gs-combo-top: #1f1f1f;           /* G(31) */
+  --gs-combo-bot: #242424;           /* G(36) */
+  --gs-combo-line: #2d2d2d;          /* G(45) */
+  --gs-list-bg: #232323;             /* G(35) */
+  --gs-list-hover: #1b1b1b;          /* G(27) */
+  --gs-box-top: #4c4c4c;             /* G(76) */
+  --gs-box-bot: #333333;             /* G(51) */
+  --gs-track-top: #343434;           /* G(52) */
+  --gs-track-bot: #444444;           /* G(68) */
+  --gs-scroll-track: #101010;        /* G(16) */
+  --gs-icon-off: #585858;            /* G(88) */
+  --gs-icon-hover: #878787;          /* G(135) */
+  --gs-icon-on: #d2d2d2;             /* G(210) */
+  --gs-cyan: #3bafde;                /* 59, 175, 222 */
+  --gs-magenta: #ca46cd;             /* 202, 70, 205 */
+  --gs-yellow: #c9e33a;              /* 201, 227, 58 */
+  --gs-rainbow: linear-gradient(90deg, var(--gs-cyan), var(--gs-magenta) 50%, var(--gs-yellow));
+  --gs-font: Verdana, Tahoma, "DejaVu Sans", sans-serif;
+  --gs-edge: 6px;                    /* the window frame's width */
+}
+
+/* noxx tokens. themes.js writes its palette inline on <html> and, while a custom theme is on,
+   html.th-custom feeds --md-sys-color-* back into these with !important, so they need both
+   !important and a selector that outranks html.th-custom. */
+:root, html.th-custom:root {
+  --bg: var(--gs-content) !important;
+  --surface: var(--gs-content) !important;
+  --container: var(--gs-group) !important;
+  --container-high: var(--gs-combo-top) !important;
+  --container-highest: var(--gs-group-line) !important;
+  --on-surface: var(--gs-label) !important;
+  --on-variant: var(--gs-dim) !important;
+  --outline: var(--gs-hotkey) !important;
+  --outline-variant: var(--gs-group-line) !important;
+  --surface-bright: var(--gs-frame-line) !important;
+  --primary: var(--gs-accent) !important;
+  --on-primary: #0a0a0a !important;
+  --error: #dc6e6e !important;
+  --nav-active: var(--gs-content) !important;
+  --on-nav-active: var(--gs-icon-on) !important;
+  --panel-bg: var(--gs-sidebar) !important;
+  --page-bg: var(--gs-content) !important;
+  --th-surface-solid: var(--gs-content) !important;
+  --th-container-solid: var(--gs-group) !important;
+  --th-container-high-solid: var(--gs-combo-top) !important;
+  --th-container-highest-solid: var(--gs-group-line) !important;
+  --th-primary-container: var(--gs-content) !important;
+  --th-on-primary-container: var(--gs-icon-on) !important;
+  --th-secondary-container: var(--gs-list-bg) !important;
+  --th-on-secondary-container: var(--gs-label) !important;
+  --th-outline-variant: var(--gs-group-line) !important;
+  --th-btn-bg: var(--gs-combo-top) !important;
+  --th-btn-fg: var(--gs-label) !important;
+  --th-btn-hover: var(--gs-combo-bot) !important;
+  --btn-primary-bg: var(--gs-combo-top) !important;
+  --btn-primary-fg: var(--gs-accent) !important;
+  --btn-primary-hover: var(--gs-combo-bot) !important;
+  --th-glow: transparent !important;
+  --th-font: var(--gs-font) !important;
+  --font-family: var(--gs-font) !important;
+  --r-m: 0px !important;
+  --r-l: 0px !important;
+  --r-xl: 0px !important;
+  color-scheme: dark !important;
+
+  /* the same palette under the Material names noxx mirrors (menus, features and the compat layer read them) */
+  --md-sys-color-background: var(--gs-content) !important;
+  --md-sys-color-surface: var(--gs-content) !important;
+  --md-sys-color-surface-container-low: var(--gs-content) !important;
+  --md-sys-color-surface-container: var(--gs-group) !important;
+  --md-sys-color-surface-container-high: var(--gs-combo-top) !important;
+  --md-sys-color-surface-container-highest: var(--gs-group-line) !important;
+  --md-sys-color-surface-bright: var(--gs-frame-line) !important;
+  --md-sys-color-on-surface: var(--gs-label) !important;
+  --md-sys-color-on-surface-variant: var(--gs-dim) !important;
+  --md-sys-color-outline: var(--gs-hotkey) !important;
+  --md-sys-color-outline-variant: var(--gs-group-line) !important;
+  --md-sys-color-primary: var(--gs-accent) !important;
+  --md-sys-color-on-primary: #0a0a0a !important;
+  --md-sys-color-primary-container: var(--gs-content) !important;
+  --md-sys-color-on-primary-container: var(--gs-icon-on) !important;
+  --md-sys-color-secondary-container: var(--gs-list-bg) !important;
+  --md-sys-color-on-secondary-container: var(--gs-label) !important;
+  --md-sys-color-error: #dc6e6e !important;
+}
+
+/* noxx 0.1.14 and older: the accent picker's .th-custom styles (36px round box, overflow hidden,
+   scale on hover) also hit <html> while a custom theme is on and collapse the window. Undo them. */
+html.th-custom, html.th-custom:hover {
+  width: auto !important; height: 100% !important; flex: none !important; position: static !important;
+  display: block !important; overflow: visible !important; transform: none !important;
+  cursor: auto !important; transition: none !important; color: inherit !important;
+  background: var(--gs-frame-out) !important;
+}
+
+/* ---------- everything square, Verdana, drop-shadowed text (draw.flags.SHADOW) ---------- */
+/* :not(#\#) gives these id weight, so no noxx rule (e.g. the side bar pill's 16px !important) rounds a corner back */
+*:not(#\#):not(.spinner):not(.ripple):not(.nx-thumb),
+*:not(#\#)::before, *:not(#\#)::after { border-radius: 0 !important; }
+body, button, input, select, textarea { font-family: var(--gs-font) !important; }
+body { color: var(--gs-label); text-shadow: 1px 1px 0 rgba(0, 0, 0, .85); }
+input, textarea, .th-css-text { text-shadow: none; }
+::selection { background: var(--gs-accent); color: #0a0a0a; text-shadow: none; }
+
+/* flat: no ambient glow, no mesh */
+.organic-bg, .th-mesh, .th-aurora, .th-grain { display: none !important; }
+
+/* ---------- the window: frame + rainbow bar (draw_window) ----------
+   frameOut 1px, frameLine 1px, frame 3px, frameLine 1px, then the content. The rainbow
+   bar is two 1px lines: cyan -> magenta -> yellow, the second at 110/255 alpha. */
+html { background: var(--gs-frame-out); }
+body { padding: var(--gs-edge); background: var(--gs-content) !important; }
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 1000; pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px var(--gs-frame-out),
+    inset 0 0 0 2px var(--gs-frame-line),
+    inset 0 0 0 5px var(--gs-frame),
+    inset 0 0 0 6px var(--gs-frame-line);
+}
+body::before {
+  content: ""; position: fixed; z-index: 1001; pointer-events: none;
+  top: var(--gs-edge); left: var(--gs-edge); right: var(--gs-edge); height: 2px;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, .57) 50%),
+    var(--gs-rainbow);
+}
+
+/* docked layout: the side bar and player bar sit inside the frame, no concave corners */
+body.docked .rail { left: var(--gs-edge); top: calc(var(--gs-edge) + 2px); bottom: calc(var(--pb-h) + var(--gs-edge)); }
+body.docked .rail::before, body.docked .rail::after, body.docked .playbar::after { display: none !important; }
+
+/* ---------- scrollbars (scrollTrack / scrollThumb) ---------- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--gs-scroll-track); }
+::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #383838, #2c2c2c); box-shadow: inset 0 0 0 1px #000; }
+::-webkit-scrollbar-thumb:hover { background: #3c3c3c; }
+.view::-webkit-scrollbar-track { margin: 0; }
+
+/* ---------- side bar = the tab column: sidebar black, selected tab in content grey ---------- */
+.rail, .rail.labelled, body.docked .rail {
+  background: var(--gs-sidebar) !important;
+  border-right: 1px solid #000; box-shadow: inset -1px 0 0 var(--gs-group-line) !important;
+}
+.rail.labelled { padding-left: 0; padding-right: 0; }
+.rail .nav-ind, .rail.labelled .nav-label { color: var(--gs-icon-off); }
+.rail .nav-item:hover .nav-ind, .rail.labelled .nav-item:hover .nav-label { color: var(--gs-icon-hover); }
+.rail .nav-item.active .nav-ind, .rail.labelled .nav-item.active .nav-label { color: var(--gs-icon-on); }
+.rail .nav-item:hover .nav-ind,
+.rail.labelled .nav-item:not(.active):hover { background: transparent !important; }
+.rail.labelled .nav-item { padding-left: 12px; }
+.rail.labelled .nav-label { font-size: calc(11.5px * var(--fs)); }
+/* the selected tab runs over the separator, with black + G(42) lines above and below */
+.nav-active-ind, .rail.labelled .nav-active-ind, .rail.rail-icons .nav-active-ind {
+  left: 0 !important; right: -2px !important; width: auto !important; margin-left: 0 !important;
+  background: var(--gs-content) !important;
+  box-shadow: 0 -1px 0 #000, inset 0 1px 0 var(--gs-group-line), 0 1px 0 #000, inset 0 -1px 0 var(--gs-group-line);
+}
+.rail-divider, .rail.labelled .rail-divider { background: var(--gs-group-line); box-shadow: 0 1px 0 #000; height: 1px; }
+.nav-badge { background: var(--gs-accent); color: #0a0a0a; text-shadow: none; }
+.rl-pins-head, .rl-title { color: var(--gs-label); font-weight: 700; font-size: calc(10.5px * var(--fs)); letter-spacing: 0; text-transform: none; }
+.sb-pin-row, .sb-lib-row { color: var(--gs-dim); }
+.sb-pin-row:hover, .sb-lib-row:hover { background: var(--gs-list-hover) !important; color: var(--gs-label); }
+.sb-pin-row.active, .sb-lib-row.active { background: var(--gs-content) !important; box-shadow: inset 2px 0 0 var(--gs-accent); }
+.rl-cover { box-shadow: 0 0 0 1px #000; }
+.rail-resize-edge::after { background: var(--gs-accent); }
+
+/* ---------- top bar ---------- */
+body.docked .top-nav.top-panel, .top-nav.top-panel { background: var(--gs-content); box-shadow: inset 0 -1px 0 var(--gs-group-line), 0 1px 0 #000; }
+.top-panel .brand, .titlebar .brand { color: var(--gs-label); }
+.noxx-logo, .noxx-word { color: var(--gs-accent) !important; }
+.win-btn { color: var(--gs-dim); }
+.win-btn:hover { background: var(--gs-combo-bot); color: #fff; }
+.win-btn.close:hover { background: #8c2a2a; color: #fff; }
+
+/* combo-box style fields: black outline, G(45) line, G(31) -> G(36) gradient (draw_combo) */
+.search-box, .account-pill, .hist-btn, .top-home, .src-chip, .rl-create, .rl-chip, .rl-filter, .rl-sort,
+.th-dd-trigger, .th-seg, .platform-switch, .modal input, .keycap {
+  background: linear-gradient(var(--gs-combo-top), var(--gs-combo-bot)) !important;
+  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px var(--gs-combo-line) !important;
+  color: var(--gs-dim);
+}
+.search-box:hover, .search-box:focus-within, .account-pill:hover, .hist-btn:hover:not(:disabled), .top-home:hover, .top-home.active,
+.src-chip:hover, .rl-create:hover, .rl-chip:hover, .rl-filter:hover, .rl-filter:focus-within, .rl-sort:hover,
+.th-dd-trigger:hover, .modal input:focus {
+  background: linear-gradient(var(--gs-combo-bot), #292929) !important;
+  color: var(--gs-label);
+}
+.search-box { height: 30px; }
+.top-panel .search-box { height: 30px; }
+.search-box input, .rl-filter input { color: var(--gs-label); font-size: calc(12px * var(--fs)); }
+.search-box input::placeholder, .rl-filter input::placeholder { color: var(--gs-hotkey); }
+.rl-chip.on { color: var(--gs-accent) !important; font-weight: 700; }
+.account-pill .av { box-shadow: 0 0 0 1px #000; }
+
+/* ---------- page ---------- */
+.main-content, body.docked .main-content { background: var(--gs-content); }
+.page-title { font-size: calc(15px * var(--fs)); font-weight: 700; color: var(--gs-label); }
+.page-sub, .hero .page-sub { color: var(--gs-hotkey); font-size: calc(11px * var(--fs)); }
+.section-title { font-size: calc(11.5px * var(--fs)); font-weight: 700; color: var(--gs-label); }
+.hero h1 { font-size: calc(22px * var(--fs)); color: var(--gs-label); }
+.hero .kicker { color: var(--gs-accent); letter-spacing: 0; }
+.hero .cover, .rp-art, .card .c, .tile .t, .tr-thumb, .pb-art, .mini-row .t, .set-card .av {
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px var(--gs-group-line) !important;
+}
+.hero.has-banner { box-shadow: 0 0 0 1px #000, inset 0 0 0 1px var(--gs-group-line); }
+.empty { color: var(--gs-hotkey); }
+.spinner { border-color: var(--gs-track-top); border-top-color: var(--gs-accent); }
+
+/* ---------- group boxes (draw_group): black outline, G(42) line, G(23) fill ---------- */
+.th-group, .set-card, .tile, .right-panel, .settings-nav, .modal, .th-ct-card, .playlist-header, .menu, .th-dd-menu, .toast {
+  background: var(--gs-group) !important;
+  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px var(--gs-group-line) !important;
+  border: 0;
+}
+.right-panel, body.docked .right-panel { background: var(--gs-group) !important; }
+.th-group { gap: 0; padding: 4px 0; }
+.th-item, .th-group > .th-item { background: transparent !important; padding: 10px 16px; }
+.th-item:hover { background: rgba(255, 255, 255, .015) !important; }
+.th-name { color: var(--gs-label); font-weight: 400; }
+.th-desc, .th-hints { color: var(--gs-hotkey); }
+.th-val { color: var(--gs-dim); }
+.th-item.is-disabled .th-name { color: var(--gs-disabled); }
+.set-card .a { color: var(--gs-label); }
+.set-card .b { color: var(--gs-hotkey); }
+
+/* right panel title like a group box title */
+.rp-next-title { color: var(--gs-label); font-weight: 700; font-size: calc(11px * var(--fs)); margin-left: 4px; }
+.rp-title { color: var(--gs-label); font-weight: 700; font-size: calc(13px * var(--fs)); }
+.rp-artist, .rp-info { color: var(--gs-dim); }
+#rp-banner::after { background: linear-gradient(to bottom, rgba(23, 23, 23, .3), rgba(23, 23, 23, .8) 45%, var(--gs-group)) !important; }
+.mini-row:hover { background: var(--gs-list-hover); }
+
+/* settings: the tab list */
+.settings-nav { padding: 6px 0; gap: 0; }
+.settings-nav-btn { color: var(--gs-icon-off); font-size: calc(12px * var(--fs)); height: calc(34px * var(--fs)); }
+.settings-nav-btn:hover { background: transparent !important; color: var(--gs-icon-hover); }
+.settings-nav-btn.active {
+  background: var(--gs-content) !important; color: var(--gs-icon-on); font-weight: 700;
+  box-shadow: 0 -1px 0 #000, inset 0 1px 0 var(--gs-group-line), 0 1px 0 #000, inset 0 -1px 0 var(--gs-group-line), inset 2px 0 0 var(--gs-accent);
+}
+.settings-version-tag { background: var(--gs-combo-top); box-shadow: 0 0 0 1px #000; }
+
+/* ---------- checkboxes (checkbox_box): 8x8, black outline, gradient fill ---------- */
+.switch {
+  width: 10px !important; height: 10px !important; border: 1px solid #000 !important; overflow: visible;
+  background: linear-gradient(var(--gs-box-top), var(--gs-box-bot)) !important; box-shadow: none !important;
+}
+.switch::after { content: ""; position: absolute; inset: -7px; }   /* bigger click area */
+.switch.active { background: linear-gradient(var(--gs-accent), var(--gs-accent-dark)) !important; border-color: #000 !important; }
+.switch:hover:not(.active) { background: linear-gradient(#555, #3a3a3a) !important; }
+.switch .thumb { display: none !important; }
+.switch:focus-visible { outline: 1px solid var(--gs-accent); outline-offset: 2px; }
+.menu-check { color: var(--gs-accent); }
+
+/* ---------- sliders (draw_slider): 6px track, black outline, accent gradient fill, no knob ---------- */
+.nx-range { --nx-h: 6px !important; --nx-accent: var(--gs-accent); }
+.nx-track {
+  background: linear-gradient(var(--gs-track-top), var(--gs-track-bot)) !important;
+  box-shadow: 0 0 0 1px #000;
+}
+.nx-fill, :is(.nx-range:hover, .nx-range.nx-drag, .nx-range:has(input:focus-visible)) .nx-fill {
+  background: linear-gradient(var(--gs-accent), var(--gs-accent-dark)) !important; box-shadow: none !important;
+}
+.nx-thumb { display: none !important; }
+.nx-tip {
+  background: transparent !important; box-shadow: none !important; color: #fff !important;
+  bottom: auto !important; top: calc(50% + 2px); font-family: var(--gs-font); font-size: calc(10.5px * var(--fs));
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+.nx-bipolar .nx-detent { background: #000 !important; width: 1px; }
+/* the theme page's own sliders */
+.th-sl-off {
+  left: 0 !important; right: 0 !important; width: auto !important; top: 11px !important; height: 6px !important;
+  background: linear-gradient(var(--gs-track-top), var(--gs-track-bot)) !important; box-shadow: 0 0 0 1px #000 !important;
+}
+.th-sl-on {
+  z-index: 1; width: calc(100% * var(--v)) !important; top: 11px !important; height: 6px !important;
+  background: linear-gradient(var(--gs-accent), var(--gs-accent-dark)) !important; box-shadow: none !important;
+}
+.th-sl input[type="range"] { position: relative; z-index: 2; }
+.th-sl input[type="range"]::-webkit-slider-thumb { opacity: 0; }
+/* volume */
+.vol-range::-webkit-slider-runnable-track, .vol-range:hover::-webkit-slider-runnable-track, .vol-range:active::-webkit-slider-runnable-track {
+  height: 6px;
+  background:
+    linear-gradient(var(--gs-accent), var(--gs-accent-dark)) 0 0 / var(--p, 80%) 100% no-repeat,
+    linear-gradient(var(--gs-track-top), var(--gs-track-bot));
+  box-shadow: 0 0 0 1px #000;
+}
+.vol-range::-webkit-slider-thumb, .vol-range:hover::-webkit-slider-thumb, .vol-range:active::-webkit-slider-thumb {
+  width: 1px; height: 6px; margin-top: 0; background: transparent; box-shadow: none; transform: none;
+}
+
+/* ---------- dropdowns (draw_combo + the list popup) ---------- */
+.th-dd-trigger { color: var(--gs-dim) !important; height: 22px; padding: 0 9px; font-size: calc(11.5px * var(--fs)); }
+.th-dd-arrow { color: var(--gs-dim); width: 12px; height: 12px; }
+.th-dd-menu { background: var(--gs-list-bg) !important; padding: 0 !important; }
+.th-dd-opt { color: var(--gs-label); font-size: calc(11.5px * var(--fs)); padding: 6px 10px; }
+.th-dd-opt:hover { background: var(--gs-list-hover) !important; }
+.th-dd-opt.selected { color: var(--gs-accent); font-weight: 700; }
+.th-dd-opt.selected::before { display: none; }
+.th-seg { padding: 0; gap: 0; }
+.th-seg-btn { color: var(--gs-dim); font-size: calc(11.5px * var(--fs)); padding: 4px 12px; }
+.th-seg-btn:hover { background: var(--gs-combo-bot) !important; color: var(--gs-label); }
+.th-seg-btn.active { background: var(--gs-content) !important; color: var(--gs-accent) !important; box-shadow: inset 0 0 0 1px #000; }
+
+/* ---------- buttons ---------- */
+.btn, .th-mini, .set-group .set-btn {
+  height: 26px; padding: 0 14px; font-weight: 700; font-size: calc(11px * var(--fs)); color: var(--gs-label);
+  background: linear-gradient(var(--gs-combo-top), var(--gs-combo-bot)) !important;
+  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px var(--gs-combo-line) !important;
+}
+.btn:not(:disabled):hover, .th-mini:hover { background: linear-gradient(var(--gs-combo-bot), #2b2b2b) !important; color: #fff; }
+.btn:active { transform: none; background: var(--gs-list-hover) !important; }
+.btn.primary, .th-highlight .btn.primary { color: var(--gs-accent) !important; }
+.btn.primary:hover, .th-highlight .btn.primary:hover { color: #b6e23a !important; }
+.btn.outline { background: transparent !important; }
+.btn:disabled { color: var(--gs-disabled); opacity: 1; }
+
+/* small round icon buttons -> square icon cells */
+.pill-btn, .track-row .pill-btn, .pb-left .pill-btn, .pb-right .pill-btn {
+  background: transparent !important; color: var(--gs-icon-off); box-shadow: none !important;
+}
+.pill-btn:hover { background: var(--gs-combo-bot) !important; color: var(--gs-icon-on); box-shadow: 0 0 0 1px #000 !important; }
+.pill-btn.on, .pill-btn.heart.on { color: var(--gs-accent); }
+.ctrl-btn { color: var(--gs-icon-off); }
+.ctrl-btn:hover { background: transparent; color: var(--gs-icon-on); }
+.ctrl-btn.on { color: var(--gs-accent); }
+.ctrl-btn.on::after { width: 4px; height: 1px; bottom: 4px; }
+.platform-switch { padding: 0; gap: 0; }
+.platform-btn { color: var(--gs-dim); font-size: calc(11.5px * var(--fs)); }
+.platform-btn.active { background: var(--gs-content) !important; color: var(--gs-accent); box-shadow: inset 0 0 0 1px #000; }
+.sync-mini:hover, .search-clear:hover, .rl-pin:hover { background: var(--gs-combo-bot); }
+.rl-pin.on, .rl-pinned { color: var(--gs-accent); }
+
+/* ---------- tiles / cards ---------- */
+.tile { height: 56px; }
+.tile .t { width: 56px; height: 56px; }
+.tile:hover { background: var(--gs-combo-top) !important; }
+.tile .a, .card .a { color: var(--gs-label); font-weight: 700; font-size: calc(12px * var(--fs)); }
+.tile .b, .card .b { color: var(--gs-hotkey); }
+.card:hover { background: var(--gs-group); box-shadow: 0 0 0 1px #000, inset 0 0 0 1px var(--gs-group-line); }
+
+/* ---------- track list ---------- */
+.track-row { padding: 6px 14px; }
+.track-row:hover { background: var(--gs-list-hover) !important; }
+.track-row:active { transform: none; }
+.track-row.playing {
+  background: var(--gs-group) !important;
+  box-shadow: inset 2px 0 0 var(--gs-accent), inset 0 0 0 1px var(--gs-group-line) !important;
+}
+.track-row.playing .tr-title { color: var(--gs-accent); }
+.tr-title { color: var(--gs-label); }
+.tr-artist { color: var(--gs-dim); }
+.tr-artist:hover { color: #fff; }
+.tr-index, .tr-dur, .time { color: var(--gs-hotkey); font-size: calc(11px * var(--fs)); }
+
+/* ---------- player bar: a sidebar-black strip under a G(42) / black line ---------- */
+.playbar, body.docked .playbar {
+  background: var(--gs-sidebar) !important;
+  box-shadow: 0 -1px 0 #000, inset 0 1px 0 var(--gs-group-line) !important;
+}
+.pb-title { color: var(--gs-label); font-weight: 700; font-size: calc(12.5px * var(--fs)); }
+.pb-artist { color: var(--gs-dim); font-size: calc(11.5px * var(--fs)); }
+.pb-cover { filter: none; }
+/* play / pause: a big checked checkbox */
+.play-btn, .play-btn.is-playing {
+  width: 34px; height: 34px; color: #0a0a0a; text-shadow: none;
+  background: linear-gradient(var(--gs-accent), var(--gs-accent-dark)) !important;
+  box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, .18) !important;
+}
+.play-btn:hover { background: linear-gradient(#a9d630, var(--gs-accent)) !important; }
+.play-btn:active { transform: none; }
+.play-btn svg { width: 16px; height: 16px; }
+.wave-tip { background: var(--gs-list-bg); box-shadow: 0 0 0 1px #000; color: var(--gs-label); }
+
+/* ---------- menus, modals, toasts ---------- */
+.menu, .th-glass .menu { background: var(--gs-list-bg) !important; padding: 0 !important; }
+.menu button { color: var(--gs-label); font-size: calc(11.5px * var(--fs)); padding: 6px 12px; }
+.menu button:hover { background: var(--gs-list-hover) !important; color: #fff; }
+.menu .sep { background: #000; box-shadow: 0 1px 0 var(--gs-group-line); margin: 3px 0; }
+.modal-wrap { background: rgba(0, 0, 0, .6); }
+.modal { position: relative; padding: 20px 22px 18px; }
+.modal::before, .toast::before {
+  content: ""; position: absolute; top: 1px; left: 1px; right: 1px; height: 2px; pointer-events: none;
+  background: linear-gradient(rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, .57) 50%), var(--gs-rainbow);
+}
+.modal h3 { color: var(--gs-label); font-size: calc(12px * var(--fs)); }
+.modal p { color: var(--gs-dim); font-size: calc(11.5px * var(--fs)); }
+.modal input { color: var(--gs-label); padding: 6px 9px; }
+.toast { position: relative; color: var(--gs-label) !important; font-size: calc(11.5px * var(--fs)); padding: 9px 16px; }
+.toast.error { color: #e88a8a !important; }
+
+/* ---------- custom CSS editor ---------- */
+.th-css-text { background: var(--gs-sidebar) !important; color: var(--gs-label); box-shadow: 0 0 0 1px #000, inset 0 0 0 1px var(--gs-group-line); font-family: Consolas, "Lucida Console", monospace !important; }

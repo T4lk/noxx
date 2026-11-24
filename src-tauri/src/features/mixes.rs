@@ -1202,7 +1202,7 @@ mod tests {
     async fn live_mixes_from_real_data() {
         let dir = std::env::var("NOXX_DATA")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join("dev.riffrs.player"));
+            .unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join("dev.noxx.player"));
         let lib: crate::library::LibraryData =
             serde_json::from_slice(&std::fs::read(dir.join("library.json")).expect("library.json")).expect("library");
         let hist: Vec<super::super::history::Entry> =

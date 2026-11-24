@@ -1,4 +1,4 @@
-package dev.riffrs.player
+package dev.noxx.player
 
 import android.content.Context
 import android.content.Intent

@@ -147,7 +147,7 @@
     };
   }
 
-  // yt-dlp status (riff also lists ffmpeg; riff-rs muxes in Rust and doesn't need it).
+  // yt-dlp status (riff also lists ffmpeg; noxx muxes in Rust and doesn't need it).
   let tools = null;
   const toolsText = () => {
     if (!tools) return 'Checking...';

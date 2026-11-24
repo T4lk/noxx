@@ -13,6 +13,7 @@ use serde_json::Value;
 use tauri::AppHandle;
 
 pub mod about;
+pub mod audiocache;
 pub mod discord;
 pub mod discover;
 pub mod downloads;
@@ -23,6 +24,8 @@ pub mod lyrics;
 pub mod mixes;
 pub mod system;
 pub mod themes;
+#[cfg(windows)]
+pub mod thumbbar;
 pub mod updater;
 pub mod youtube;
 
@@ -32,6 +35,7 @@ pub async fn dispatch(app: &AppHandle, name: &str, args: Value) -> Out {
     let (module, cmd) = name.split_once('.').ok_or_else(|| format!("bad feature call: {name}"))?;
     match module {
         "about" => about::handle(app, cmd, args).await,
+        "audiocache" => audiocache::handle(app, cmd, args).await,
         "discord" => discord::handle(app, cmd, args).await,
         "discover" => discover::handle(app, cmd, args).await,
         "downloads" => downloads::handle(app, cmd, args).await,
@@ -50,6 +54,7 @@ pub async fn dispatch(app: &AppHandle, name: &str, args: Value) -> Out {
 
 pub fn setup(app: &AppHandle) {
     about::setup(app);
+    audiocache::setup(app);
     discord::setup(app);
     discover::setup(app);
     downloads::setup(app);
@@ -60,5 +65,7 @@ pub fn setup(app: &AppHandle) {
     mixes::setup(app);
     system::setup(app);
     themes::setup(app);
+    #[cfg(windows)]
+    thumbbar::setup(app);
     youtube::setup(app);
 }

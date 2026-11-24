@@ -746,7 +746,7 @@
       useSc() ? R.call('discover.wave', { seeds, heard: heardIds(), refresh: !!refresh, limit: 30 }) : [],
       useYt() ? waveYouTube(useSc() ? 15 : 30).catch(() => []) : [],
     ])
-      .then(([sc, yt]) => { D.wave = interleave(sc || [], yt || [], 30); D.waveErr = ''; D.waveFocus = 0; D.waveBasis = waveBasis(); return D.wave; })
+      .then(([sc, yt]) => { const ok = (t) => !R.isBlocked?.(t); D.wave = interleave((sc || []).filter(ok), (yt || []).filter(ok), 30); D.waveErr = ''; D.waveFocus = 0; D.waveBasis = waveBasis(); return D.wave; })
       .catch((e) => { D.waveErr = errText(e); return D.wave || []; })
       .finally(() => { D.waveLoading = null; });
     return D.waveLoading;
@@ -1003,20 +1003,48 @@
   // Radio mixes SoundCloud and YouTube: each side's own "songs like this", kept to the seed's
   // genre (YouTube results usually carry no genre, so they're checked by title/artist words;
   // with no genre known for the seed, both sides pass), then interleaved.
+  // Versions of a song rather than songs: remixes, covers, speed edits, karaoke, AI remakes.
+  // Radio skips them unless it started from one.
+  const VERSION_RE = /\b(remix(es|ed)?|rmx|bootleg|flip|mash-?up|(?<!radio |single |album |clean |short )edit|vip|rework|cover|karaoke|in the style of|tribute|instrumental|acapella|nightcore|daycore|sped[\s._-]*up|speed[\s._-]*(up|x?\s*\d)|slowed|reverb|8d|bass[\s._-]*boost(ed)?|\d+\s*hours?|loop(ed)?|ai[\s._-]*(cover|version|song|generated|remake)|suno|udio|type beat)\b|\(\s*live\b|\blive (at|from|in)\b/i;
+  const isVersion = (t) => VERSION_RE.test(String(t && t.title || ''));
+  const normName = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  // Does this upload come from the artist? (A SoundCloud reupload of a band's song by a fan
+  // has useless "related" tracks: other reuploads, covers and edits.)
+  const byArtist = (upload, artist) => {
+    const a = normName(artist).split(/ (?:feat|ft|x|and) /)[0], u = normName(upload.artist);
+    return !!a && !!u && (u.includes(a) || a.includes(u));
+  };
+
   async function radioRecs(seed, opts = {}) {
     const s = await matchSeed(seed);
-    if (!s) return [];
+    if (!s) { R.log('warn', `radio ${seed.title}: couldn't find this song on SoundCloud or YouTube`); return []; }
     const limit = opts.limit || 12;
     const avoid = new Set(opts.avoid || []);
     const twin = await twinOf(s);
-    const sc = useSc() ? (isYt(s) ? twin : s) : null;
-    const yt = useYt() ? (isYt(s) ? s : twin) : null;
+    // The song's home: when YouTube Music has it from the artist but the SoundCloud copy is
+    // someone else's reupload, YouTube's radio leads and SoundCloud only fills gaps (and vice versa).
+    const ytSide = isYt(s) ? s : twin, scSide = isYt(s) ? twin : s;
+    const scReupload = !!(ytSide && scSide && !byArtist(scSide, ytSide.artist));
+    const sc = useSc() ? scSide : null;
+    const yt = useYt() ? ytSide : null;
+    // One retry each: these fail now and then (timeouts, rate limits), and a failure used to look like "no songs".
+    const fetchList = async (what, cmd, args) => {
+      for (let i = 0; i < 2; i++) {
+        try { return (await R.call(cmd, args)) || []; } catch (e) {
+          R.log('warn', `radio ${s.title}: ${what} lookup failed${i ? '' : ', retrying'}: ${errText(e)}`);
+          if (!i) await wait(1200);
+        }
+      }
+      return [];
+    };
     const [scList, ytList] = await Promise.all([
-      sc ? R.call('discover.radio', { seed: sc, played: opts.played || [], avoid: [...avoid], limit }).catch(() => []) : [],
-      yt ? R.call('youtube.related', { id: yt.id, limit: Math.min(50, limit + 15) }).catch(() => []) : [],
+      sc ? fetchList('SoundCloud', 'discover.radio', { seed: sc, played: opts.played || [], avoid: [...avoid], limit }) : [],
+      yt ? fetchList('YouTube', 'youtube.related', { id: yt.id, limit: Math.min(50, limit + 15) }) : [],
     ]);
     const seedFams = await familiesOf(`${s.title} ${s.genre || ''} ${s.style || ''} ${twin ? `${twin.title} ${twin.genre || ''}` : ''}`);
-    let ytKeep = (ytList || []).filter((t) => !avoid.has(t.id));
+    const seedVersion = isVersion(s) || isVersion(seed);
+    const clean = (t) => t && !avoid.has(t.id) && !R.isBlocked?.(t) && (seedVersion || !isVersion(t));
+    let ytKeep = (ytList || []).filter(clean);
     if (seedFams.length && ytKeep.length) {
       const checked = await Promise.all(ytKeep.map(async (t) => {
         const f = await familiesOf(`${t.title} ${t.artist}`);
@@ -1024,15 +1052,25 @@
       }));
       ytKeep = checked.filter(Boolean);
     }
-    const scKeep = (scList || []).filter((t) => !avoid.has(t.id));
+    const scKeep = (scList || []).filter(clean);
     const out = [], seen = new Set([s.id, ...(twin ? [twin.id] : [])]);
-    const key = (t) => `${(t.artist || '').toLowerCase()}|${(t.title || '').toLowerCase().replace(/\s*[[(].*$/, '')}`;
-    const seenKey = new Set([key(s)]);
-    for (let i = 0; out.length < limit && (i < scKeep.length || i < ytKeep.length); i++) {
-      for (const t of [scKeep[i], ytKeep[i]]) {
-        if (!t || seen.has(t.id) || seenKey.has(key(t)) || out.length >= limit) continue;
-        seen.add(t.id); seenKey.add(key(t)); out.push(t);
-      }
+    // Same song under another uploader / platform: "Artist - Title" uploads count as that artist.
+    const key = (t) => {
+      let a = normName(t.artist), ti = String(t.title || '');
+      const dash = ti.match(/^(.+?)\s+[-–]\s+(.+)$/);
+      if (dash) { a = normName(dash[1]); ti = dash[2]; }
+      return `${a}|${normName(ti.replace(/\s*[[(].*$/, ''))}`;
+    };
+    const seenKey = new Set([key(s), ...(twin ? [key(twin)] : [])]);
+    const take = (t) => {
+      if (!t || seen.has(t.id) || seenKey.has(key(t)) || out.length >= limit) return;
+      seen.add(t.id); seenKey.add(key(t)); out.push(t);
+    };
+    if (scReupload && ytKeep.length) {
+      ytKeep.forEach(take); // the artist's real radio first
+      if (out.length < Math.min(limit, 4)) scKeep.forEach(take);
+    } else {
+      for (let i = 0; out.length < limit && (i < scKeep.length || i < ytKeep.length); i++) { take(scKeep[i]); take(ytKeep[i]); }
     }
     return out;
   }
@@ -1043,13 +1081,18 @@
     updatePill();
     R.toast(`Starting radio from ${track.title || 'this song'}…`);
     try {
-      const recs = await radioRecs(track, { avoid: [track.id], limit: 12 });
+      let recs = await radioRecs(track, { avoid: [track.id], limit: 12 });
+      if (!recs.length) {
+        R.log('warn', `radio ${track.title}: no picks, trying the looser search`);
+        recs = await looseRecs([track], [track.id], 12);
+      }
       const seen = new Set([track.id]);
       const list = [track, ...recs.filter((t) => !seen.has(t.id) && seen.add(t.id))];
       if (list.length < 2) { R.toast(`Couldn't find songs like ${track.title || 'this one'}`, 'error'); return; }
       startAuto('radio', list, 0, track);
       R.toast(`Radio on: songs like ${track.title || 'this one'}`);
     } catch (e) {
+      R.log('error', `radio ${track.title}: ${errText(e)}`);
       R.toast('Couldn\'t start radio', 'error');
     } finally {
       D.starting = false;
@@ -1061,7 +1104,8 @@
   // platform's raw related list without the genre filter. Used when the normal picks come back empty.
   async function looseRecs(recent, avoid = [], limit = 15) {
     const skip = new Set(avoid);
-    const keep = (l) => (l || []).filter((t) => t && t.id && !skip.has(t.id));
+    const versions = recent.slice(0, 3).some(isVersion);
+    const keep = (l) => (l || []).filter((t) => t && t.id && !skip.has(t.id) && !R.isBlocked?.(t) && (versions || !isVersion(t)));
     for (const seed of recent.slice(0, 5)) {
       try { const r = keep(await radioRecs(seed, { avoid: [...skip], limit })); if (r.length) return r; } catch (e) { R.log('warn', `autoplay radio ${seed.title}: ${errText(e)}`); }
     }
@@ -1126,7 +1170,7 @@
       if (D.auto !== a || p.context !== a.ctx) return 0;
       const have = new Set(p.context.map((t) => t.id));
       for (const t of more || []) {
-        if (have.has(t.id)) continue;
+        if (have.has(t.id) || R.isBlocked?.(t)) continue;
         have.add(t.id);
         p.order.push(p.context.length);
         p.context.push(t);
@@ -1202,6 +1246,30 @@
       }),
     ], 'music-sources');
   }, 'interface');
+
+  // Settings > Tracks: the songs and artists you said never to play, with a way back.
+  R.addSettings(() => {
+    const S = R.settingsRow;
+    if (!S || !R.blockedList) return;
+    const list = R.blockedList();
+    const box = R.el('<div class="dc-blocked"></div>');
+    const draw = () => {
+      const l = R.blockedList();
+      box.innerHTML = l.length
+        ? l.map((b, i) => `<div class="dc-blocked-row"><span>${esc(b.kind === 'artist' ? `${b.name} (artist)` : `${b.title} · ${b.artist}`)}</span><button type="button" class="th-mini" data-i="${i}">Allow</button></div>`).join('')
+        : '<div class="dc-blocked-empty">Nothing yet. Right-click a song and pick “Don\'t play this song”.</div>';
+    };
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-i]');
+      if (!b) return;
+      const entry = R.blockedList()[Number(b.dataset.i)];
+      if (entry) { R.unblock(entry); D.wave = null; draw(); }
+    });
+    draw();
+    const row = S.row('Songs you don\'t want to hear', `${list.length ? `${list.length} blocked. ` : ''}Left out of radio, My Wave, mixes and autoplay, and skipped in any queue`);
+    row.append(box);
+    S.group([row], 'blocked-songs');
+  }, 'tracks');
   R.on('ready', syncSourcesToMixes);
 
   R.addSelftest(async (log) => {
@@ -1307,6 +1375,29 @@
       const m = radioSeeds.get(local.id);
       log(`discover radio other ${ok(r2.length > 0)}: matched to ${m ? `${m.source || 'soundcloud'} "${m.title}"` : 'nothing'}, ${r2.length} songs (${ms(t0)})`);
     } catch (e) { log(`discover radio youtube/other FAILED: ${errText(e)}`); }
+
+    // A band's song reuploaded on SoundCloud: radio follows the artist's real YouTube Music radio, no remixes / covers / edits.
+    try {
+      t0 = performance.now();
+      const re = ((await R.invoke('search', { query: 'rise against give it all', offset: 0 })) || []).find((t) => /give it all/i.test(t.title) && !isVersion(t));
+      const r = re ? await radioRecs(re, { avoid: [re.id], limit: 12 }) : [];
+      const junk = r.filter(isVersion);
+      log(`discover radio reupload ${ok(r.length >= 6 && !junk.length && r.filter(isYt).length >= r.length - 2)}: "${re && re.title}" by ${re && re.artist} -> ${r.length} songs (${r.filter(isYt).length} YouTube, ${junk.length} versions, ${ms(t0)}): ${r.slice(0, 6).map((t) => `${t.artist} - ${t.title}`).join(' | ')}`);
+    } catch (e) { log(`discover radio reupload FAILED: ${errText(e)}`); }
+
+    // Never play: a blocked song / artist is left out and skipped, and can be allowed again.
+    {
+      const a = { id: 'yt:selftestBlk1', source: 'youtube', title: 'Some Song', artist: 'Blocked Band', duration: 200 };
+      const b = { id: '999999991', title: 'Blocked Band - Some Song (Official)', artist: 'fan uploader', duration: 201 };
+      const c = { id: '999999992', title: 'Other Song', artist: 'Blocked Band', duration: 180 };
+      const before = R.blockedList().length;
+      R.block(a, 'song');
+      const songOk = R.isBlocked(a) && R.isBlocked(b) && !R.isBlocked(c);
+      R.block(c, 'artist');
+      const artistOk = R.isBlocked(c) && R.isBlocked({ id: 'x', title: 'Blocked Band - New One', artist: 'someone' });
+      R.blockedList().filter((e) => e.key && (e.key.includes('blocked band'))).forEach((e) => R.unblock(e));
+      log(`never play ${ok(songOk && artistOk && !R.isBlocked(a) && !R.isBlocked(c) && R.blockedList().length === before)}: song ${songOk}, artist ${artistOk}`);
+    }
 
     t0 = performance.now();
     const w = await loadWave(true);

@@ -9,6 +9,7 @@
 //!   tools                                                  -> { ytdlp, status, percent, error }
 //!   install                                                -> starts the yt-dlp download (events: "youtube-tools")
 //!   open    { url }                                        -> opens a youtube.com / music.youtube.com page in the browser
+//!   album_version { id, title, artist, duration }          -> Track | null   (the YouTube Music song of a music video, length ±2 s)
 //!   related { id, limit? }                                 -> Track[]   (YouTube Music radio for a video, cached 6 h)
 //!   trending_for { genres, limit? }                        -> [{ genre, tracks }]   (most viewed uploads of the
 //!            last month per genre on www.youtube.com, songs only (1-15 min, no mixes / albums), cached 1 h)
@@ -40,6 +41,8 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::soundcloud::Track;
+
+static RADIO_EDIT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)[\s(\[-]*radio edit[\s)\]-]*").unwrap());
 pub use innertube::Src;
 
 const PAGE: usize = 20;
@@ -617,6 +620,35 @@ impl Yt {
         Ok(hit.map(|t| t.id[3..].to_string()))
     }
 
+    /// Note: a music video with an intro or outro is longer than the song and is left alone;
+    /// what changes is official audio / lyric / visualizer uploads, played from the song.
+    /// The album track (YouTube Music "song") of a music video: same song, length within 2 s,
+    /// so intros, skits and outros of the video are gone. None when there's no such song.
+    pub async fn album_version(&self, vid: &str, title: &str, artist: &str, duration: u64) -> Result<Option<Track>, String> {
+        // Video uploads credit the channel: "ArtistVEVO", "Artist - Topic", "Artist Official".
+        let artist = artist.trim_end_matches(" - Topic").trim_end_matches("VEVO").trim_end_matches(" Official").trim();
+        let queries = music::twin_queries(title, artist);
+        if queries.is_empty() || duration == 0 {
+            return Ok(None);
+        }
+        for q in &queries {
+            let visitor = lock(&self.visitor).0.clone();
+            let body = json!({ "context": innertube::ytm_context(&visitor), "query": q, "params": innertube::YTM_SONGS_PARAMS });
+            let v = self.post("music.youtube.com", "search", &body, None).await?;
+            self.note_visitor(&v);
+            // A radio edit is the song itself, not an edit in `is_edit`'s sense.
+            let plain = |t: &Track| {
+                let mut c = t.clone();
+                c.title = RADIO_EDIT.replace_all(&c.title, " ").into_owned();
+                c
+            };
+            if let Some(hit) = innertube::parse_ytm_songs(&v).into_iter().take(8).find(|t| t.id.get(3..) != Some(vid) && music::twin_of(title, artist, duration, &plain(t), 2)) {
+                return Ok(Some(hit));
+            }
+        }
+        Ok(None)
+    }
+
     /// YouTube Music twins of other tracks (e.g. SoundCloud seeds): items are (key, title,
     /// artist, duration s), most important first. Cached forever in `youtube-years.json`
     /// (misses too); at most `max_new` searches until `budget` runs out, failed searches
@@ -959,6 +991,11 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             let limit = args["limit"].as_u64().unwrap_or(25).clamp(1, 50) as usize;
             Ok(json!(yt.related(&vid, limit).await?))
         }
+        "album_version" => {
+            let vid = vid_of(&args)?;
+            let s = |k: &str| args[k].as_str().unwrap_or("").to_string();
+            Ok(json!(yt.album_version(&vid, &s("title"), &s("artist"), args["duration"].as_u64().unwrap_or(0)).await?))
+        }
         "resolve" => {
             let vid = vid_of(&args)?;
             let fresh = args["fresh"].as_bool().unwrap_or(false);
@@ -1052,6 +1089,26 @@ mod tests {
 
     fn rt() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap()
+    }
+
+    #[test]
+    #[ignore]
+    fn youtube_live_album_version() {
+        rt().block_on(async {
+            let yt = Yt::global();
+            let mut swapped = 0;
+            for q in ["daft punk get lucky official audio", "the weeknd blinding lights official video", "billie eilish bad guy", "arctic monkeys do i wanna know official audio"] {
+                let videos = yt.search(Src::Youtube, q, 0).await.unwrap();
+                let Some(v) = videos.first() else { continue };
+                let hit = yt.album_version(&v.id[3..], &v.title, &v.artist, v.duration).await.unwrap();
+                println!("{:?} / {:?} {}s -> {:?}", v.title, v.artist, v.duration, hit.as_ref().map(|h| (&h.id, &h.title, &h.artist, h.duration)));
+                if let Some(h) = hit {
+                    assert!(h.duration.abs_diff(v.duration) <= 2);
+                    swapped += 1;
+                }
+            }
+            assert!(swapped >= 1, "no music video matched an album track");
+        });
     }
 
     #[test]
@@ -1213,7 +1270,7 @@ mod tests {
     #[ignore]
     fn youtube_live_download() {
         rt().block_on(async {
-            let path = std::env::temp_dir().join("riff-rs-youtube-test.m4a");
+            let path = std::env::temp_dir().join("noxx-youtube-test.m4a");
             let t = Instant::now();
             let r = Yt::global().download("mqgEYRtWMJU", &path).await.unwrap();
             let len = std::fs::metadata(&path).unwrap().len();

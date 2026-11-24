@@ -1,4 +1,4 @@
-package dev.riffrs.player
+package dev.noxx.player
 
 import android.Manifest
 import android.content.pm.PackageManager

@@ -421,8 +421,18 @@ impl SoundCloud {
     }
 
     pub(crate) async fn api(&self, endpoint: &str, params: &[(&str, String)]) -> Result<Value> {
+        self.request(endpoint, params, true).await
+    }
+
+    /// Same as `api`, but never sends the login: some endpoints answer differently for a
+    /// signed-in account (a track's related list can come back nearly empty).
+    pub(crate) async fn api_public(&self, endpoint: &str, params: &[(&str, String)]) -> Result<Value> {
+        self.request(endpoint, params, false).await
+    }
+
+    async fn request(&self, endpoint: &str, params: &[(&str, String)], with_login: bool) -> Result<Value> {
         let mut client_id = self.client_id(false).await?;
-        let mut token = self.token();
+        let mut token = if with_login { self.token() } else { None };
         let mut refreshed = false;
         let mut dropped_token = false;
         let mut attempt = 0usize;
@@ -952,7 +962,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_search_stream_and_playlist_hydration() {
-        let dir = std::env::temp_dir().join("riff-rs-live-test");
+        let dir = std::env::temp_dir().join("noxx-live-test");
         let sc = SoundCloud::new(dir);
         let started = Instant::now();
         let found = sc.search("lofi hip hop", 0).await.expect("search");
@@ -990,7 +1000,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_likes_paging() {
-        let sc = SoundCloud::new(std::env::temp_dir().join("riff-rs-live-test"));
+        let sc = SoundCloud::new(std::env::temp_dir().join("noxx-live-test"));
         let user = sc.api("/resolve", &[("url", "https://soundcloud.com/lofi_girl".into())]).await.expect("resolve user");
         let id = id_of(&user).unwrap();
         println!("user {id} likes_count={}", user["likes_count"]);
@@ -1011,7 +1021,7 @@ mod tests {
     async fn live_unlike_noop() {
         let src = std::env::var("RIFF_LIVE_SESSION_DIR").expect("RIFF_LIVE_SESSION_DIR");
         let id = std::env::var("RIFF_LIVE_TRACK").expect("RIFF_LIVE_TRACK");
-        let dir = std::env::temp_dir().join("riff-rs-live-like");
+        let dir = std::env::temp_dir().join("noxx-live-like");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::copy(PathBuf::from(src).join("soundcloud-session.json"), dir.join("soundcloud-session.json")).unwrap();
         let sc = SoundCloud::new(dir.clone());
@@ -1027,7 +1037,7 @@ mod tests {
     #[ignore]
     async fn live_session_me() {
         let src = std::env::var("RIFF_LIVE_SESSION_DIR").expect("RIFF_LIVE_SESSION_DIR");
-        let dir = std::env::temp_dir().join("riff-rs-live-me");
+        let dir = std::env::temp_dir().join("noxx-live-me");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::copy(PathBuf::from(src).join("soundcloud-session.json"), dir.join("soundcloud-session.json")).unwrap();
         let sc = SoundCloud::new(dir.clone());
@@ -1042,7 +1052,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_expired_token_falls_back_to_anonymous() {
-        let dir = std::env::temp_dir().join("riff-rs-live-test-expired");
+        let dir = std::env::temp_dir().join("noxx-live-test-expired");
         let sc = SoundCloud::new(dir);
         *sc.session.write().unwrap() = Some(Session {
             oauth_token: "2-000000-000000-deadtokendeadtoken".into(),

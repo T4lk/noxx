@@ -59,7 +59,7 @@
     } else {
       if (j.state === 'error' && jobs.get(j.id)?.state !== 'error') {
         batch.failed++;
-        if (batch.count <= 1) R.toast(`${j.track.title}: ${j.error || 'download failed'}`, 'error');
+        if (batch.count <= 1 && !auto.ids.has(j.id)) R.toast(`${j.track.title}: ${j.error || 'download failed'}`, 'error');
       }
       jobs.set(j.id, j);
     }
@@ -94,6 +94,66 @@
       R.toast(R.errText(e), 'error');
     }
   }
+
+  // ------------------------------------------------------------ keep liked songs downloaded
+  // Settings → Storage: new likes download in the background (newest first, up to a limit),
+  // quietly: no toasts, failures are retried on the next check. Off by default.
+  const auto = { ids: new Set(), timer: 0, failed: new Map() };
+  const AUTO_LIMITS = [[100, 'Newest 100'], [250, 'Newest 250'], [500, 'Newest 500'], [0, 'All liked songs']];
+  const autoOn = () => R.pref('autoLikes', false);
+  function autoWanted() {
+    const max = Number(R.pref('autoLikesMax', 250)) || Infinity;
+    return (R.state.library.favorites || []).filter(downloadable).slice(0, max);
+  }
+  function autoStatus() {
+    const want = autoWanted();
+    const have = want.filter((t) => items.has(t.id)).length;
+    const busy = want.filter((t) => isActive(jobs.get(t.id))).length;
+    return !autoOn() ? 'Off' : !want.length ? 'No liked songs to download' : busy ? `Downloading · ${have} of ${want.length} saved` : `${have} of ${want.length} saved`;
+  }
+  function scheduleAuto(ms = 4000) {
+    clearTimeout(auto.timer);
+    if (autoOn()) auto.timer = setTimeout(runAuto, ms);
+  }
+  async function runAuto() {
+    if (!autoOn() || !navigator.onLine) return;
+    await ready;
+    const now = Date.now();
+    // A failed track waits 30 min before it's tried again.
+    const todo = autoWanted().filter((t) => !items.has(t.id) && !isActive(jobs.get(t.id)) && !(auto.failed.get(t.id) > now)).slice(0, 50);
+    if (!todo.length) return;
+    todo.forEach((t) => auto.ids.add(t.id));
+    try {
+      const r = await R.call('downloads.start', { tracks: todo, album: '' });
+      R.log('info', `auto-download likes: queued ${r.queued || 0} of ${todo.length}`);
+    } catch (e) { R.log('warn', `auto-download likes: ${R.errText(e)}`); }
+  }
+  R.listen('download-progress', (e) => {
+    const j = e.payload;
+    if (!j || !auto.ids.has(j.id)) return;
+    if (j.state === 'error') auto.failed.set(j.id, Date.now() + 30 * 60 * 1000);
+    if (j.state === 'done' || j.state === 'error' || j.state === 'cancelled') {
+      auto.ids.delete(j.id);
+      if (!auto.ids.size) scheduleAuto(1000); // next batch of 50
+    }
+    document.querySelectorAll('[data-dl-auto-status]').forEach((x) => { x.textContent = autoStatus(); });
+  });
+  R.on('library', () => scheduleAuto());
+  R.on('ready', () => scheduleAuto(15000));
+  window.addEventListener('online', () => scheduleAuto(5000));
+  R.addSettings(() => {
+    const S = R.settingsRow;
+    if (!S) return;
+    R.add('<div class="section-title">Liked songs offline</div>');
+    const g = S.group([
+      S.prefToggle('autoLikes', false, 'Keep liked songs downloaded', 'New likes download in the background so they play offline and start instantly', (on) => { paint(); if (on) scheduleAuto(500); else clearTimeout(auto.timer); }),
+      S.select({ name: 'How many', desc: 'Newest likes first', options: AUTO_LIMITS.map(([v, l]) => [String(v), l]), value: String(R.pref('autoLikesMax', 250)), onChange: (v) => { R.setPref('autoLikesMax', Number(v)); paint(); scheduleAuto(500); } }),
+    ]);
+    const st = R.el(`<div class="th-item setting-item"><div class="th-top"><div class="th-col"><span class="th-name">Status</span><span class="th-desc" data-dl-auto-status></span></div></div></div>`);
+    g.append(st);
+    function paint() { st.querySelector('[data-dl-auto-status]').textContent = autoStatus(); }
+    if (ready) ready.then(paint); else paint();
+  }, 'storage');
 
   const cancel = (id) => R.call('downloads.cancel', { id: id || '' }).catch((e) => R.toast(R.errText(e), 'error'));
   const reveal = (id) => R.call('downloads.reveal', { id: id || '' }).catch((e) => R.toast(R.errText(e), 'error'));
@@ -408,6 +468,7 @@
     get folder() { return folder; },
     get ready() { return ready; },
     count: () => items.size,
+    has: (id) => items.has(id),
     totalSize,
     fmtSize,
     pickFolder,

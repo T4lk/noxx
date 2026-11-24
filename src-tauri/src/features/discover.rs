@@ -940,8 +940,20 @@ async fn related(sc: &SoundCloud, id: &str, limit: u32) -> Vec<Track> {
     if let Some(v) = cached(&key) {
         return serde_json::from_value(v).unwrap_or_default();
     }
-    let Ok(data) = sc.api(&format!("/tracks/{id}/related"), &[("limit", limit.to_string())]).await else { return Vec::new() };
-    let list: Vec<Track> = collection(&data).iter().filter(|t| playable(t)).map(map_track).collect();
+    let endpoint = format!("/tracks/{id}/related");
+    let params = [("limit", limit.to_string())];
+    let fetch = |data: Result<Value, _>| -> Vec<Track> {
+        data.map(|d| collection(&d).iter().filter(|t| playable(t)).map(map_track).collect()).unwrap_or_default()
+    };
+    let mut list = fetch(sc.api(&endpoint, &params).await);
+    // Signed in, SoundCloud sometimes returns only a handful of related songs for a track that has
+    // dozens; the public list is the full one.
+    if list.len() < 10 && sc.token().is_some() {
+        let public = fetch(sc.api_public(&endpoint, &params).await);
+        if public.len() > list.len() {
+            list = public;
+        }
+    }
     remember(&key, &json!(list));
     list
 }
@@ -1025,7 +1037,7 @@ async fn radio(sc: &SoundCloud, args: &Value) -> super::Out {
     let lists = join_all(sources.iter().map(|(id, _, _)| related(sc, id, 50))).await;
 
     let anchor_key = track_key(&arg_str(seed, "artist"), &arg_str(seed, "title"));
-    let ranked: Vec<Cand> = {
+    let rank = |profile: &Profile| -> Vec<Cand> {
         let mem = RADIO.lock().unwrap();
         let mut by_id: HashMap<String, Cand> = HashMap::new();
         for (li, list) in lists.iter().enumerate() {
@@ -1041,7 +1053,7 @@ async fn radio(sc: &SoundCloud, args: &Value) -> super::Out {
                 if (!anchor.is_edit && is_edit(&t.style)) || is_not_a_song(&t.style) || t.duration > max_duration {
                     continue;
                 }
-                let fit = if has_profile { style_fit(&anchor.profile, &detect_families(&t.style)) } else { None };
+                let fit = if has_profile { style_fit(profile, &detect_families(&t.style)) } else { None };
                 if fit == Some(0.0) {
                     continue; // a different genre
                 }
@@ -1059,6 +1071,7 @@ async fn radio(sc: &SoundCloud, args: &Value) -> super::Out {
         v.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         v
     };
+    let ranked = rank(&anchor.profile);
 
     // Better a short batch than a wrong one: the app asks again before the queue runs out.
     let mut mem = RADIO.lock().unwrap();
@@ -1372,7 +1385,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn live_artist_radio_and_wave() {
-        let dir = std::env::temp_dir().join("riff-rs-discover-test");
+        let dir = std::env::temp_dir().join("noxx-discover-test");
         let _ = std::fs::create_dir_all(&dir);
         let sc = SoundCloud::new(dir);
         let trending = sc.trending().await.expect("trending");
@@ -1396,5 +1409,24 @@ mod tests {
         let w = wave(&sc, &json!({ "seeds": seeds })).await.expect("wave");
         println!("wave {} tracks", w.as_array().unwrap().len());
         assert!(!w.as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn live_radio_probe() {
+        let q = std::env::var("PROBE").unwrap_or_else(|_| "rise against give it all".into());
+        let dir = std::env::temp_dir().join("noxx-discover-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let sc = SoundCloud::new(dir);
+        let hits = sc.search(&q, 0).await.expect("search");
+        for h in hits.iter().take(5) { println!("SC HIT {} | {} | {} | {}s", h.id, h.artist, h.title, h.duration); }
+        let seed = &hits[0];
+        let r = radio(&sc, &json!({ "seed": seed, "limit": 20 })).await.expect("radio");
+        for t in r.as_array().unwrap() { println!("SC RADIO {} | {} | {}", t["artist"], t["title"], t["genre"]); }
+        let yt = crate::features::youtube::Yt::global();
+        let yh = yt.search(crate::features::youtube::Src::Music, &q, 0).await.expect("yt search");
+        for h in yh.iter().take(3) { println!("YT HIT {} | {} | {}", h.id, h.artist, h.title); }
+        let rel = yt.related(&yh[0].id, 40).await.expect("related");
+        for t in rel { println!("YT REL {} | {}", t.artist, t.title); }
     }
 }

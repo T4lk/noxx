@@ -42,6 +42,7 @@ const ext = {
   streamResolvers: [],   // async fn(track, fresh) -> {url, protocol:'progressive'|'hls'|'file'} | null
   selftests: [],         // async fn(log)
   continuations: [],     // async fn(seeds, avoidIds) -> tracks: what to play when the queue runs out
+  skips: [],             // fn(track) -> reason string to pass over it now (offline mode), or ''
 };
 
 // Persisted UI preferences (riff's settings toggles): riff.pref(key, default) / riff.setPref(key, value).
@@ -824,6 +825,66 @@ function addToQueue(t, next) {
   queueChanged();
 }
 
+// ---------------------------------------------------------------- never play: songs / artists the user blocked
+// Matched by id and by artist + title (so the same song on the other platform or a reupload is
+// caught too). Radio, My Wave, mixes and autoplay leave them out; the queue skips past them.
+const nameKey = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function songKey(t) {
+  let a = t.artist || '', ti = String(t.title || '');
+  const dash = ti.match(/^(.+?)\s+[-–]\s+(.+)$/);
+  if (dash) { a = dash[1]; ti = dash[2]; }
+  return `${nameKey(a)}|${nameKey(ti.replace(/\s*[[(].*$/, ''))}`;
+}
+const artistKey = (t) => nameKey(String(t.title || '').match(/^(.+?)\s+[-–]\s+/)?.[1] || t.artist);
+const blockedList = () => { const v = pref('blocked', []); return Array.isArray(v) ? v : []; };
+let blockIndex = null;
+function blockSets() {
+  if (!blockIndex) {
+    blockIndex = { ids: new Set(), songs: new Set(), artists: new Set() };
+    for (const b of blockedList()) {
+      if (b.kind === 'artist') blockIndex.artists.add(b.key);
+      else { if (b.id) blockIndex.ids.add(b.id); if (b.key) blockIndex.songs.add(b.key); }
+    }
+  }
+  return blockIndex;
+}
+/** Why a track can't play right now (offline and not on this PC…), '' when it can. */
+function skipReason(t) {
+  for (const f of ext.skips) { const why = t && f(t); if (why) return why; }
+  return '';
+}
+const passOver = (t) => isBlocked(t) || !!skipReason(t);
+
+function isBlocked(t) {
+  if (!t) return false;
+  const s = blockSets();
+  if (!s.ids.size && !s.songs.size && !s.artists.size) return false;
+  return s.ids.has(t.id) || s.songs.has(songKey(t)) || s.artists.has(nameKey(t.artist)) || s.artists.has(artistKey(t));
+}
+function saveBlocked(list) { setPref('blocked', list); blockIndex = null; emit('blocked', list); }
+function block(t, kind) {
+  const list = blockedList();
+  if (kind === 'artist') {
+    const key = artistKey(t);
+    if (!key || list.some((b) => b.kind === 'artist' && b.key === key)) return;
+    const name = String(t.title || '').match(/^(.+?)\s+[-–]\s+/)?.[1] || t.artist;
+    list.unshift({ kind: 'artist', key, name, at: Date.now() });
+    toast(`You won't hear ${name} again`);
+  } else {
+    if (isBlocked(t)) return;
+    list.unshift({ kind: 'song', id: t.id, key: songKey(t), title: t.title, artist: t.artist, at: Date.now() });
+    toast(`You won't hear ${t.title} again`);
+  }
+  saveBlocked(list.slice(0, 2000));
+  // Drop it from what's lined up, and move on if it's playing now.
+  player.userQueue = player.userQueue.filter((x) => !isBlocked(x));
+  queueChanged();
+  if (player.current && isBlocked(player.current)) next(false);
+}
+function unblock(entry) {
+  saveBlocked(blockedList().filter((b) => !(b.kind === entry.kind && b.key === entry.key && b.id === entry.id)));
+}
+
 function trackMenu(t, x, y, opts = {}, i = -1) {
   const items = [
     { label: 'Play next', run: () => addToQueue(t, true) },
@@ -833,6 +894,9 @@ function trackMenu(t, x, y, opts = {}, i = -1) {
   ];
   if (opts.removable && opts.onRemove && i >= 0) items.push({ label: 'Remove from this list', run: () => opts.onRemove(i) });
   for (const fn of ext.trackMenu) { try { const more = fn(t, opts) || []; if (more.length) items.push('-', ...more); } catch (e) { log('error', errText(e)); } }
+  const who = String(t.title || '').match(/^(.+?)\s+[-–]\s+/)?.[1] || t.artist;
+  items.push('-', { label: 'Don\'t play this song', run: () => block(t, 'song') });
+  if (who && !/^unknown/i.test(who)) items.push({ label: `Don't play ${who}`, run: () => block(t, 'artist') });
   if (t.url) items.push('-', { label: 'Copy link', run: () => navigator.clipboard.writeText(t.url).then(() => toast('Link copied')).catch(() => {}) });
   showMenu(items, x, y);
 }
@@ -1272,6 +1336,59 @@ searchInput.addEventListener('keydown', (e) => {
 });
 $('#search-clear').onclick = () => { searchInput.value = ''; $('#search-clear').hidden = true; searchInput.focus(); };
 
+// ---------------------------------------------------------------- recent searches
+// Kept when you press Enter or play something from the results (not every debounced keystroke).
+// Shown under the empty search box; click to search again, × to forget one.
+const searchHist = { list: load('searchHistory', []), box: null, pick: -1 };
+function rememberSearch(q) {
+  q = String(q || '').trim();
+  if (q.length < 2 || /^https?:/i.test(q) || !pref('searchHistory', true)) return;
+  searchHist.list = [q, ...searchHist.list.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 12);
+  store('searchHistory', searchHist.list);
+}
+function hideSearchHistory() { if (searchHist.box) { searchHist.box.remove(); searchHist.box = null; } }
+function showSearchHistory() {
+  hideSearchHistory();
+  if (searchInput.value.trim().length >= 2 || !searchHist.list.length || !pref('searchHistory', true)) return;
+  searchHist.pick = -1;
+  const box = el(`<div class="search-history" role="listbox"><div class="sh-head"><span>Recent searches</span><button type="button" class="sh-clear">Clear</button></div>
+    ${searchHist.list.map((q, i) => `<div class="sh-item" role="option" data-i="${i}">${svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')}<span>${esc(q)}</span><button type="button" class="sh-del" data-del="${i}" title="Remove">${ICON.close}</button></div>`).join('')}</div>`);
+  // mousedown, not click: the input's blur would close the list first.
+  box.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (e.target.closest('.sh-clear')) { searchHist.list = []; store('searchHistory', []); hideSearchHistory(); return; }
+    const del = e.target.closest('[data-del]');
+    if (del) { searchHist.list.splice(+del.dataset.del, 1); store('searchHistory', searchHist.list); showSearchHistory(); return; }
+    const item = e.target.closest('.sh-item');
+    if (item) pickSearch(searchHist.list[+item.dataset.i]);
+  });
+  $('.search-box').append(box);
+  searchHist.box = box;
+}
+function pickSearch(q) {
+  if (!q) return;
+  hideSearchHistory();
+  searchInput.value = q;
+  $('#search-clear').hidden = false;
+  clearTimeout(searchTimer);
+  rememberSearch(q);
+  runSearch(q);
+}
+searchInput.addEventListener('focus', showSearchHistory);
+searchInput.addEventListener('blur', hideSearchHistory);
+searchInput.addEventListener('input', () => { if (searchInput.value.trim().length >= 2) hideSearchHistory(); else showSearchHistory(); });
+searchInput.addEventListener('keydown', (e) => {
+  const box = searchHist.box;
+  if (e.key === 'Enter') { const q = box && searchHist.pick >= 0 ? searchHist.list[searchHist.pick] : searchInput.value.trim(); if (box && searchHist.pick >= 0) { e.stopImmediatePropagation(); pickSearch(q); } else rememberSearch(q); hideSearchHistory(); return; }
+  if (e.key === 'Escape' && box) { hideSearchHistory(); return; }
+  if (!box || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+  e.preventDefault();
+  const n = searchHist.list.length;
+  searchHist.pick = e.key === 'ArrowDown' ? (searchHist.pick + 1) % n : (searchHist.pick <= 0 ? n - 1 : searchHist.pick - 1);
+  box.querySelectorAll('.sh-item').forEach((x, i) => x.classList.toggle('active', i === searchHist.pick));
+}, true);
+bus.addEventListener('trackchange', () => { if (state.view === 'search' && state.search.query) rememberSearch(state.search.query); });
+
 /** Track list with extension tools (filter / sort) above it. ctx: { kind: 'likes'|'sc'|'local'|'search'|..., id } */
 function toolList(ctx, tracks, opts = {}, container = view) {
   const tools = el('<div class="list-tools"></div>');
@@ -1586,26 +1703,118 @@ function setPlatform(id) {
 
 // ---- shortcuts, diagnostics
 
-const SHORTCUTS = [
-  ['Play / Pause', ['Space']],
-  ['Back / Forward', ['Alt', '←', '/', '→']],
-  ['Next / Previous', ['Ctrl', '→', '/', '←']],
-  ['Seek ±5s', ['→', '/', '←']],
-  ['Volume ±5%', ['Ctrl', '↑', '/', '↓']],
-  ['Mute / Unmute', ['M']],
-  ['Shuffle', ['H']],
-  ['Repeat', ['R']],
-  ['Search', ['/', 'or', 'Ctrl', 'F']],
-  ['Close / Blur', ['Esc']],
+// Rebindable shortcuts (riff's Shortcuts tab). Each action has in-app keys (defaults below,
+// changed per action in prefs.keys) and optionally a system-wide key (prefs.globalKeys,
+// registered in Rust: works while noxx is in the background). Keys are "Ctrl+Shift+M" style.
+const KEY_ACTIONS = [
+  { id: 'playPause', name: 'Play / Pause', keys: ['Space'], run: () => togglePlay() },
+  { id: 'next', name: 'Next track', keys: ['Ctrl+ArrowRight'], run: () => next(false) },
+  { id: 'prev', name: 'Previous track', keys: ['Ctrl+ArrowLeft'], run: () => prev() },
+  { id: 'seekFwd', name: 'Seek forward 5 s', keys: ['ArrowRight'], run: () => { if (duration()) audio.currentTime = Math.min(duration(), audio.currentTime + 5); } },
+  { id: 'seekBack', name: 'Seek back 5 s', keys: ['ArrowLeft'], run: () => { audio.currentTime = Math.max(0, audio.currentTime - 5); } },
+  { id: 'volUp', name: 'Volume up', keys: ['Ctrl+ArrowUp'], run: () => setVolume(Math.min(100, Number(vol.value) + 5)) },
+  { id: 'volDown', name: 'Volume down', keys: ['Ctrl+ArrowDown'], run: () => setVolume(Math.max(0, Number(vol.value) - 5)) },
+  { id: 'mute', name: 'Mute / Unmute', keys: ['M'], run: () => $('#btn-mute').click() },
+  { id: 'like', name: 'Like current song', keys: ['L'], run: () => { if (player.current) toggleFavorite(player.current); } },
+  { id: 'shuffle', name: 'Shuffle', keys: ['H'], run: () => setShuffle(!player.shuffle) },
+  { id: 'repeat', name: 'Repeat', keys: ['R'], run: () => $('#btn-repeat').click() },
+  { id: 'search', name: 'Search', keys: ['/', 'Ctrl+F'], run: () => { searchInput.focus(); searchInput.select(); } },
+  { id: 'back', name: 'Go back', keys: ['Alt+ArrowLeft'], run: () => navHistory(-1), typing: true },
+  { id: 'forward', name: 'Go forward', keys: ['Alt+ArrowRight'], run: () => navHistory(1), typing: true },
+  { id: 'showWindow', name: 'Show noxx', keys: [], run: () => {}, globalOnly: true },
 ];
+const keyAction = (id) => KEY_ACTIONS.find((a) => a.id === id);
+const keysFor = (a) => { const k = pref('keys', {})[a.id]; return Array.isArray(k) ? k : a.keys; };
+const globalKeyFor = (a) => pref('globalKeys', {})[a.id] || '';
+
+/** "Ctrl+Shift+M" for a keydown, or '' for a lone modifier. Letters and digits by position. */
+function comboOf(e) {
+  if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].includes(e.key)) return '';
+  let k = e.code || '';
+  if (/^Key[A-Z]$/.test(k)) k = k.slice(3);
+  else if (/^Digit\d$/.test(k)) k = k.slice(5);
+  else if (/^Numpad\d$/.test(k)) k = 'Num' + k.slice(6);
+  else if (!/^(Arrow\w+|Space|F\d{1,2}|Home|End|PageUp|PageDown|Insert|Delete|Backspace|Enter|Tab|Media\w+)$/.test(k)) k = e.key && e.key.length === 1 ? e.key.toUpperCase() : (e.key || '');
+  if (!k) return '';
+  const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && (k.length > 1 || e.ctrlKey || e.altKey || e.metaKey) && 'Shift', e.metaKey && 'Super'].filter(Boolean);
+  return [...mods, k].join('+');
+}
+const KEY_LABEL = { ArrowRight: '→', ArrowLeft: '←', ArrowUp: '↑', ArrowDown: '↓', Super: 'Win' };
+function keycaps(combo) {
+  return combo.split('+').map((k) => `<span class="keycap${(KEY_LABEL[k] || k).length > 1 ? ' wide' : ''}">${esc(KEY_LABEL[k] || k)}</span>`).join('<span class="kc-sep">+</span>');
+}
+function runKeyAction(id, from = 'key') {
+  const a = keyAction(id);
+  if (!a) return;
+  if (from !== 'key') log('info', `shortcut ${id} (${from})`);
+  a.run();
+}
+
+/** System-wide keys go to Rust; returns { failed: { action: reason } } (taken by another app...). */
+async function applyGlobalKeys() {
+  const map = {};
+  for (const a of KEY_ACTIONS) { const k = globalKeyFor(a); if (k) map[a.id] = k; }
+  try { return await window.riff.call('system.global_keys', { map }); } catch (e) { log('warn', `global keys: ${errText(e)}`); return { failed: {} }; }
+}
+
 function openShortcuts() {
-  const keys = (list) => list.map((k, i) => (k === '/' && i > 0 && i < list.length - 1) || k === 'or'
-    ? `<span class="kc-sep">${k === 'or' ? 'or' : '/'}</span>`
-    : `${i > 0 && list[i - 1] !== '/' && list[i - 1] !== 'or' ? '<span class="kc-sep">+</span>' : ''}<span class="keycap${k.length > 1 ? ' wide' : ''}">${esc(k)}</span>`).join('');
+  let recording = null; // { id, scope: 'app'|'global' }
+  let failed = {};
+  const none = (t) => `<span class="sc-none">${t}</span>`;
+  const row = (a) => `<div class="sc-row" data-id="${a.id}"><span>${esc(a.name)}</span><div class="sc-keys">
+      ${a.globalOnly ? none('—') : `<button type="button" class="sc-bind" data-scope="app" title="Click, then press the new keys (Backspace clears)">${keysFor(a).map(keycaps).join('<span class="kc-sep">or</span>') || none('None')}</button>`}
+      <button type="button" class="sc-bind sc-global${failed[a.id] ? ' bad' : ''}" data-scope="global" title="${esc(failed[a.id] ? `Couldn't register: ${failed[a.id]}` : 'System-wide key, works while noxx is in the background')}">${globalKeyFor(a) ? keycaps(globalKeyFor(a)) : none('Add')}</button></div></div>`;
   const m = openModal(`<div class="sc-head"><h3>Keyboard shortcuts</h3><button class="pill-btn" data-close title="Close">${ICON.close}</button></div>
-    <div class="sc-list">${SHORTCUTS.map(([n, k]) => `<div class="sc-row"><span>${esc(n)}</span><div class="sc-keys">${keys(k)}</div></div>`).join('')}</div>`);
+    <div class="sc-cols"><span></span><span>In noxx</span><span>System-wide</span></div>
+    <div class="sc-list"></div>
+    <div class="sc-foot"><span class="sc-msg"></span><button type="button" class="btn outline" data-reset>Reset all</button></div>`);
   m.classList.add('shortcuts-modal');
+  const list = m.querySelector('.sc-list'), msg = m.querySelector('.sc-msg');
+  const draw = () => { list.innerHTML = KEY_ACTIONS.map(row).join(''); };
+  const say = (t, bad) => { msg.textContent = t; msg.classList.toggle('bad', !!bad); };
+  draw();
   m.querySelector('[data-close]').onclick = closeModal;
+  m.querySelector('[data-reset]').onclick = async () => { setPref('keys', {}); setPref('globalKeys', {}); failed = (await applyGlobalKeys()).failed || {}; draw(); say('Shortcuts reset'); };
+  list.addEventListener('click', (e) => {
+    const b = e.target.closest('.sc-bind');
+    if (!b) return;
+    draw();
+    recording = { id: b.closest('.sc-row').dataset.id, scope: b.dataset.scope };
+    const nb = list.querySelector(`.sc-row[data-id="${recording.id}"] .sc-bind[data-scope="${recording.scope}"]`);
+    nb.classList.add('rec');
+    nb.innerHTML = none('Press keys…');
+    say('Press the new keys. Backspace clears, Esc cancels');
+  });
+  const onKey = async (e) => {
+    if (!recording) return;
+    if (!m.isConnected) { document.removeEventListener('keydown', onKey, true); return; }
+    e.preventDefault(); e.stopImmediatePropagation();
+    const { id, scope } = recording;
+    if (e.key === 'Escape') { recording = null; draw(); say(''); return; }
+    const combo = e.key === 'Backspace' ? '' : comboOf(e);
+    if (!combo && e.key !== 'Backspace') return; // lone modifier: keep listening
+    if (scope === 'global' && combo && !combo.includes('+') && !/^(F\d{1,2}|Media\w+)$/.test(combo)) { say('System-wide keys need Ctrl, Alt, Shift or Win (or an F key)', true); return; }
+    recording = null;
+    const prefKey = scope === 'global' ? 'globalKeys' : 'keys';
+    const map = { ...pref(prefKey, {}) };
+    // The same keys on another action (same scope) move to this one.
+    let moved = '';
+    if (combo) for (const a of KEY_ACTIONS) {
+      if (a.id === id) continue;
+      if (scope === 'global') { if ((map[a.id] || '') === combo) { map[a.id] = ''; moved = a.name; } continue; }
+      const cur = Array.isArray(map[a.id]) ? map[a.id] : a.keys;
+      if (cur.includes(combo)) { map[a.id] = cur.filter((k) => k !== combo); moved = a.name; }
+    }
+    map[id] = scope === 'global' ? combo : (combo ? [combo] : []);
+    setPref(prefKey, map);
+    if (scope === 'global') failed = (await applyGlobalKeys()).failed || {};
+    draw();
+    const name = keyAction(id).name;
+    if (failed[id]) say(`${combo} is taken by another app`, true);
+    else say(combo ? `${name}: ${combo}${moved ? ` (removed from ${moved})` : ''}` : `${name}: cleared`);
+  };
+  document.addEventListener('keydown', onKey, true);
+  applyGlobalKeys().then((r) => { failed = (r && r.failed) || {}; if (!recording) draw(); });
 }
 
 async function diagnosticsText() {
@@ -1672,6 +1881,8 @@ const coreSettings = {
         searchProviders.length > 1 && SET.prefToggle('hideEngine', false, 'Hide engine buttons', 'Hide search engine buttons from the top bar', applyBodyPrefs),
         SET.prefToggle('noHandCursor', true, 'No-Hand cursor', 'Replaces the hand and grab cursors with the normal arrow', applyBodyPrefs),
         SET.prefToggle('autoplay', true, 'Autoplay', 'When your queue ends, keep playing similar songs instead of stopping'),
+        SET.prefToggle('searchHistory', true, 'Recent searches', 'Show your last searches under the empty search box', (on) => { if (!on) { searchHist.list = []; store('searchHistory', []); } }),
+        SET.prefToggle('resumeSession', true, 'Resume where you left off', 'On launch, bring back your queue and the song you were on, paused at the same spot', (on) => { if (!on) { store('session', null); store('sessionAt', null); } else saveSession(); }),
         SET.prefToggle('dockedShell', true, 'Docked layout', 'Side bar and player bar sit flush against the window edges', applyShellPrefs),
         SET.select({ name: 'Side bar', options: [['icons', 'Icons only'], ['normal', 'Icons and labels'], ['wide', 'Your Library']], value: railLib.mode,
           onChange: (v) => setRailWidth(v === 'icons' ? RAIL_W.icons : v === 'normal' ? RAIL_W.normal : pref('railWideWidth', 320), true) }),
@@ -1823,6 +2034,7 @@ const player = {
 };
 
 function queueChanged() {
+  if (typeof saveSession === 'function') saveSession();
   setBadge('#badge-queue', player.userQueue.length);
   renderUpNext();
   if (state.view === 'queue') render(true);
@@ -1858,6 +2070,8 @@ function setLoading(on) { $('#btn-play').classList.toggle('loading', on); }
 
 async function playTrack(t, startAt = 0, fresh = false) {
   if (!t) return;
+  const why = skipReason(t);
+  if (why) { toast(`${t.title}: ${why}`, 'error'); return; }
   const token = ++player.loadToken;
   if (!fresh) player.retries = 0;
   player.current = t;
@@ -1938,7 +2152,7 @@ async function continueQueue(play) {
     for (let p = player.pos; p >= 0 && recent.length < 6; p--) { const t = player.context[player.order[p]]; if (t) recent.push(t); }
     if (!recent.length) recent.push(player.current);
     const have = new Set(player.context.map((t) => t.id));
-    const fresh = (list) => (list || []).filter((t) => t && t.id && !have.has(t.id) && (have.add(t.id), true));
+    const fresh = (list) => (list || []).filter((t) => t && t.id && !have.has(t.id) && !isBlocked(t) && (have.add(t.id), true));
     let found = [];
     for (const fn of ext.continuations) {
       try { found = fresh(await fn(recent, [...have])); } catch (e) { log('warn', `autoplay: ${fn.label || 'provider'} failed: ${errText(e)}`); found = []; }
@@ -1963,8 +2177,13 @@ bus.addEventListener('trackchange', () => { if (!peekNext() && player.repeat ===
 
 function next(auto) {
   if (auto && player.repeat === 'one' && player.current) { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+  while (player.userQueue.length && passOver(player.userQueue[0])) player.userQueue.shift();
   if (player.userQueue.length) { playTrack(player.userQueue.shift()); queueChanged(); return; }
-  if (player.pos + 1 < player.order.length) { player.pos++; playTrack(player.context[player.order[player.pos]]); return; }
+  // Songs you said never to play are skipped (a whole blocked list just runs on to autoplay).
+  let skip = 1;
+  while (player.pos + skip < player.order.length && passOver(player.context[player.order[player.pos + skip]])) skip++;
+  if (player.pos + skip < player.order.length) { player.pos += skip; playTrack(player.context[player.order[player.pos]]); return; }
+  if (skip > 1) player.pos += skip - 1;
   if (player.repeat === 'all' && player.order.length) {
     if (player.shuffle) buildOrder(player.order[0]);
     player.pos = 0;
@@ -1993,6 +2212,54 @@ function togglePlay() {
   }
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 }
+
+// ---------------------------------------------------------------- resume where you left off
+// The queue (20 songs back, 500 ahead, in play order) is saved when it changes; the position
+// every few seconds in its own small key. On launch the player comes back paused at that spot.
+// restoring: nothing is saved until restoreSession() ran (the empty player drawn at startup
+// would otherwise overwrite the saved queue).
+const session = { at: 0, lastAt: 0, restoring: true };
+function saveSession() {
+  if (session.restoring || !pref('resumeSession', true)) return;
+  if (!player.current) { store('session', null); return; }
+  const from = Math.max(0, player.pos - 20);
+  const tracks = player.order.slice(from, Math.max(0, player.pos) + 500).map((i) => player.context[i]).filter(Boolean);
+  store('session', { v: 1, tracks, pos: player.pos < 0 ? -1 : player.pos - from, current: player.current, userQueue: player.userQueue.slice(0, 200) });
+  saveSessionAt();
+}
+function saveSessionAt() {
+  if (session.restoring || !player.current || !pref('resumeSession', true)) return;
+  store('sessionAt', { id: player.current.id, at: Math.floor(player.stream || audio.src ? audio.currentTime || 0 : session.at) });
+}
+function restoreSession() {
+  const s = pref('resumeSession', true) && load('session', null);
+  if (!s || !s.current || s.v !== 1) { session.restoring = false; return; }
+  player.context = Array.isArray(s.tracks) ? s.tracks : [];
+  player.order = [...player.context.keys()];
+  player.pos = Math.min(Number.isInteger(s.pos) ? s.pos : -1, player.context.length - 1);
+  player.userQueue = Array.isArray(s.userQueue) ? s.userQueue : [];
+  player.current = s.current;
+  const at = load('sessionAt', null);
+  session.at = at && at.id === s.current.id ? Math.max(0, at.at || 0) : 0;
+  // A song that was nearly over starts from the top.
+  if (s.current.duration && session.at > s.current.duration - 5) session.at = 0;
+  updateNowPlaying();
+  queueChanged();
+  $('#t-cur').textContent = fmt(session.at);
+  session.restoring = false;
+  log('info', `resumed session: "${s.current.title}" at ${session.at}s, ${player.context.length} in queue`);
+}
+// Restored from the last session, nothing is loaded yet: any play (button, media key, Space,
+// lyrics click) loads the song and starts it where it stopped.
+const nativePlay = audio.play.bind(audio);
+audio.play = () => {
+  if (player.current && !player.stream && !audio.src) { const at = session.at; session.at = 0; playTrack(player.current, at); return Promise.resolve(); }
+  return nativePlay();
+};
+bus.addEventListener('trackchange', saveSession);
+audio.addEventListener('pause', saveSessionAt);
+audio.addEventListener('timeupdate', () => { const now = performance.now(); if (now - session.lastAt > 5000) { session.lastAt = now; saveSessionAt(); } });
+window.addEventListener('pagehide', saveSessionAt);
 
 function setShuffle(on, quiet) {
   if (player.shuffle === on) return;
@@ -2708,20 +2975,16 @@ document.addEventListener('keydown', (e) => {
   // The target can be the document or a text node (synthetic events, focus on nothing).
   const typing = (e.target instanceof Element ? e.target : e.target?.parentElement)?.closest('input, textarea');
   if (e.key === 'Escape') { hideMenu(); if (!modal.hidden) closeModal(); return; }
-  if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); navHistory(e.key === 'ArrowLeft' ? -1 : 1); return; }
-  if (typing) return;
-  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-  else if (e.key === '/' || (e.ctrlKey && e.key.toLowerCase() === 'f')) { e.preventDefault(); searchInput.focus(); searchInput.select(); }
-  else if (e.ctrlKey && e.key === 'ArrowRight') next(false);
-  else if (e.ctrlKey && e.key === 'ArrowLeft') prev();
-  else if (e.key === 'ArrowRight' && duration()) audio.currentTime = Math.min(duration(), audio.currentTime + 5);
-  else if (e.key === 'ArrowLeft') audio.currentTime = Math.max(0, audio.currentTime - 5);
-  else if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); setVolume(Math.max(0, Math.min(100, Number(vol.value) + (e.key === 'ArrowUp' ? 5 : -5)))); }
-  else if (e.ctrlKey || e.altKey || e.metaKey) return;
-  else if (e.key.toLowerCase() === 'm') $('#btn-mute').click();
-  else if (e.key.toLowerCase() === 'h') setShuffle(!player.shuffle);
-  else if (e.key.toLowerCase() === 'r') $('#btn-repeat').click();
+  if (!modal.hidden && modal.querySelector('.sc-bind.rec')) return;
+  const combo = comboOf(e);
+  if (!combo) return;
+  const a = KEY_ACTIONS.find((x) => !x.globalOnly && keysFor(x).includes(combo));
+  if (!a || (typing && !a.typing)) return;
+  e.preventDefault();
+  runKeyAction(a.id);
 });
+// System-wide keys (Rust: features/system.rs global_keys).
+listen('global-shortcut', (e) => runKeyAction(String(e.payload || ''), 'global'));
 
 // ---------------------------------------------------------------- start
 
@@ -2754,6 +3017,9 @@ async function init() {
   organizeRail();
   buildTopPanel();
   emit('ready');
+  // After the features are set up, so they see the restored song like any other track change.
+  restoreSession();
+  if (Object.values(pref('globalKeys', {})).some(Boolean)) applyGlobalKeys().then((r) => { const bad = Object.keys((r && r.failed) || {}); if (bad.length) toast(`Some system-wide shortcuts are taken by another app: ${bad.map((id) => keyAction(id)?.name).join(', ')}`, 'error'); });
   await reloadLibrary();
   state.status = await invoke('sc_status');
   renderAccount();
@@ -2870,7 +3136,7 @@ async function settingsSelftest(wait) {
     const d = await diagnosticsText();
     check('diagnostics', d.includes('WebView2') && d.includes('--- recent log ---') && /\d+ \[/.test(d), `${d.length} chars, ${d.split('\n').length} lines`);
     openShortcuts();
-    check('shortcuts dialog', !modal.hidden && modal.querySelectorAll('.sc-row').length === SHORTCUTS.length);
+    check('shortcuts dialog', !modal.hidden && modal.querySelectorAll('.sc-row').length === KEY_ACTIONS.length);
     closeModal();
     const pl = state.platform;
     state.platform = 'soundcloud';
@@ -3058,6 +3324,8 @@ window.riff = {
     }
   },
   addTrackMenu(fn) { ext.trackMenu.push(fn); },
+  /** Songs / artists the user chose never to hear: isBlocked(track), block(track, 'song'|'artist'). */
+  isBlocked, block, unblock, blockedList,
   addListTool(tool) { ext.listTools.push(tool); },
   /** fn(paneEl) renders rows into a settings tab: cat = interface|theme|banners|tracks|integrations|storage|advanced|about|custom-themes|plugins (default advanced). */
   addSettings(fn, cat = 'advanced') { ext.settings.push({ fn, cat: SETTINGS_CAT_IDS.has(cat) ? cat : 'advanced' }); if (state.view === 'settings' && settingsCat === cat) render(true); },
@@ -3071,6 +3339,11 @@ window.riff = {
   /** { id, label, icon?, search(query, offset) -> Promise<tracks>, pageSize?, matchesLink?(text) } — riff's platform switch */
   addSearchProvider(p) { const i = searchProviders.findIndex((x) => x.id === p.id); if (i >= 0) searchProviders[i] = p; else searchProviders.unshift(p); if (document.readyState !== 'loading') renderPlatformSwitch(); },
   /** Keep-playing provider: async (recentTracks newest first, avoidIds) -> tracks. Tried in order. */
+  /** fn(track) -> reason it can't play right now ('' = fine): such tracks are passed over in the queue. */
+  addSkip(fn) { ext.skips.push(fn); },
+  /** Rebindable shortcuts: run one by id, the list, the dialog. */
+  runKeyAction, keyActions: KEY_ACTIONS, openShortcuts,
+  skipReason,
   addContinuation(fn, label = '') { fn.label = label; ext.continuations.push(fn); },
   continueQueue,
   addSelftest(fn) { fn.label = (document.currentScript && document.currentScript.src.split('/').pop()) || ''; ext.selftests.push(fn); },

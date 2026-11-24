@@ -12,7 +12,7 @@
   const FALLBACK_ACCENT = '#6750A4';
 
   const DEFAULTS = {
-    look: 'glasshouse',        // 'glasshouse' (riff's Glasshouse theme) | 'riff' (riff's generated colours)
+    look: 'noxx',              // 'noxx' (black and white, the default) | 'riff' ("Colour": accent + generated palette)
     mode: 'dark',              // 'light' | 'dark' | 'auto'
     style: 'classic',
     accent: FALLBACK_ACCENT,
@@ -87,7 +87,7 @@
     const mc = r.meshCfg && typeof r.meshCfg === 'object' ? r.meshCfg : {};
     const pt = (p, d) => ({ x: clamp(p && p.x, 0, 100, d.x), y: clamp(p && p.y, 0, 100, d.y) });
     return {
-      look: ['glasshouse', 'riff'].includes(r.look) ? r.look : D.look,
+      look: 'riff', // one look now: the colour settings below drive everything (intensity 0 = black and white)
       mode: ['light', 'dark', 'auto'].includes(r.mode) ? r.mode : D.mode,
       style: Object.prototype.hasOwnProperty.call(STYLES, r.style) ? r.style : D.style,
       accent: isHex(r.accent) ? r.accent : D.accent,
@@ -128,6 +128,8 @@
   }
 
   let cfg = sanitize(lsGet(KEY));
+  // People coming from the old black and white look keep it: that is intensity 0 in dark mode.
+  { const old = lsGet(KEY); if (old && old.look && old.look !== 'riff') { cfg.intensity = 0; cfg.mode = 'dark'; lsSet(KEY, cfg); } }
   let autoInfo = lsGet(AUTO_KEY);   // { accent, accent2, luminance, saturation } | null
   let lastEffectiveMode = 'dark';
   let saveTimer = 0;
@@ -143,6 +145,17 @@
     btn: { bg: '#FFFFFF', fg: '#0A0A0A', hover: '#E6E6E6' },
   };
   const GLASS_FONT = '"Space Grotesk", "Google Sans", system-ui, sans-serif';
+
+  // Noxx: the default look. Calm dark panels on a darker ground, one near-white accent, Inter.
+  const NOXX = {
+    mono: true, mode: 'dark',
+    bg: '#0C0C0D', surface: '#121213', container: '#19191B', containerHigh: '#222224', containerHighest: '#2E2E31',
+    surfaceBright: '#3A3A3D', primary: '#E2E2E8', onPrimary: '#0C0C0D', primaryContainer: '#222224', onPrimaryContainer: '#ECECF0',
+    secondary: '#D6D6DC', secondaryContainer: '#222224', onSecondaryContainer: '#ECECF0', tertiary: '#B4B4BA',
+    onSurface: '#ECECF0', onVariant: '#8B8B91', outline: '#6A6A70', outlineVariant: '#29292B', error: '#F07A7A',
+    btn: { bg: '#E2E2E8', fg: '#0C0C0D', hover: '#F2F2F6' },
+  };
+  const NOXX_FONT = 'Inter, "Google Sans", system-ui, sans-serif';
   const GLASS_ART = 'grayscale(1) brightness(.45) contrast(1.1)';
 
   // ------------------------------------------------------------ colour math
@@ -402,9 +415,10 @@
 
   let current = null;   // last { eff, pal }
   function apply() {
-    const glass = cfg.look === 'glasshouse';
-    const eff = glass ? { ...effective(), mode: 'dark', auto: false } : effective();
-    const pal = glass ? GLASS : palette(eff.accent, eff.mode, eff.intensity, eff.brightness, cfg.style);
+    const glass = false;
+    const eff = effective();
+    const noxx = !eff.auto && eff.mode !== 'light' && eff.intensity === 0; // black and white
+    const pal = noxx ? NOXX : palette(eff.accent, eff.mode, eff.intensity, eff.brightness, cfg.style);
     current = { eff, pal };
     lastEffectiveMode = eff.mode;
     const ui = cfg.uiAlpha, tx = cfg.textAlpha;
@@ -466,8 +480,9 @@
     setVar('--art-filter', glass ? GLASS_ART : 'none');
 
     setVar('--fs', String(+(cfg.fontScale / 100 * BASE_FS).toFixed(4)));
-    setVar('--th-font', glass ? GLASS_FONT : FONTS[cfg.font].stack);
-    setVar('--font-family', glass ? GLASS_FONT : FONTS[cfg.font].stack);
+    const font = cfg.font === DEFAULTS.font ? NOXX_FONT : FONTS[cfg.font].stack;
+    setVar('--th-font', font);
+    setVar('--font-family', font);
     setVar('--r-l', `${cfg.radius}px`);
     setVar('--r-m', `${Math.max(0, cfg.radius - 4)}px`);
     setVar('--r-xl', `${cfg.radius + 12}px`);
@@ -488,9 +503,11 @@
     cl.toggle('th-track-banners-off', !cfg.trackBanners);
     cl.toggle('th-cover-bg-off', !cfg.coverBg);
     cl.toggle('th-glass', glass);
+    cl.toggle('th-noxx', true); // one layout; the look only picks the colours
     cl.toggle('th-no-clip-fx', !cfg.clipFx);
     cl.toggle('th-custom-bg-on', !!cfg.bgMedia);
-    if (glass) ensureGlassFonts();
+    if (cfg.font === DEFAULTS.font) ensureNoxxFonts();
+
     else if (cfg.font === 'sf') ensureSf();
     updateGlassLayers(glass, glass && cfg.grain);
 
@@ -505,6 +522,15 @@
   function schedule() {
     if (raf) return;
     raf = requestAnimationFrame(() => { raf = 0; apply(); });
+  }
+
+  function ensureNoxxFonts() {
+    if (document.getElementById('th-font-noxx')) return;
+    const link = document.createElement('link');
+    link.id = 'th-font-noxx';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap';
+    (document.head || root).appendChild(link);
   }
 
   function ensureGlassFonts() {
@@ -898,7 +924,7 @@
         dd.querySelectorAll('.th-dd-opt').forEach((o) => o.classList.toggle('selected', o.dataset.v === cfg[k]));
       });
       host.querySelectorAll('[data-th-media-reset]').forEach((b) => { b.disabled = !cfg[b.dataset.thMediaReset === 'banner' ? 'bannerMedia' : 'bgMedia']; });
-      const glassOn = cfg.look === 'glasshouse';
+      const glassOn = false;
       host.querySelectorAll('[data-th-auto-lock], [data-th-glass-lock]').forEach((n) => n.classList.toggle('is-disabled', (n.hasAttribute('data-th-auto-lock') && eff.auto) || (n.hasAttribute('data-th-glass-lock') && glassOn)));
       const dots = host.querySelector('.th-dots');
       if (dots) {
@@ -1011,14 +1037,13 @@
     const riff = window.riff;
     title('Theme');
     wire(riff.add(`<div class="th-group">
-      ${item(top('Look') + seg('look', [['glasshouse', 'Glasshouse'], ['riff', 'Colour']]) + '<div class="th-desc">Glasshouse: black frosted glass, white type, no colour. Colour: uses the accent and palette below.</div>')}
       ${item(top('Theme mode') + seg('mode', [['light', 'Light'], ['dark', 'Dark'], ['auto', 'Auto (album)']]), ' data-th-glass-lock')}
       ${item(top('Palette style') + dropdown('style') + '<div class="th-dots"></div>', ' data-th-glass-lock')}
       ${item(top('Accent color', '<span class="th-val" data-th-accent></span>') + `<div class="th-swatches">
         ${SWATCHES.map(([c, n]) => `<button type="button" class="th-swatch" data-color="${c}" title="${n}" style="background:${c}"></button>`).join('')}
         <label class="th-pick" title="Choose custom color"><input type="color">${PLUS}</label></div>`, ' data-th-glass-lock')}
       ${item(top('Hue', val('hue')) + `<div class="th-sl th-hue"><div class="th-hue-track">${Array.from({ length: 12 }, (_, i) => `<i style="background:linear-gradient(90deg,hsl(${i * 30} 75% 55%),hsl(${(i + 1) * 30} 75% 55%))"></i>`).join('')}</div><input type="range" data-th-k="hue" min="0" max="360" step="1"></div>`, ' data-th-glass-lock')}
-      ${item(top('Intensity', val('intensity')) + slider('intensity', 0, 100, 1) + hints('Gray', 'Soft', 'Vivid'), ' data-th-auto-lock data-th-glass-lock')}
+      ${item(top('Intensity', val('intensity')) + slider('intensity', 0, 100, 1) + hints('Black & white', 'Soft', 'Vivid'), ' data-th-auto-lock data-th-glass-lock')}
       ${item(top('Brightness', val('brightness')) + slider('brightness', 0, 100, 1) + hints('Dark', 'Default', 'Bright'), ' data-th-auto-lock data-th-glass-lock')}
       ${item(top('Mesh gradient brightness', val('meshBrightness'), '<button type="button" class="th-mini" data-th-mesh>Configure</button>') + slider('meshBrightness', 0, 100, 5) + hints('Off', 'Subtle', 'Full'))}
       ${toggleRow('highlight', 'Highlight buttons', 'Fill the main button of each screen with the accent color')}
@@ -1043,7 +1068,6 @@
       ${item(top('Blur', val('bgBlur')) + slider('bgBlur', 0, 40, 1) + hints('0px', '20px', '40px'), ' data-th-needs="bgMedia"')}
       ${toggleRow('coverBg', 'Cover background', 'Uses a blurred version of the current cover as the background')}
       ${item(top('Cover background brightness', val('coverBgBrightness')) + slider('coverBgBrightness', 5, 100, 5) + hints('5%', '50%', '100%'), ' data-th-needs="coverBg"')}
-      ${toggleRow('grain', 'Film grain', 'Faint noise texture over the Glasshouse look', ' data-th-needs-glass')}
     </div>`));
     syncUI();
   }

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>noxx mini player</title>
+<!-- Floating mini player (features/mini.js in the main window drives it through events). -->
+<style>
+  :root { --bg: #161616; --fg: #ffffff; --dim: #a8a8a8; --accent: #ffffff; --on-accent: #121212; --track: #ffffff26; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.3 Inter, "Google Sans", "Segoe UI", system-ui, sans-serif; overflow: hidden; user-select: none; cursor: default; }
+  .mini { position: relative; display: flex; align-items: center; gap: 10px; height: 100%; padding: 10px 12px 12px; }
+  .art { width: 54px; height: 54px; flex: none; border-radius: 9px; background: var(--track) center/cover; }
+  .meta { flex: 1; min-width: 0; }
+  .title, .artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .title { font-weight: 700; font-size: 13.5px; letter-spacing: -0.01em; }
+  .artist { color: var(--dim); margin-top: 2px; }
+  .ctrls { display: flex; align-items: center; gap: 2px; flex: none; }
+  button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 9px; background: transparent; color: var(--fg); transition: background-color .12s ease, transform .16s cubic-bezier(.2,.8,.2,1), opacity .15s ease; }
+  button:active { transform: scale(.94); }
+  button:hover { background: var(--track); }
+  button svg { width: 18px; height: 18px; }
+  button.play { width: 38px; height: 38px; border-radius: 50%; background: var(--accent); color: var(--on-accent); }
+  button.play:hover { filter: brightness(.92); background: var(--accent); }
+  button.liked { color: var(--accent); }
+  button.liked svg { fill: currentColor; }
+  .close { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; opacity: 0; transition: opacity .15s; }
+  .close svg { width: 12px; height: 12px; }
+  body:hover .close { opacity: .8; }
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--track); cursor: pointer; }
+  .bar { transition: height .12s ease; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .bar:hover { height: 5px; }
+</style>
+</head>
+<body>
+<div class="mini" data-tauri-drag-region>
+  <div class="art" data-tauri-drag-region></div>
+  <div class="meta" data-tauri-drag-region><div class="title" data-tauri-drag-region>Nothing playing</div><div class="artist" data-tauri-drag-region></div></div>
+  <div class="ctrls">
+    <button data-a="like" title="Like"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg></button>
+    <button data-a="prev" title="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM9.5 12 19 5v14z"/></svg></button>
+    <button data-a="playPause" class="play" title="Play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <button data-a="next" title="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM5 5l9.5 7L5 19z"/></svg></button>
+  </div>
+  <button class="close" data-a="close" title="Close mini player"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  <div class="bar"><i></i></div>
+</div>
+<script>
+'use strict';
+(() => {
+  const { emit, listen } = window.__TAURI__.event;
+  const $ = (s) => document.querySelector(s);
+  const PLAY = '<path d="M8 5v14l11-7z"/>', PAUSE = '<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>';
+  const st = { duration: 0, time: 0, playing: false, at: 0 };
+
+  function paint(s) {
+    if (s.theme) for (const [k, v] of Object.entries(s.theme)) if (v) document.documentElement.style.setProperty(k, v);
+    const t = s.track;
+    $('.title').textContent = t ? t.title : 'Nothing playing';
+    $('.artist').textContent = t ? t.artist : '';
+    $('.art').style.backgroundImage = t && t.artwork ? `url("${t.artwork}")` : '';
+    const play = $('[data-a=playPause]');
+    play.title = s.playing ? 'Pause' : 'Play';
+    play.querySelector('svg').innerHTML = s.playing ? PAUSE : PLAY;
+    $('[data-a=like]').classList.toggle('liked', !!s.liked);
+    $('[data-a=like] svg').setAttribute('fill', s.liked ? 'currentColor' : 'none');
+    Object.assign(st, { duration: s.duration || 0, time: s.time || 0, playing: !!s.playing, at: performance.now() });
+    bar();
+  }
+  // The bar moves on its own between state messages (they come about once a second).
+  function bar() {
+    const t = st.time + (st.playing ? (performance.now() - st.at) / 1000 : 0);
+    $('.bar i').style.width = st.duration ? `${Math.min(100, (t / st.duration) * 100)}%` : '0';
+  }
+  setInterval(bar, 250);
+
+  listen('mini-state', (e) => paint(e.payload || {}));
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-a]');
+    if (b) emit('mini-cmd', { action: b.dataset.a });
+  });
+  $('.bar').addEventListener('click', (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    emit('mini-cmd', { action: 'seek', frac: (e.clientX - r.left) / r.width });
+  });
+  // Double-click the cover or title: back to the main window.
+  $('.mini').addEventListener('dblclick', (e) => { if (!e.target.closest('button, .bar')) emit('mini-cmd', { action: 'focusMain' }); });
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); emit('mini-cmd', { action: 'playPause' }); }
+    else if (e.key === 'Escape') emit('mini-cmd', { action: 'close' });
+  });
+  emit('mini-cmd', { action: 'hello' });
+})();
+</script>
+</body>
+</html>

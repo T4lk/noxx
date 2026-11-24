@@ -370,6 +370,12 @@ pub fn run() {
         }
         builder = builder.plugin(features::system::shortcut_plugin());
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        // Size, position and maximized state come back on launch (not visibility: closing to
+        // the tray hides the window, and the next launch must still show it).
+        {
+            use tauri_plugin_window_state::StateFlags;
+            builder = builder.plugin(tauri_plugin_window_state::Builder::new().with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED).build());
+        }
     }
     boot_log("plugins: single-instance checked");
     builder

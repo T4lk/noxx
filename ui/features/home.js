@@ -80,6 +80,7 @@
     const sum = (H.list?.mixes || []).find((m) => m.id === id);
     if (hit && (!sum || hit.updatedAt === sum.updatedAt)) return hit;
     const m = await R.call('mixes.get', { id });
+    if (R.isBlocked && Array.isArray(m.tracks)) m.tracks = m.tracks.filter((t) => !R.isBlocked(t));
     H.full.set(id, m);
     return m;
   }

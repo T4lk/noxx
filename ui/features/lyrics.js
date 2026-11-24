@@ -229,9 +229,27 @@
   const argsFor = (t) => ({ title: t.title || '', artist: t.artist || '', duration: Number(t.duration) || 0 });
   const keyFor = (t) => `${t.source || ''}:${t.id}:${t.title}`;
 
+  // Timing offset, in seconds: positive shows each line sooner. One for all songs plus one per song.
+  const offsets = { all: R.pref('lyricsOffset', 0), songs: R.load('lyricsOffsets', {}) };
+  const songOffset = (t) => (t && offsets.songs[keyFor(t)]) || 0;
+  const lyricsOffset = () => offsets.all + songOffset(R.player.current);
+  function nudgeOffset(which, delta) {
+    const round = (v) => Math.round(Math.max(-30, Math.min(30, v)) * 100) / 100;
+    if (which === 'all') { offsets.all = delta == null ? 0 : round(offsets.all + delta); R.setPref('lyricsOffset', offsets.all); }
+    else if (R.player.current) {
+      const k = keyFor(R.player.current);
+      const v = delta == null ? 0 : round(songOffset(R.player.current) + delta);
+      if (v) offsets.songs[k] = v; else delete offsets.songs[k];
+      const keys = Object.keys(offsets.songs);
+      if (keys.length > 500) delete offsets.songs[keys[0]];
+      R.store('lyricsOffsets', offsets.songs);
+    }
+  }
+
   const IC = {
     edit: R.svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>'),
     tv: R.svg('<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>'),
+    timing: R.svg('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/>'),
     mic: R.svg('<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>'),
     prev: R.svg('<path d="M6 5h2v14H6zm3.5 7L18 5v14z"/>', true),
     next: R.svg('<path d="M16 5h2v14h-2zM6 19V5l8.5 7z"/>', true),
@@ -274,7 +292,7 @@
         const line = e.target.closest('.lyric-line[data-t]');
         if (!line || !this.synced || !R.player.current) return;
         this.holdUntil = 0;
-        audio.currentTime = Number(line.dataset.t);
+        audio.currentTime = Math.max(0, Number(line.dataset.t) - lyricsOffset());
         if (audio.paused) audio.play().catch(() => {});
       });
       new ResizeObserver(() => { this.pad(); this.update(audio.currentTime, true, true); }).observe(container);
@@ -332,6 +350,7 @@
     // force: re-apply classes and scroll even if the line didn't change; snap: jump, don't animate
     update(t, force, snap) {
       if (!this.synced || !this.box.clientHeight) return;
+      t += lyricsOffset();
       const i = this.indexAt(t + 0.05);
       if (i !== this.active || force) {
         this.active = i;
@@ -396,6 +415,7 @@
     </div>
     <div class="ly-actions">
       <button class="lyrics-mode-btn" data-a="mode" title="Toggle line mode"><span>Word</span></button>
+      <button class="lyrics-action-btn" data-a="timing" title="Lyrics timing" aria-label="Lyrics timing" hidden>${IC.timing}</button>
       <button class="lyrics-action-btn" data-a="tr" title="Translate lyrics" aria-label="Translate lyrics" hidden>${IC.tr}</button>
       <button class="lyrics-action-btn" data-a="edit" title="Edit lyrics" aria-label="Edit lyrics">${IC.edit}</button>
       <button class="lyrics-action-btn" data-a="tv" title="Fullscreen karaoke" aria-label="Fullscreen karaoke">${IC.tv}</button>
@@ -428,6 +448,9 @@
     const modeBtn = $('[data-a=mode]', bar);
     modeBtn.hidden = !(want && opt.karaoke && cur.data && cur.data.synced);
     modeBtn.firstElementChild.textContent = opt.sweep ? 'Word' : 'Line';
+    const timingBtn = $('[data-a=timing]', bar);
+    timingBtn.hidden = !(want && cur.data && cur.data.synced);
+    timingBtn.classList.toggle('active', !!lyricsOffset());
     const trBtn = $('[data-a=tr]', bar);
     trBtn.hidden = !(opt.tr && want && cur.data && cur.data.found);
     trBtn.classList.toggle('active', cur.trActive);
@@ -457,9 +480,42 @@
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'mode') { setOpt('sweep', !opt.sweep); rerender(); }
     else if (a === 'tr') setTranslation(!cur.trActive);
+    else if (a === 'timing') timingPopover(e.target.closest('[data-a]'));
     else if (a === 'edit') openEditor();
     else if (a === 'tv') openTv();
   });
+
+  // Lyrics early or late: nudge this song (saved per song) or every song, in 0.25 s steps.
+  let timingEl = null;
+  function timingPopover(btn) {
+    if (timingEl) { timingEl.remove(); timingEl = null; return; }
+    const fmtOff = (v) => (v ? `${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(2)} s` : '0 s');
+    const row = (k, name) => `<div class="ly-timing-row"><span>${name}</span><button type="button" data-n="${k}" data-d="-0.25" title="Later">−</button><b data-v="${k}"></b><button type="button" data-n="${k}" data-d="0.25" title="Earlier">+</button><button type="button" class="ly-timing-reset" data-n="${k}" data-d="reset" title="Reset">${R.ICON.close || '×'}</button></div>`;
+    timingEl = R.el(`<div class="ly-timing" role="dialog" aria-label="Lyrics timing">
+      <div class="ly-timing-head">Lyrics timing</div>${row('song', 'This song')}${row('all', 'All songs')}
+      <div class="ly-timing-hint">+ shows lines sooner, − later</div></div>`);
+    const paint = () => {
+      $('[data-v=song]', timingEl).textContent = fmtOff(songOffset(R.player.current));
+      $('[data-v=all]', timingEl).textContent = fmtOff(offsets.all);
+    };
+    timingEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-n]');
+      if (!b) return;
+      nudgeOffset(b.dataset.n === 'all' ? 'all' : 'song', b.dataset.d === 'reset' ? null : Number(b.dataset.d));
+      paint();
+      syncPanel();
+      panelView.update(audio.currentTime, true);
+      if (tv.open) tvView.update(audio.currentTime, true);
+    });
+    document.body.append(timingEl);
+    const r = btn.getBoundingClientRect();
+    timingEl.style.top = `${r.bottom + 8}px`;
+    timingEl.style.left = `${Math.max(8, Math.min(window.innerWidth - timingEl.offsetWidth - 8, r.right - timingEl.offsetWidth))}px`;
+    paint();
+    const away = (e) => { if (timingEl && !timingEl.contains(e.target) && !btn.contains(e.target)) { timingEl.remove(); timingEl = null; document.removeEventListener('pointerdown', away, true); } };
+    document.addEventListener('pointerdown', away, true);
+  }
+  R.on('trackchange', () => { if (timingEl) { timingEl.remove(); timingEl = null; } });
 
   function setTab(tab) {
     setOpt('tab', tab);

@@ -197,6 +197,7 @@
         <div class="imp-warn">${IC.warn}<span>${WARN_TEXT}</span></div>
       </div>
       <div class="imp-pane" data-mode="login" hidden>
+        <p class="imp-help">Public playlist links import in full without logging in. Log in only for your Liked songs and private playlists.</p>
         <p class="imp-help">1) Open <a href="#" data-k="dash">developer.spotify.com/dashboard</a> and create an app (Web API). 2) Add this exact Redirect URI: <code data-k="redir">http://127.0.0.1:43827/callback</code><button type="button" class="imp-copy" data-k="copy" title="Copy">${IC.copy}</button> 3) Paste the app's Client ID here and log in.</p>
         <label class="imp-field"><input type="text" data-k="client" placeholder="Client ID" spellcheck="false"></label>
         <div class="imp-row"><button type="button" class="btn outline" data-k="login">Log in with Spotify</button><button type="button" class="btn outline" data-k="logout" hidden>Disconnect</button><span class="imp-dim" data-k="login-status">Not connected</span></div>
@@ -472,7 +473,7 @@
     const job = 'imp-selftest';
     progressFn = (p) => { if (p.job === job) ticks++; };
     t0 = now();
-    const res = await R.call('imports.run', { job, name: 'riff-rs selftest import', items, prefer: 'soundcloud' });
+    const res = await R.call('imports.run', { job, name: 'noxx selftest import', items, prefer: 'soundcloud' });
     progressFn = null;
     log(`imports spotify match ${ok(res.matched >= 3 && res.playlistId && ticks >= items.length)}: ${res.matched}/${items.length} matched, ${ticks} progress events in ${Math.round(now() - t0)}ms; missing: ${res.unmatched.map((u) => u.title).join(', ') || '-'}`);
     const lib = await R.invoke('get_library');

@@ -391,7 +391,7 @@ mod tests {
     use std::time::Instant;
 
     fn dirs() -> (SoundCloud, std::path::PathBuf) {
-        let d = std::env::temp_dir().join("riff-rs-import-test");
+        let d = std::env::temp_dir().join("noxx-import-test");
         let _ = std::fs::create_dir_all(&d);
         (SoundCloud::new(d.clone()), d)
     }

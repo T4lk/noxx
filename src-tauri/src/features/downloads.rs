@@ -97,30 +97,6 @@ struct Dl {
 
 static DL: OnceLock<Arc<Dl>> = OnceLock::new();
 
-/// Downloads from before the rename lived in Music/riff-rs. Move that folder to Music/noxx and
-/// point the index at the new paths; if it can't be moved (a file in use), keep using it.
-fn migrate_old_folder(saved: &mut Index, old: &Path, new: &Path, index_file: &Path) {
-    if !saved.folder.trim().is_empty() || !old.is_dir() || new.exists() {
-        return;
-    }
-    if std::fs::rename(old, new).is_err() {
-        saved.folder = old.to_string_lossy().into_owned();
-        write_json(&index_file.to_path_buf(), saved);
-        return;
-    }
-    let (o, n) = (old.to_string_lossy().into_owned(), new.to_string_lossy().into_owned());
-    let fix = |p: &mut String| {
-        if let Some(rest) = p.strip_prefix(&o) {
-            *p = format!("{n}{rest}");
-        }
-    };
-    for e in &mut saved.items {
-        fix(&mut e.path);
-        fix(&mut e.track.path);
-    }
-    write_json(&index_file.to_path_buf(), saved);
-}
-
 fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -130,11 +106,10 @@ fn dl(app: &AppHandle) -> Arc<Dl> {
         let data_dir = app.state::<crate::AppState>().data_dir.clone();
         let music = app.path().audio_dir().or_else(|_| app.path().download_dir()).unwrap_or_else(|_| data_dir.clone());
         let default_folder = music.join("noxx");
-        let mut saved: Index = std::fs::read(data_dir.join(INDEX_FILE))
+        let saved: Index = std::fs::read(data_dir.join(INDEX_FILE))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
-        migrate_old_folder(&mut saved, &music.join("riff-rs"), &default_folder, &data_dir.join(INDEX_FILE));
         let items = saved.items.into_iter().map(|e| (e.track.id.clone(), e)).collect();
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
@@ -553,6 +528,17 @@ async fn fetch_audio(app: &AppHandle, http: &reqwest::Client, track: &Track, can
     Err(last)
 }
 
+/// The audio of a track as (bytes, file extension), for the song cache (features/audiocache.rs).
+pub(super) async fn fetch_plain(app: &AppHandle, track: &Track) -> Result<(Vec<u8>, &'static str), String> {
+    let d = dl(app);
+    let cancel = AtomicBool::new(false);
+    match fetch_audio(app, &d.http, track, &cancel, &|_, _| {}).await {
+        Ok(a) => Ok((a.bytes, a.ext)),
+        Err(Fail::Retry(m) | Fail::Fatal(m)) => Err(m),
+        Err(Fail::Cancelled) => Err("cancelled".into()),
+    }
+}
+
 fn status_fail(code: u16) -> Fail {
     let m = format!("The audio server answered {code}");
     if matches!(code, 401 | 403 | 404 | 410) {
@@ -799,7 +785,7 @@ async fn probe(app: &AppHandle, d: &Dl, id: &str) -> super::Out {
     let (ext, protocol, preset, bytes) = (audio.ext, audio.protocol.clone(), audio.preset.clone(), audio.bytes.len());
     let fetched_ms = t0.elapsed().as_millis() as u64;
     let had_art = art.is_some();
-    let dir = std::env::temp_dir().join(format!("riff-rs-dl-selftest-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("noxx-dl-selftest-{}", std::process::id()));
     let t = track.clone();
     let mut out = tauri::async_runtime::spawn_blocking(move || -> Result<Value, String> {
         let saved = save(&dir, &t, "riff selftest", audio, art, None)?;
@@ -841,25 +827,6 @@ async fn probe(app: &AppHandle, d: &Dl, id: &str) -> super::Out {
 mod tests {
     use super::*;
 
-    #[test]
-    fn downloads_old_folder_moves_to_noxx() {
-        let base = std::env::temp_dir().join(format!("noxx-dl-migrate-{}", std::process::id()));
-        let (old, new) = (base.join("riff-rs"), base.join("noxx"));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&old).unwrap();
-        std::fs::write(old.join("a.m4a"), b"x").unwrap();
-        let p = old.join("a.m4a").to_string_lossy().into_owned();
-        let mut t: Track = serde_json::from_value(serde_json::json!({"id":"1","title":"a","artist":"b","duration":1,"artwork":"","url":""})).unwrap();
-        t.path = p.clone();
-        let mut idx = Index { folder: String::new(), items: vec![Entry { track: t, path: p, size: 1, at: 1 }] };
-        migrate_old_folder(&mut idx, &old, &new, &base.join("downloads.json"));
-        assert!(new.join("a.m4a").is_file() && !old.exists());
-        assert_eq!(idx.items[0].path, new.join("a.m4a").to_string_lossy());
-        assert_eq!(idx.items[0].track.path, new.join("a.m4a").to_string_lossy());
-        assert!(idx.folder.is_empty());
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
     fn track(id: &str, artist: &str, title: &str) -> Track {
         serde_json::from_value(json!({ "id": id, "title": title, "artist": artist, "duration": 0, "artwork": "", "url": "" })).unwrap()
     }
@@ -876,7 +843,7 @@ mod tests {
 
     #[test]
     fn picks_unique_paths() {
-        let dir = std::env::temp_dir().join(format!("riff-rs-dl-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("noxx-dl-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let t = track("42", "Artist", "Song");
         let plain = pick_path(&dir, &t, "mp3", None);
@@ -892,7 +859,7 @@ mod tests {
     fn saves_a_defragmented_m4a() {
         let init = mp4::tests::init_segment();
         let file = mp4::defragment(&init, &[mp4::tests::fragment(1, &[4, 4], 1)]).unwrap();
-        let dir = std::env::temp_dir().join(format!("riff-rs-dl-save-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("noxx-dl-save-{}", std::process::id()));
         let t = track("7", "Me", "Tune");
         let audio = Audio { bytes: file, ext: "m4a", protocol: "hls".into(), preset: "aac_160k".into() };
         let saved = save(&dir, &t, "", audio, None, None).unwrap();
@@ -908,7 +875,7 @@ mod tests {
         let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
         frame.resize(417, 0);
         let bytes = [frame.clone(), frame.clone(), frame].concat();
-        let dir = std::env::temp_dir().join(format!("riff-rs-dl-tag-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("noxx-dl-tag-{}", std::process::id()));
         let mut t = track("8", "Someone", "Thing");
         t.genre = "House".into();
         let png = [&[0x89u8, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A][..], &[0u8; 80]].concat();
@@ -929,7 +896,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_every_hls_transcoding() {
-        let sc = crate::soundcloud::SoundCloud::new(std::env::temp_dir().join("riff-rs-dl-live"));
+        let sc = crate::soundcloud::SoundCloud::new(std::env::temp_dir().join("noxx-dl-live"));
         let q = std::env::var("RIFF_DL_QUERY").unwrap_or_else(|_| "lofi hip hop".into());
         let found = sc.search(&q, 0).await.unwrap();
         let t = found.into_iter().find(|t| t.duration > 0 && t.duration < 400).expect("a short track");
@@ -939,7 +906,7 @@ mod tests {
         let http = reqwest::Client::builder().user_agent(USER_AGENT).build().unwrap();
         let cancel = AtomicBool::new(false);
         let noop = |_: u64, _: u64| {};
-        let dir = std::env::temp_dir().join("riff-rs-dl-live-all");
+        let dir = std::env::temp_dir().join("noxx-dl-live-all");
         for tc in raw["media"]["transcodings"].as_array().unwrap() {
             let proto = tc["format"]["protocol"].as_str().unwrap_or("");
             let preset = tc["preset"].as_str().unwrap_or("");
@@ -975,7 +942,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_download_pipeline() {
-        let sc = crate::soundcloud::SoundCloud::new(std::env::temp_dir().join("riff-rs-dl-live"));
+        let sc = crate::soundcloud::SoundCloud::new(std::env::temp_dir().join("noxx-dl-live"));
         let found = sc.search("lofi hip hop", 0).await.unwrap();
         let t = found.into_iter().find(|t| t.duration > 0 && t.duration < 400).expect("a short track");
         let info = sc.stream(&t.id).await.unwrap();
@@ -989,7 +956,7 @@ mod tests {
         };
         let (bytes, ext) = got.unwrap();
         eprintln!("{} {} {} -> {} bytes .{}", t.title, info.protocol, info.preset, bytes.len(), ext);
-        let dir = std::env::temp_dir().join("riff-rs-dl-live-out");
+        let dir = std::env::temp_dir().join("noxx-dl-live-out");
         let art = fetch_art(&http, &t.artwork).await;
         let saved = save(&dir, &t, "", Audio { bytes, ext, protocol: info.protocol, preset: info.preset }, art, None).unwrap();
         use lofty::prelude::*;

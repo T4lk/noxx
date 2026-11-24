@@ -1,4 +1,4 @@
-package dev.riffrs.player
+package dev.noxx.player
 
 import android.annotation.SuppressLint
 import android.app.Activity

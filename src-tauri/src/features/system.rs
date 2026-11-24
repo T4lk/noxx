@@ -15,8 +15,13 @@
 //!   plugins_import { paths }          -> number added
 //!   plugins_open_folder               -> null
 //!   plugins_dir                       -> path
+//!   thumbbar { playing }              -> null (Windows taskbar preview buttons: play or pause icon)
+//!   show_main                         -> null (brings the main window back)
+//!   mini { show, position }          -> { open } (floating mini player window: "top-left" | "top-center" | "top-right")
+//!   keep_awake { on }                 -> null (Windows: display + system stay awake while on)
+//!   global_keys { map: {action: "Ctrl+Alt+M"} } -> { failed: {action: reason} } (system-wide shortcuts)
 //!
-//! Events: "media-key" with "playpause" | "next" | "prev" | "stop".
+//! Events: "media-key" with "playpause" | "next" | "prev" | "stop"; "global-shortcut" with an action id.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -35,7 +40,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
 const SETTINGS_FILE: &str = "settings.json";
-const IDENTIFIER: &str = "dev.riffrs.player";
+const IDENTIFIER: &str = "dev.noxx.player";
 const MAX_PLUGIN_BYTES: u64 = 1024 * 1024;
 const EXAMPLE_PLUGIN: &str = "/**\n * @name Hello plugin\n * @author Riff\n * @version 1.0.0\n * @description Shows a message when the track changes. Edit or delete this file.\n */\nconst off = Riff.on('trackchange', (track) => Riff.toast('Now playing: ' + track.title));\nreturn { stop() { off(); } };\n";
 
@@ -150,12 +155,76 @@ pub fn shortcut_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
             if event.state() != ShortcutState::Pressed {
                 return;
             }
-            if let Some((_, name)) = MEDIA_KEYS.iter().find(|(c, _)| *c == shortcut.key) {
+            let custom = CUSTOM_KEYS.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(id, _)| *id == shortcut.id()).map(|(_, a)| a.clone());
+            if let Some(action) = custom {
+                if action == "showWindow" {
+                    show_main(app);
+                }
+                let _ = app.emit("global-shortcut", action);
+            } else if let Some((_, name)) = MEDIA_KEYS.iter().find(|(c, _)| *c == shortcut.key) {
                 let _ = app.emit("media-key", *name);
             }
         })
         .build()
 }
+
+/// System-wide shortcuts the user picked: (shortcut id, action).
+#[cfg(desktop)]
+static CUSTOM_KEYS: Mutex<Vec<(u32, String)>> = Mutex::new(Vec::new());
+
+/// "Ctrl+Alt+ArrowRight" / "Ctrl+Shift+M" / "Super+1" (the UI's format) -> a Shortcut.
+#[cfg(desktop)]
+fn parse_combo(combo: &str) -> Result<Shortcut, String> {
+    let parts: Vec<String> = combo
+        .split('+')
+        .map(|p| match p {
+            "Ctrl" => "Control".to_string(),
+            k if k.len() == 1 && k.chars().all(|c| c.is_ascii_alphabetic()) => format!("Key{k}"),
+            k if k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()) => format!("Digit{k}"),
+            "/" => "Slash".to_string(),
+            k => k.to_string(),
+        })
+        .collect();
+    parts.join("+").parse::<Shortcut>().map_err(|e| format!("{combo}: {e}"))
+}
+
+/// Replaces the user's system-wide shortcuts. Returns the ones that couldn't be registered
+/// (usually taken by another app).
+#[cfg(desktop)]
+fn apply_global_keys(app: &AppHandle, map: &serde_json::Map<String, Value>) -> Value {
+    let gs = app.global_shortcut();
+    let mut custom = CUSTOM_KEYS.lock().unwrap_or_else(|e| e.into_inner());
+    let media: Vec<u32> = MEDIA_KEYS.iter().map(|(c, _)| Shortcut::new(None, *c).id()).collect();
+    for (id, _) in custom.drain(..) {
+        if media.contains(&id) {
+            continue;
+        }
+        if let Some(sc) = REGISTERED.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+            let _ = gs.unregister(sc);
+        }
+    }
+    let mut failed = serde_json::Map::new();
+    for (action, combo) in map {
+        let Some(combo) = combo.as_str().filter(|c| !c.is_empty()) else { continue };
+        match parse_combo(combo) {
+            Ok(sc) if media.contains(&sc.id()) => failed.insert(action.clone(), json!("media keys are already handled")),
+            Ok(sc) => match gs.register(sc) {
+                Ok(()) => {
+                    custom.push((sc.id(), action.clone()));
+                    REGISTERED.lock().unwrap_or_else(|e| e.into_inner()).insert(sc.id(), sc);
+                    None
+                }
+                Err(e) => failed.insert(action.clone(), json!(e.to_string())),
+            },
+            Err(e) => failed.insert(action.clone(), json!(e)),
+        };
+    }
+    json!({ "failed": failed })
+}
+
+/// Shortcuts we registered, by id (to unregister them later).
+#[cfg(desktop)]
+static REGISTERED: std::sync::LazyLock<Mutex<std::collections::HashMap<u32, Shortcut>>> = std::sync::LazyLock::new(Default::default);
 
 #[cfg(mobile)]
 fn apply_media_keys(_app: &AppHandle, _on: bool) -> Result<(), String> {
@@ -233,15 +302,20 @@ fn desktop_setup(app: &AppHandle) {
         let hidden = AtomicBool::new(false);
         w.on_window_event(move |e| match e {
             WindowEvent::CloseRequested { api, .. } => {
+                save_window_state(win.app_handle());
                 if settings().tray_on_close && !QUITTING.load(Ordering::SeqCst) {
                     api.prevent_close();
                     let _ = win.hide();
                     set_low_memory(&win, true);
                 }
             }
+            WindowEvent::Moved(_) => save_window_state_soon(win.app_handle()),
             // Minimized: tell WebView2 it isn't visible so it stops painting.
             // Audio keeps playing; it comes back on restore.
             WindowEvent::Resized(_) | WindowEvent::Focused(_) => {
+                if matches!(e, WindowEvent::Resized(_)) {
+                    save_window_state_soon(win.app_handle());
+                }
                 let min = win.is_minimized().unwrap_or(false);
                 if hidden.swap(min, Ordering::SeqCst) != min {
                     let wv: &tauri::Webview = win.as_ref();
@@ -252,6 +326,31 @@ fn desktop_setup(app: &AppHandle) {
             _ => {}
         });
     }
+}
+
+/// Window size / position / maximized (tauri-plugin-window-state). The plugin saves on a clean
+/// exit only; noxx usually goes to the tray instead and may be ended by a shutdown, so the
+/// state is also saved a second after the last move or resize.
+#[cfg(desktop)]
+fn save_window_state(app: &AppHandle) {
+    use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+    if let Err(e) = app.save_window_state(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED) {
+        eprintln!("[system] window state: {e}");
+    }
+}
+
+#[cfg(desktop)]
+fn save_window_state_soon(app: &AppHandle) {
+    use std::sync::atomic::AtomicU64;
+    static GEN: AtomicU64 = AtomicU64::new(0);
+    let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        if GEN.load(Ordering::SeqCst) == gen && !app.get_webview_window("main").is_some_and(|w| w.is_minimized().unwrap_or(false)) {
+            save_window_state(&app);
+        }
+    });
 }
 
 // ------------------------------------------------------------------ cache
@@ -622,8 +721,138 @@ fn file_arg(args: &Value) -> Result<String, String> {
 
 // ------------------------------------------------------------------ dispatch
 
+// ------------------------------------------------------------------ mini player window
+
+/// The floating mini player (ui/mini.html): small, always on top, no taskbar entry. It talks
+/// to the main window through events ("mini-state" from main, "mini-cmd" back).
+#[cfg(desktop)]
+fn mini_window(app: &AppHandle, show: bool, position: &str) -> Result<bool, String> {
+    const W: f64 = 360.0;
+    const H: f64 = 84.0;
+    const MARGIN: f64 = 16.0;
+    if !show {
+        if let Some(w) = app.get_webview_window("mini") {
+            let _ = w.close();
+        }
+        return Ok(false);
+    }
+    let w = match app.get_webview_window("mini") {
+        Some(w) => w,
+        None => {
+            let mut b = tauri::WebviewWindowBuilder::new(app, "mini", tauri::WebviewUrl::App("mini.html".into()))
+                .title("noxx mini player")
+                .inner_size(W, H)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .focused(false)
+                .shadow(true)
+                .visible(false);
+            // Every webview in the process must share the main window's browser arguments.
+            if let Some(args) = app.config().app.windows.first().and_then(|c| c.additional_browser_args.clone()) {
+                b = b.additional_browser_args(&args);
+            }
+            b.build().map_err(|e| e.to_string())?
+        }
+    };
+    // Place it on the monitor the main window is on (or the primary one).
+    let mon = app
+        .get_webview_window("main")
+        .and_then(|m| m.current_monitor().ok().flatten())
+        .or_else(|| w.primary_monitor().ok().flatten());
+    if let Some(m) = mon {
+        let scale = m.scale_factor();
+        let (mx, my) = (m.position().x as f64 / scale, m.position().y as f64 / scale);
+        let mw = m.size().width as f64 / scale;
+        let x = match position {
+            "top-left" => mx + MARGIN,
+            "top-center" => mx + (mw - W) / 2.0,
+            _ => mx + mw - W - MARGIN,
+        };
+        let _ = w.set_position(tauri::LogicalPosition::new(x, my + MARGIN));
+    }
+    let _ = w.show();
+    Ok(true)
+}
+
+// ------------------------------------------------------------------ keep awake
+
+/// Windows: `SetThreadExecutionState(ES_CONTINUOUS | ...)` holds only while the calling thread
+/// lives, so one parked thread owns the request; dropping the sender ends it.
+#[cfg(windows)]
+fn keep_awake(on: bool) {
+    use std::sync::mpsc;
+    static HOLDER: Mutex<Option<mpsc::Sender<()>>> = Mutex::new(None);
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetThreadExecutionState(flags: u32) -> u32;
+    }
+    const ES_CONTINUOUS: u32 = 0x8000_0000;
+    const ES_SYSTEM_REQUIRED: u32 = 0x0000_0001;
+    const ES_DISPLAY_REQUIRED: u32 = 0x0000_0002;
+    let mut holder = HOLDER.lock().unwrap_or_else(|e| e.into_inner());
+    if on == holder.is_some() {
+        return;
+    }
+    if !on {
+        holder.take(); // the thread wakes, clears the request and exits
+        return;
+    }
+    let (tx, rx) = mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        unsafe { SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED) };
+        let _ = rx.recv();
+        unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
+    });
+    *holder = Some(tx);
+}
+
+#[cfg(not(windows))]
+fn keep_awake(_on: bool) {}
+
 pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
     match cmd {
+        "global_keys" => {
+            #[cfg(desktop)]
+            {
+                let empty = serde_json::Map::new();
+                let map = args["map"].as_object().unwrap_or(&empty);
+                Ok(apply_global_keys(app, map))
+            }
+            #[cfg(mobile)]
+            {
+                let _ = args;
+                Ok(json!({ "failed": {} }))
+            }
+        }
+        "show_main" => {
+            show_main(app);
+            Ok(Value::Null)
+        }
+        "mini" => {
+            #[cfg(desktop)]
+            {
+                let open = mini_window(app, args["show"].as_bool().unwrap_or(true), args["position"].as_str().unwrap_or("top-right"))?;
+                Ok(json!({ "open": open }))
+            }
+            #[cfg(mobile)]
+            {
+                let _ = args;
+                Ok(json!({ "open": false }))
+            }
+        }
+        "thumbbar" => {
+            #[cfg(windows)]
+            super::thumbbar::set_playing(app, args["playing"].as_bool().unwrap_or(false));
+            Ok(Value::Null)
+        }
+        "keep_awake" => {
+            keep_awake(args["on"].as_bool().unwrap_or(false));
+            Ok(Value::Null)
+        }
         "settings" => Ok(json!(settings().clone())),
         "set" => {
             let on = args["value"].as_bool().ok_or("value must be true/false")?;
@@ -729,7 +958,7 @@ mod tests {
 
     #[test]
     fn system_plugin_listing() {
-        let dir = std::env::temp_dir().join(format!("riff-rs-plugins-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("noxx-plugins-test-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         std::fs::write(dir.join("a.js"), EXAMPLE_PLUGIN).unwrap();
         std::fs::write(dir.join("b.txt"), "x").unwrap();
@@ -741,5 +970,19 @@ mod tests {
         assert_eq!(l[0]["name"], "Hello plugin");
         assert_eq!(l[0]["enabled"], true);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(all(test, desktop))]
+mod key_tests {
+    use super::*;
+
+    #[test]
+    fn combos_parse() {
+        for c in ["Ctrl+Alt+M", "Ctrl+Shift+ArrowRight", "Super+1", "Alt+Space", "F9", "Ctrl+/", "Ctrl+Alt+MediaPlayPause"] {
+            assert!(parse_combo(c).is_ok(), "{c}: {:?}", parse_combo(c).err());
+        }
+        assert_eq!(parse_combo("Ctrl+Alt+M").unwrap(), "Control+Alt+KeyM".parse::<Shortcut>().unwrap());
+        assert!(parse_combo("Ctrl+Nope").is_err());
     }
 }

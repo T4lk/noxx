@@ -220,6 +220,40 @@
   });
   R.on('ready', () => { updateBadge(); refreshLib(); });
 
+  // ---------------------------------------------------------------- drop files / folders onto the window
+  // Tauri handles OS file drops (the page never sees them) and reports paths. Audio files and
+  // folders go to My files; anything else is ignored.
+  const isAudioPath = (p) => EXTS.includes(String(p).split('.').pop().toLowerCase());
+  const maybeFolder = (p) => !/\.[A-Za-z0-9]{1,5}$/.test(String(p).split(/[\\/]/).pop());
+  const usable = (paths) => (paths || []).filter((p) => isAudioPath(p) || maybeFolder(p));
+  let dropEl = null;
+  function dropOverlay(paths) {
+    const n = usable(paths).length;
+    if (!n) return hideDrop();
+    if (!dropEl) {
+      dropEl = document.createElement('div');
+      dropEl.className = 'lf-drop';
+      dropEl.innerHTML = `<div class="lf-drop-card">${ICON_FILES}<b></b><span>Drop to add to My files</span></div>`;
+      document.body.append(dropEl);
+    }
+    const files = paths.filter(isAudioPath).length;
+    dropEl.querySelector('b').textContent = files === n ? R.plural(n, 'audio file') : R.plural(n, 'item');
+    requestAnimationFrame(() => dropEl && dropEl.classList.add('on'));
+  }
+  function hideDrop() { if (dropEl) { const d = dropEl; dropEl = null; d.classList.remove('on'); setTimeout(() => d.remove(), 160); } }
+  if (!window.noxxAndroid) {
+    R.listen('tauri://drag-enter', (e) => dropOverlay(e.payload && e.payload.paths));
+    R.listen('tauri://drag-leave', hideDrop);
+    R.listen('tauri://drag-drop', async (e) => {
+      hideDrop();
+      const paths = usable(e.payload && e.payload.paths);
+      if (!paths.length) { R.toast('Only audio files and folders can be added'); return; }
+      R.go('files');
+      // "add" keeps only real folders from `folders` and audio files from `files`.
+      await addPaths({ folders: paths.filter(maybeFolder), files: paths.filter(isAudioPath) });
+    });
+  }
+
   // Settings → Storage → Music folder (drawn by features/system.js).
   R.localfiles = { get lib() { return lib; }, pick, foldersModal };
 
