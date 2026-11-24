@@ -69,8 +69,11 @@
     const s = R.state.search;
     const q = (s.query || '').trim();
     const wantArtists = R.pref('searchArtists', true), wantAlbums = R.pref('albums', true);
-    const sc = (s.provider ? s.provider.id : R.state.platform) === 'soundcloud';
-    if (!q || /^https?:/i.test(q) || !sc || (!wantArtists && !wantAlbums) || !s.results.length) return;
+    const pid = s.provider ? s.provider.id : R.state.platform;
+    const sc = pid === 'soundcloud';
+    // YouTube / YouTube Music: albums come from YouTube Music (no artist row there yet)
+    const yt = !sc && /youtube|ytmusic|music/i.test(String(pid || ''));
+    if (!q || /^https?:/i.test(q) || (!sc && !yt) || (!wantAlbums && (!wantArtists || yt)) || !s.results.length) return;
     const root = R.view;
     if (root.querySelector('.dc-sx')) return;
     const fill = (data) => {
@@ -105,11 +108,14 @@
       if (anchor) anchor.after(box); else root.prepend(box);
       R.redrawLists();
     };
-    const key = `${q}|${wantArtists}|${wantAlbums}`;
+    const key = `${yt ? 'yt' : 'sc'}|${q}|${wantArtists}|${wantAlbums}`;
     if (SX.q === key && SX.data) { fill(SX.data); return; }
     if (SX.q === key && SX.loading) return;
     SX.q = key; SX.data = null;
-    SX.loading = R.call('discover.search_extras', { q, artists: wantArtists, albums: wantAlbums })
+    const get = yt
+      ? R.call('youtube.albums', { query: q, limit: 12 }).then((albums) => ({ albums }))
+      : R.call('discover.search_extras', { q, artists: wantArtists, albums: wantAlbums });
+    SX.loading = get
       .then((d) => { if (SX.q !== key) return; SX.data = d || {}; fill(SX.data); })
       .catch((e) => R.log('warn', `search extras: ${errText(e)}`))
       .finally(() => { if (SX.q === key) SX.loading = null; });
@@ -561,7 +567,7 @@
 
   async function renderRelease(token, r) {
     r = r || {};
-    const kind = r.kind ? r.kind[0].toUpperCase() + r.kind.slice(1) : 'Playlist';
+    const kind = r.kind === 'ep' ? 'EP' : r.kind ? r.kind[0].toUpperCase() + r.kind.slice(1) : 'Playlist';
     R.add(`<div class="dc-backrow">${backBtn()}</div>`).querySelector('button').onclick = goBack;
     const head = R.hero({
       kicker: [kind, r.year].filter(Boolean).join(' · '), title: r.title || 'Playlist', cover: r.artwork, icon: IC.disc,
@@ -570,14 +576,17 @@
     });
     const sp = R.spinner();
     let data;
-    try { data = await R.call('discover.set', { id: r.id }); } catch (e) { if (!R.stale(token)) { sp.remove(); R.emptyMsg(errText(e)); } return; }
+    // YouTube Music albums (from a YouTube search) open through the youtube feature
+    const ytm = r.source === 'ytm' || /^MPREb/.test(String(r.id || ''));
+    try { data = await R.call(ytm ? 'youtube.album' : 'discover.set', { id: r.id }); } catch (e) { if (!R.stale(token)) { sp.remove(); R.emptyMsg(errText(e)); } return; }
     if (R.stale(token)) return;
     sp.remove();
+    if (ytm && data.artwork && !r.artwork) { const c = head.querySelector('.cover'); if (c) c.style.backgroundImage = `url('${data.artwork}')`; }
     const tracks = data.tracks || [];
     head.querySelector('.page-sub').textContent = [data.artist || r.artist, `${plural(tracks.length, 'track')} · ${totalTime(tracks)}`].filter(Boolean).join(' · ');
     R.wireActions(head, tracks, {
       radio: () => tracks.length && startRadio(tracks[0]),
-      artist: () => R.go('artist', { id: data.artistId || '', name: data.artist || r.artist || '' }),
+      artist: () => R.go('artist', { id: ytm ? '' : data.artistId || '', name: data.artist || r.artist || '' }),
     });
     if (!tracks.length) { R.emptyMsg('This playlist is empty.'); return; }
     R.toolList({ kind: 'discover', id: r.id }, tracks);
