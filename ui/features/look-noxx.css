@@ -705,3 +705,8 @@ html.th-noxx:not(.riff-android) #right-panel > .ly-bar :is(.ly-tab, .lyrics-acti
 html.th-noxx:not(.riff-android) #right-panel > .ly-bar :is(.ly-tab.active, .lyrics-action-btn.active) { background: var(--nx-acc); color: var(--nx-on-acc); }
 html.th-noxx:not(.riff-android) #right-panel > .ly-bar .lyrics-mode-btn { height: 28px; padding: 0 9px; border-radius: 7px; font-size: calc(11.5px * var(--fs)); font-weight: 600; color: var(--nx-dim); opacity: 1; }
 html.th-noxx:not(.riff-android) #right-panel > .ly-bar .lyrics-mode-btn:hover { background: var(--nx-hover); color: var(--on-surface); }
+
+/* started without the GPU: no live blur at all, whatever the Blur slider says */
+html.th-noxx:not(.riff-android).nx-nogpu :is(.main-content, .right-panel, .playbar, .rail, .search-box, .toast, .ly-bar, .modal-wrap, .lf-drop) {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}

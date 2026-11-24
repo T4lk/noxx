@@ -729,8 +729,8 @@ fn file_arg(args: &Value) -> Result<String, String> {
 /// to the main window through events ("mini-state" from main, "mini-cmd" back).
 #[cfg(desktop)]
 fn mini_window(app: &AppHandle, show: bool, position: &str) -> Result<bool, String> {
-    const W: f64 = 360.0;
-    const H: f64 = 84.0;
+    const W: f64 = 430.0;
+    const H: f64 = 144.0;
     const MARGIN: f64 = 16.0;
     if !show {
         if let Some(w) = app.get_webview_window("mini") {
@@ -751,7 +751,9 @@ fn mini_window(app: &AppHandle, show: bool, position: &str) -> Result<bool, Stri
                 .always_on_top(true)
                 .skip_taskbar(true)
                 .focused(false)
-                .shadow(true)
+                // No window box: the page draws its own cards on a see-through window.
+                .transparent(true)
+                .shadow(false)
                 .visible(false);
             // Every webview in the process must share the main window's browser arguments.
             if let Some(args) = app.config().app.windows.first().and_then(|c| c.additional_browser_args.clone()) {
@@ -873,6 +875,8 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             save(app);
             Ok(json!(settings().clone()))
         }
+        // Relaunch (the GPU choice is read when the webview starts).
+        "restart" => { save(app); app.restart() }
         "cache_size" => Ok(cache_size(app).await),
         "memory" => Ok(tauri::async_runtime::spawn_blocking(mem::usage).await.unwrap_or_default()),
         "clear_cache" => clear_cache(app, &args).await,

@@ -125,17 +125,31 @@
   // Performance mode also runs noxx without the GPU. That is decided when the app starts, so the
   // choice is saved for the next launch.
   const perfOn = () => !!R.pref('perfMode', false);
-  let gpuSaved = null;
-  const syncGpu = (say) => {
-    const on = perfOn();
-    if (on === gpuSaved) return;
-    gpuSaved = on;
-    R.call('system.set', { key: 'noGpu', value: on })
-      .then(() => { if (say) R.toast(on ? 'Performance mode: the GPU is off after you restart noxx' : 'The GPU is back on after you restart noxx'); })
-      .catch((e) => R.log('warn', `gpu setting: ${R.errText(e)}`));
-  };
-  R.call('system.settings').then((st) => { gpuSaved = !!st.noGpu; syncGpu(false); }).catch(() => {});
-  R.on('pref', (p) => { if (p && p.key === 'perfMode') syncGpu(true); });
+  let gpuOffNow = false;   // how this launch was started
+  const setGpu = (off) => R.call('system.set', { key: 'noGpu', value: off });
+  const restart = () => R.call('system.restart').catch((e) => R.log('warn', `restart: ${R.errText(e)}`));
+  R.call('system.settings').then(async (st) => {
+    gpuOffNow = !!st.noGpu;
+    // Without the GPU, live blur is drawn on the processor and makes everything slow: keep it off.
+    root.classList.toggle('nx-nogpu', gpuOffNow);
+    if (perfOn() === gpuOffNow) return;
+    // The saved choice and Performance mode disagree (after an update, say): fix it with one relaunch.
+    await setGpu(perfOn());
+    let last = 0;
+    try { last = Number(localStorage.getItem('nx_gpu_restart')) || 0; } catch (e) {}
+    if (Date.now() - last > 60000) { try { localStorage.setItem('nx_gpu_restart', String(Date.now())); } catch (e) {} restart(); }
+  }).catch(() => {});
+  R.on('pref', async (p) => {
+    if (!p || p.key !== 'perfMode') return;
+    const off = perfOn();
+    try { await setGpu(off); } catch (e) { R.log('warn', `gpu setting: ${R.errText(e)}`); return; }
+    if (off === gpuOffNow) return;
+    const ok = await R.confirmBox(off ? 'Turn the GPU off' : 'Turn the GPU on',
+      off ? 'Performance mode runs noxx without the GPU. That needs a quick restart of noxx; your song stops for a moment.'
+          : 'With Performance mode off, noxx uses the GPU for smooth blur and animations. That needs a quick restart of noxx; your song stops for a moment.',
+      'Restart now');
+    if (ok) restart();
+  });
 
   // Settings > Theme > Layout
   R.addSettings(() => {
