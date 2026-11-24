@@ -10,6 +10,7 @@
   const rail = document.querySelector('.rail');
   const view = document.getElementById('view');
   if (!R || !rail || !view) return;
+  if (root.classList.contains('riff-android')) return; // the phone layout has its own shell (features/mobile.css)
 
   const layout = () => (R.pref('noxxLayout', 'minimal') === 'full' ? 'full' : 'minimal');
   const applyLayout = () => root.classList.toggle('nx-min', layout() === 'minimal');
@@ -38,8 +39,17 @@
     return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   }
 
+  // Right panel: the artist cards join the Up next list, so the cover stays put and only that list scrolls.
+  function nestCards() {
+    const panel = document.getElementById('right-panel');
+    const next = panel && panel.querySelector('.rp-next');
+    const cards = panel && panel.querySelector('.np-cards');
+    if (next && cards && cards.parentElement !== next) next.append(cards);
+  }
+
   function sync() {
     const v = R.state.view;
+    nestCards();
     placeLib();
     lib.classList.toggle('active', inLibrary(v));
     if (inLibrary(v)) lastTab = tabOf(v);
@@ -70,8 +80,62 @@
   const later = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; sync(); }); };
   new MutationObserver(later).observe(view, { childList: true, subtree: true });
   new MutationObserver(later).observe(rail, { childList: true });
+  { const rp = document.getElementById('right-panel'); if (rp) new MutationObserver(later).observe(rp, { childList: true, subtree: true }); }
   new MutationObserver(later).observe(root, { attributes: true, attributeFilter: ['class'] });
   sync();
+
+  // Glass: how strong the blur behind the cards is and how see-through they are.
+  const GLASS = { noxxBlur: { def: 24, min: 0, max: 40, unit: 'px', css: '--nx-blur', fmt: (v) => `${v}px` },
+                  noxxGlass: { def: 84, min: 40, max: 100, unit: '%', css: '--nx-glass', fmt: (v) => `${v}%` },
+                  noxxGlow: { def: 60, min: 0, max: 100, unit: '%', css: '--nx-glow', fmt: (v) => String(v / 100) },
+                  noxxDim: { def: 0, min: 0, max: 90, unit: '%', css: '--nx-dim', fmt: (v) => String(v / 100) } };
+  // A dark layer over the background (album glow, mesh, your image or video), under the cards.
+  const dim = document.createElement('div');
+  dim.className = 'nx-dim';
+  document.body.append(dim);
+  const glassVal = (k) => { const g = GLASS[k], v = Number(R.pref(k, g.def)); return Number.isFinite(v) ? Math.min(g.max, Math.max(g.min, Math.round(v))) : g.def; };
+  // At 0 no blur layers exist at all (html.nx-noblur).
+  const applyGlass = () => {
+    for (const k in GLASS) root.style.setProperty(GLASS[k].css, GLASS[k].fmt(glassVal(k)));
+    root.classList.toggle('nx-noblur', glassVal('noxxBlur') === 0);
+  };
+  applyGlass();
+
+  R.addSettings(() => {
+    const row = (k, name, desc, lo, hi) => {
+      const g = GLASS[k], v = glassVal(k);
+      return `<div class="th-item setting-item"><div class="th-top"><span class="th-name">${name}</span><span class="th-val" data-nx-val="${k}">${v}${g.unit}</span></div>
+        <div class="th-sl" style="--v:${(v - g.min) / (g.max - g.min)}"><div class="th-sl-on"></div><div class="th-sl-off"></div>
+        <input type="range" data-nx-glass="${k}" min="${g.min}" max="${g.max}" step="1" value="${v}" aria-label="${name}"></div>
+        <div class="th-hints"><span>${lo}</span><span>${hi}</span></div><div class="th-desc">${desc}</div></div>`;
+    };
+    R.add('<div class="section-title">Background and glass</div>');
+    const g = R.add(`<div class="th-group">${row('noxxBlur', 'Blur', 'Blurs what is behind the cards and the player. Turn it down if the app feels slow on your PC.', 'Off', 'Strong')}${row('noxxGlass', 'Card opacity', 'Lower lets more of the background show through the cards.', 'See-through', 'Solid')}${row('noxxGlow', 'Album glow', 'How bright the colour from the playing cover is behind the app. Turn the glow itself on or off in Banners > Cover background.', 'Off', 'Full')}${row('noxxDim', 'Darken background', 'Dims the glow, mesh or your own image or video so text stays easy to read. Pick an image or video in Banners > Background media.', 'None', 'Dark')}</div>`);
+    g.addEventListener('input', (e) => {
+      const i = e.target.closest('[data-nx-glass]');
+      if (!i) return;
+      const k = i.dataset.nxGlass, c = GLASS[k];
+      R.setPref(k, Number(i.value));
+      applyGlass();
+      i.closest('.th-sl').style.setProperty('--v', String((glassVal(k) - c.min) / (c.max - c.min)));
+      g.querySelector(`[data-nx-val="${k}"]`).textContent = `${glassVal(k)}${c.unit}`;
+    });
+  }, 'theme');
+
+  // Performance mode also runs noxx without the GPU. That is decided when the app starts, so the
+  // choice is saved for the next launch.
+  const perfOn = () => !!R.pref('perfMode', false);
+  let gpuSaved = null;
+  const syncGpu = (say) => {
+    const on = perfOn();
+    if (on === gpuSaved) return;
+    gpuSaved = on;
+    R.call('system.set', { key: 'noGpu', value: on })
+      .then(() => { if (say) R.toast(on ? 'Performance mode: the GPU is off after you restart noxx' : 'The GPU is back on after you restart noxx'); })
+      .catch((e) => R.log('warn', `gpu setting: ${R.errText(e)}`));
+  };
+  R.call('system.settings').then((st) => { gpuSaved = !!st.noGpu; syncGpu(false); }).catch(() => {});
+  R.on('pref', (p) => { if (p && p.key === 'perfMode') syncGpu(true); });
 
   // Settings > Theme > Layout
   R.addSettings(() => {

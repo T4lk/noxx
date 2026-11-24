@@ -50,12 +50,14 @@ pub struct Settings {
     pub tray_on_close: bool,
     pub media_keys: bool,
     pub multi_instance: bool,
+    /// Performance mode: start the webview without the GPU (set from the UI, applies on next launch).
+    pub no_gpu: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         // Linux: many bars (Hyprland, Sway...) have no tray, so closing really closes.
-        Settings { tray_on_close: !cfg!(target_os = "linux"), media_keys: true, multi_instance: false }
+        Settings { tray_on_close: !cfg!(target_os = "linux"), media_keys: true, multi_instance: false, no_gpu: false }
     }
 }
 
@@ -859,6 +861,7 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             match args["key"].as_str().unwrap_or("") {
                 "trayOnClose" => settings().tray_on_close = on,
                 "multiInstance" => settings().multi_instance = on,
+                "noGpu" => settings().no_gpu = on,
                 "mediaKeys" => {
                     settings().media_keys = on;
                     let r = apply_media_keys(app, on);

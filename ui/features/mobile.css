@@ -1,13 +1,44 @@
 /* Phone layout (Android app; html.riff-android is set by features/android.js).
    Top: search. Middle: the current view. Bottom: a compact player and the tab bar.
-   --sat / --sab are the status / navigation bar heights from MainActivity. */
+   --sat / --sab are the status / navigation bar heights from MainActivity.
+
+   Same design language as the desktop look (features/look-noxx.css): calm surfaces on a darker
+   ground, separation by fill instead of outlines, one accent, small radii, no glow or gradients.
+   Colours come from the theme tokens only, so light mode and accent colours keep working. */
+html.riff-android {
+  --mb-ground: var(--bg);
+  --mb-card: var(--th-surface-solid, var(--surface));
+  --mb-raised: var(--th-container-solid, var(--container));
+  --mb-hover: var(--container-high);
+  --mb-hi: var(--container-highest);
+  --mb-dim: var(--on-variant);
+  --mb-mute: var(--outline);
+  --mb-acc: var(--primary);
+  --mb-on-acc: var(--on-primary);
+  --mb-sep: color-mix(in srgb, var(--on-surface) 10%, transparent);
+  --mb-shadow: 0 14px 40px rgba(0, 0, 0, .45);
+  --mb-ease: cubic-bezier(.2, .8, .2, 1);
+  --mb-fast: 120ms;
+  --mb-med: 160ms;
+  /* one horizontal gutter for the search bar, page card, player and tab bar; one gap between them;
+     one inner padding for everything inside the page card */
+  --mb-gutter: 10px;
+  --mb-gap: 8px;
+  --mb-pad: 14px;
+}
+
+/* ======================================================================
+   Shell: grid, insets, what the phone does not show
+   ====================================================================== */
 html.riff-android, html.riff-android body { width: 100%; max-width: 100vw; overflow: hidden; }
 html.riff-android body {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   /* --sat / --sab are real screen px; body is zoomed by UI scale, so divide them back */
   padding-top: calc(var(--sat, 0px) / var(--app-zoom, 1));
-  padding-bottom: calc(58px + var(--sab, 0px) / var(--app-zoom, 1));
+  padding-bottom: calc(44px + var(--mb-gap) + var(--sab, 0px) / var(--app-zoom, 1)); /* the tab bar */
+  background: var(--mb-ground);
+  font-family: var(--font-family);
 }
 html.riff-android .titlebar,
 html.riff-android .top-nav .brand,
@@ -21,6 +52,9 @@ html.riff-android .nav-active-ind,
 html.riff-android .rail .nav-label,
 html.riff-android .rail .nav-item[data-view="history"],
 html.riff-android .rail .nav-item[data-view="files"] { display: none !important; }
+html.riff-android .organic-bg, html.riff-android .m3-organic-bg { display: none !important; }
+html.riff-android ::selection { background: color-mix(in srgb, var(--mb-acc) 28%, transparent); }
+html.riff-android { -webkit-tap-highlight-color: transparent; }
 
 /* undo the docked side rail's offsets */
 html.riff-android .top-nav.top-panel,
@@ -30,170 +64,496 @@ html.riff-android .rail::after,
 html.riff-android .playbar::before,
 html.riff-android .playbar::after { display: none !important; }
 
-/* search */
-html.riff-android .top-nav { height: 60px !important; padding: 0 10px !important; gap: 8px; justify-content: stretch; }
+/* ======================================================================
+   Top bar: search field (icon, text, clear, source picker) and the account avatar
+   ====================================================================== */
+html.riff-android .top-nav {
+  height: calc(44px + 2 * var(--mb-gap)) !important; padding: 0 var(--mb-gutter) !important; gap: var(--mb-gap); justify-content: stretch;
+  background: var(--mb-ground) !important; position: relative; z-index: 5; /* stays readable over scrolled content */
+}
 html.riff-android .top-nav .search-box {
   position: static !important; transform: none !important; left: auto !important; width: auto !important;
-  flex: 1; min-width: 0; height: 44px; padding: 0 6px 0 4px; gap: 6px;
+  flex: 1; min-width: 0; height: 44px; padding: 0 4px 0 14px; gap: 10px;
+  background: var(--mb-raised) !important; border-radius: 10px !important; box-shadow: none;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  transition: background-color var(--mb-fast) var(--mb-ease), box-shadow var(--mb-med) var(--mb-ease) !important;
+}
+html.riff-android .top-nav .search-box:focus-within {
+  background: var(--mb-hover) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mb-acc) 40%, transparent);
 }
 html.riff-android .search-box .top-home { display: none; }
-html.riff-android .search-box { transition: none !important; }
+html.riff-android .search-box > svg { order: 1; width: 17px; height: 17px; color: var(--mb-mute); }
+html.riff-android .search-box > input { order: 2; font-size: 16px; } /* 16px stops the zoom-on-focus */
+html.riff-android .search-box > input::placeholder { color: var(--mb-mute); opacity: 1; }
+html.riff-android .search-box > .search-clear { order: 3; border-radius: 10px; color: var(--mb-dim); }
+/* the source chip shows just its icon, the box keeps the full width for typing */
+html.riff-android .search-box .src-chip {
+  order: 4; margin-left: 0; padding: 0 8px; gap: 2px; height: 36px; min-width: 44px; justify-content: center; flex: none;
+  background: transparent !important; color: var(--mb-dim); border-radius: 8px;
+}
+html.riff-android .search-box .src-chip:active { background: var(--mb-hi) !important; color: var(--on-surface); }
+html.riff-android .search-box .src-chip > span { display: none; }
+html.riff-android .nav-right { flex: none; gap: var(--mb-gap); }
+html.riff-android .account-pill {
+  height: 44px; min-width: 44px; padding: 0; justify-content: flex-end; background: transparent !important; border-radius: 10px; /* avatar ends on the gutter */
+}
+html.riff-android .account-pill:active { background: var(--mb-hover) !important; }
+html.riff-android .account-pill .av { width: 36px; height: 36px; background-color: var(--mb-hover); }
 html.riff-android .account-pill .ap-name { display: none; }
-html.riff-android .search-box input { font-size: 16px; } /* 16px stops the zoom-on-focus */
-html.riff-android .nav-right { flex: none; }
+html.riff-android .offline-chip { height: 36px; min-width: 44px; justify-content: center; padding: 0 10px; font-size: 0; gap: 0; /* icon only: the search box keeps its width */ border-radius: 10px; background: var(--mb-raised); color: var(--mb-dim); font-weight: 600; }
+html.riff-android .offline-chip[hidden] { display: none; }
 
-/* content */
-html.riff-android .app-layout { display: block; padding: 0 8px; min-height: 0; }
-html.riff-android .main-content { height: 100%; border-radius: 22px; }
-html.riff-android .view { padding: 16px 14px 24px !important; overscroll-behavior: contain; }
+/* recent searches under the search box */
+html.riff-android .search-history {
+  top: calc(100% + 6px); padding: 6px; border: 0; border-radius: 14px; background: var(--mb-hover);
+  box-shadow: var(--mb-shadow); animation: mb-pop 140ms var(--mb-ease); transform-origin: top center;
+}
+html.riff-android .sh-head { padding: 6px 10px; color: var(--mb-mute); font-weight: 600; }
+html.riff-android .sh-clear { min-height: 36px; border-radius: 8px; color: var(--mb-dim); }
+html.riff-android .sh-item { min-height: 44px; border-radius: 10px; }
+html.riff-android .sh-item > svg { color: var(--mb-mute); }
+html.riff-android .sh-item:active, html.riff-android .sh-item.active { background: var(--mb-hi); }
+html.riff-android .sh-del { opacity: 1; min-width: 36px; min-height: 36px; border-radius: 8px; }
 
-/* bottom tab bar (the desktop rail) */
+/* ======================================================================
+   Page: one card on the ground
+   ====================================================================== */
+html.riff-android .app-layout { display: block; padding: 0 var(--mb-gutter) !important; margin: 0 !important; min-height: 0; overflow: hidden; }
+html.riff-android .main-content {
+  height: 100%; min-height: 0; margin: 0 !important; border-radius: 16px !important; background: var(--mb-card) !important;
+  box-shadow: none !important; border: 0 !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+html.riff-android .view { padding: 18px var(--mb-pad) 24px !important; overscroll-behavior: contain; }
+
+/* type */
+html.riff-android .page-title { font-size: calc(22px * var(--fs)); font-weight: 800; letter-spacing: -0.035em; line-height: 1.15; margin-bottom: 6px; }
+html.riff-android .page-sub { color: var(--mb-dim); }
+html.riff-android .section-title, html.riff-android .hm-head h2 { font-weight: 700; letter-spacing: -0.025em; }
+html.riff-android .section-title svg, html.riff-android .hm-head h2 svg { display: none; }
+html.riff-android .empty { color: var(--mb-dim); }
+
+/* buttons */
+html.riff-android .btn {
+  min-height: 44px; border-radius: 10px !important; background: var(--mb-raised); font-weight: 600;
+}
+html.riff-android .btn:not(:disabled):hover { background: var(--mb-raised); border-radius: 10px !important; }
+html.riff-android .btn:not(:disabled):active { background: var(--mb-hover); }
+html.riff-android .btn.primary, html.riff-android .btn.primary:not(:disabled):hover { background: var(--mb-acc); color: var(--mb-on-acc); }
+html.riff-android .btn.primary:not(:disabled):active { background: color-mix(in srgb, var(--mb-acc) 86%, var(--mb-on-acc)); }
+html.riff-android .btn.outline, html.riff-android .btn.outline:not(:disabled):hover { background: transparent; box-shadow: inset 0 0 0 1px var(--mb-hi); }
+html.riff-android .btn.outline:not(:disabled):active { background: var(--mb-hover); }
+html.riff-android .pill-btn, html.riff-android .ctrl-btn { min-width: 44px; min-height: 44px; border-radius: 10px !important; }
+html.riff-android .pill-btn { background: transparent; }
+html.riff-android .pill-btn:hover, html.riff-android .ctrl-btn:hover { background: transparent; }
+html.riff-android .pill-btn:active, html.riff-android .ctrl-btn:active { background: var(--mb-hover); color: var(--on-surface); }
+html.riff-android .pill-btn.on { color: var(--mb-acc); }
+
+/* fields */
+html.riff-android .view input[type="text"], html.riff-android .view input[type="search"], html.riff-android .view select,
+html.riff-android .lib-search, html.riff-android .lib-sort { border-radius: 10px; }
+html.riff-android .lib-search, html.riff-android .lib-sort { min-height: 44px; background: var(--mb-raised) !important; }
+html.riff-android .lib-search:focus-within { background: var(--mb-hover) !important; }
+html.riff-android .view .lib-tools { flex-wrap: wrap; row-gap: 8px; }
+html.riff-android .lib-tools .lib-search { flex: 1 1 100%; } /* library search gets its own line */
+html.riff-android .likes-src { background: var(--mb-raised); border-radius: 10px; }
+html.riff-android .likes-src-btn { min-height: 38px; border-radius: 7px; }
+html.riff-android .likes-src-btn.on { background: var(--mb-acc); color: var(--mb-on-acc); }
+html.riff-android .likes-src-btn.on span { color: color-mix(in srgb, var(--mb-on-acc) 60%, transparent); }
+
+/* ======================================================================
+   Bottom tab bar (the desktop rail): icons on the ground, the current one filled
+   ====================================================================== */
 html.riff-android .rail {
   position: fixed; left: 0; right: 0; top: auto !important; bottom: 0; z-index: 40;
-  width: auto !important; height: auto; margin: 0; border-radius: 0;
+  width: auto !important; height: auto; margin: 0; border-radius: 0 !important;
   display: flex; flex-direction: row; align-items: center; justify-content: space-around; gap: 0;
-  padding: 6px 4px calc(6px + var(--sab, 0px));
-  background: var(--container);
+  padding: 0 var(--mb-gutter) calc(var(--mb-gap) + var(--sab, 0px) / var(--app-zoom, 1)) !important;
+  background: var(--mb-ground) !important; box-shadow: none !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
-html.riff-android .rail .nav-item { flex: 1; width: auto; height: 46px; padding: 0; justify-content: center; border-radius: 23px; background: none !important; }
-html.riff-android .rail .nav-ind { width: 52px; height: 32px; border-radius: 16px; }
-html.riff-android .rail .nav-item.active .nav-ind { background: var(--nav-active) !important; color: var(--on-nav-active); }
+/* tabs shrink to fit at bigger UI scales */
+html.riff-android .rail .nav-item {
+  flex: 1 1 0; min-width: 0; width: auto; height: 44px; padding: 0; justify-content: center; align-items: center;
+  border-radius: 10px; background: none !important;
+}
+html.riff-android .rail .nav-ind {
+  width: min(56px, 100%); height: 44px; border-radius: 10px; color: var(--mb-mute); background: transparent !important;
+  transition: background-color var(--mb-fast) var(--mb-ease), color var(--mb-fast) var(--mb-ease), transform var(--mb-med) var(--mb-ease);
+}
+html.riff-android .rail .nav-ind svg { width: 22px; height: 22px; }
+html.riff-android .rail .nav-item.active .nav-ind { background: var(--mb-hover) !important; color: var(--mb-acc); }
+html.riff-android .rail .nav-item:active .nav-ind { transform: scale(.94); }
+html.riff-android .rail .nav-badge { top: 2px; right: 4px; }
 
-/* player: cover, title, heart | prev / play / next, with a thin progress line along the bottom */
+/* ======================================================================
+   Mini player: cover, title / artist, play, next, with a thin progress line along the bottom
+   ====================================================================== */
 html.riff-android .playbar {
-  position: relative; margin: 6px 8px !important; height: 64px !important; padding: 0 8px 0 4px !important; gap: 6px;
-  border-radius: 20px !important; background: var(--container) !important;
-  grid-template-columns: minmax(0, 1fr) auto;
+  position: relative; margin: var(--mb-gap) var(--mb-gutter) !important; height: 64px !important; padding: 0 8px !important; gap: 6px;
+  border-radius: 16px !important; background: var(--mb-card) !important; box-shadow: none !important; border: 0 !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  grid-template-columns: minmax(0, 1fr) auto; overflow: hidden;
 }
 html.riff-android .pb-right,
 html.riff-android .pb-left .pill-btn:not(#pb-heart),
 html.riff-android #btn-shuffle,
 html.riff-android #btn-repeat,
 html.riff-android .pb-progress .time { display: none !important; }
-html.riff-android .pb-left { gap: 8px; }
-html.riff-android .pb-cover { width: 52px; height: 52px; }
-html.riff-android .pb-art { width: 46px; height: 46px; border-radius: 12px; }
-html.riff-android .pb-center { width: auto; }
-html.riff-android .pb-controls { gap: 4px; }
+html.riff-android #pb-heart,
+html.riff-android #btn-prev { display: none !important; }
 html.riff-android .pb-progress { display: none !important; }
-html.riff-android .mini-progress { position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; border-radius: 2px; background: #ffffff26; overflow: hidden; pointer-events: none; }
-html.riff-android .mini-progress i { display: block; height: 100%; width: 0; background: var(--on-surface, #fff); border-radius: 2px; }
+html.riff-android .pb-left { gap: 12px; }
+/* plain rounded art instead of the desktop's oversized morphing ring */
+html.riff-android .pb-cover { width: 48px; height: 48px; filter: none !important; }
+html.riff-android .pb-cover-canvas { display: none !important; }
+html.riff-android .pb-cover .pb-art { visibility: visible !important; transform: none !important; }
+html.riff-android .pb-art { width: 48px; height: 48px; border-radius: 9px; background-color: var(--mb-hover); color: var(--mb-mute); }
+html.riff-android .pb-text { min-width: 0; flex: 1; margin-right: 0; }
+html.riff-android .pb-title { font-weight: 700; letter-spacing: -0.01em; }
+html.riff-android .pb-artist { color: var(--mb-dim); }
+html.riff-android .pb-center { width: auto; }
+html.riff-android .pb-controls { gap: 2px; }
+html.riff-android .pb-controls .ctrl-btn { width: 44px; height: 44px; color: var(--on-surface); }
+html.riff-android .pb-controls .ctrl-btn svg { width: 20px; height: 20px; }
+html.riff-android .play-btn, html.riff-android .play-btn.is-playing {
+  width: 44px; height: 44px; border-radius: 50% !important; background: var(--mb-acc); color: var(--mb-on-acc);
+}
+html.riff-android .play-btn svg { width: 20px; height: 20px; }
+html.riff-android .mini-progress {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 0; overflow: hidden; pointer-events: none;
+  background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+}
+html.riff-android .mini-progress i { display: block; height: 100%; width: 0; background: var(--mb-acc); border-radius: 0 2px 2px 0; }
 
-/* dialogs and menus fit the screen */
-html.riff-android .modal { max-width: calc(100vw - 24px); max-height: calc(100vh - 48px - var(--sat, 0px) - var(--sab, 0px)); overflow: auto; }
-html.riff-android .menu { max-width: calc(100vw - 16px); }
-html.riff-android .toasts { bottom: calc(140px + var(--sab, 0px)); }
-
-/* track lists: title and artist get the room; actions live in the long-press menu */
-html.riff-android .track-row { gap: 10px; padding-left: 4px; padding-right: 6px; }
+/* ======================================================================
+   Lists: title and artist get the room; actions live in the long-press menu
+   ====================================================================== */
+/* covers and text sit on the page's inner padding; the pressed / playing fill bleeds 8px past them */
+html.riff-android .track-row { left: -8px; right: -8px; gap: 12px; padding-left: 8px; padding-right: 8px; border-radius: 10px !important; box-shadow: none; }
+html.riff-android .track-row:hover { background: transparent; }
+html.riff-android .track-row.playing, html.riff-android .track-row.playing:hover { background: var(--mb-raised); box-shadow: none; }
+html.riff-android .track-row:active, html.riff-android .track-row.playing:active { background: var(--mb-hover); transform: none; }
 html.riff-android .track-row .tr-index,
 html.riff-android .track-row .tr-actions { display: none !important; }
 html.riff-android .track-row .tr-info { flex: 1 1 auto; min-width: 0; }
-html.riff-android .view .lib-tools { flex-wrap: wrap; row-gap: 8px; }
+html.riff-android .tr-thumb { border-radius: 8px; }
+html.riff-android .tr-title { font-weight: 600; }
+html.riff-android .track-row.playing .tr-title { color: var(--mb-acc); font-weight: 700; }
+html.riff-android .tr-artist { color: var(--mb-dim); }
+/* fixed right columns, so hearts and times line up in every row */
+html.riff-android .tr-fav { width: 20px; flex: 0 0 20px; }
+html.riff-android .tr-dur { width: 40px; flex: 0 0 40px; text-align: right; color: var(--mb-mute); font-variant-numeric: tabular-nums; }
+html.riff-android .mini-row, html.riff-android .np-q-row { border-radius: 10px; }
+html.riff-android .mini-row:active, html.riff-android .np-q-row:active { background: var(--mb-hover); }
 
-/* home: first-run card stacks (text, then button); carousels show ~2.3 cards */
+/* grids and headers wrap on a phone */
+html.riff-android .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
+html.riff-android .card { border-radius: 12px; }
+html.riff-android .card:hover { background: transparent; }
+html.riff-android .card:active { background: var(--mb-raised); }
+html.riff-android .card .c, html.riff-android .card .t, html.riff-android .card .cover { border-radius: 12px; }
+html.riff-android .card .a { font-weight: 600; }
+html.riff-android .card .b { color: var(--mb-dim); }
+html.riff-android .view .actions { flex-wrap: wrap; }
+/* nothing to open on a phone */
+html.riff-android .view [data-a="folder"] { display: none; }
+
+/* playlist / artist / mix header: cover on top, then title and a wrapping row of buttons */
+html.riff-android .hero { flex-direction: column; align-items: flex-start; gap: 14px; }
+html.riff-android .hero.has-banner { border-radius: 12px; padding: 18px 14px 16px; }
+html.riff-android .hero .cover { width: 168px; height: 168px; align-self: center; border-radius: 12px; box-shadow: none; background-color: var(--mb-hover); }
+html.riff-android .hero .meta { width: 100%; min-width: 0; }
+html.riff-android .hero .kicker { color: var(--mb-mute); font-weight: 600; }
+html.riff-android .hero h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.035em; overflow-wrap: anywhere; }
+html.riff-android .hero .actions { flex-wrap: wrap; gap: 8px; }
+
+/* ======================================================================
+   Home: chips, two columns of tiles, carousels that show ~2.3 cards
+   ====================================================================== */
+html.riff-android .hm-top { align-items: flex-start; gap: 8px; }
+html.riff-android .hm-chips { gap: 6px; }
+html.riff-android .hm-chip {
+  position: relative; height: 34px; border-radius: 8px !important; box-shadow: none !important;
+  background: var(--mb-raised) !important; color: var(--mb-dim) !important; font-weight: 500;
+}
+html.riff-android .hm-chip::before { content: ''; position: absolute; inset: -5px -2px; } /* 44px to tap */
+html.riff-android .hm-chip.active, html.riff-android .hm-chip.on { background: var(--mb-acc) !important; color: var(--mb-on-acc) !important; font-weight: 600; }
+html.riff-android .hm-tools { gap: 0; margin: -5px -12px 0 0; }
+html.riff-android .hm-tools .pill-btn { color: var(--mb-dim); }
+html.riff-android .hm-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+html.riff-android .hm-tile { height: 56px; border-radius: 10px; background: var(--mb-raised); }
+html.riff-android .hm-tile:hover { background: var(--mb-raised); }
+html.riff-android .hm-tile:active { background: var(--mb-hover); }
+html.riff-android .hm-tile:hover .hm-tile-text { padding-right: 0; }
+html.riff-android .hm-tile-art { width: 56px; height: 56px; flex-basis: 56px; }
+html.riff-android .hm-tile-art.hm-heart { background: var(--mb-hi); color: var(--on-surface); }
+html.riff-android .hm-tile-title { font-weight: 600; font-size: calc(13px * var(--fs)); }
+html.riff-android .hm-tile-sub { color: var(--mb-dim); }
+html.riff-android .hm-head { margin-bottom: 12px; }
+html.riff-android .hm-head h2 { font-size: calc(18px * var(--fs)); }
+html.riff-android .hm-showall { min-height: 44px; color: var(--mb-mute); font-weight: 600; background: transparent !important; }
+html.riff-android .hm-showall:active { color: var(--on-surface); }
+html.riff-android .hm-arrow { display: none; } /* the rows swipe */
+html.riff-android .hm-row { grid-auto-columns: 148px; gap: 12px; }
+html.riff-android .hm-cover { border-radius: 12px; box-shadow: none !important; background-color: var(--mb-hover); transform: none !important; }
+html.riff-android .hm-card .hm-title { font-weight: 600; }
+html.riff-android .hm-card .hm-sub { color: var(--mb-dim); }
+html.riff-android .hm-card:hover .hm-daily { padding-right: 10px; }
+html.riff-android .hm-artist { border-radius: 10px; }
+html.riff-android .hm-artist:hover { background: transparent; }
+html.riff-android .hm-artist:active { background: var(--mb-raised); }
+/* first-run card stacks (text, then button) */
+html.riff-android .hm-firstrun-card, html.riff-android .np-card {
+  background: var(--mb-raised) !important; border-radius: 12px !important; box-shadow: none !important; border: 0 !important;
+}
 html.riff-android .hm-firstrun-card { flex-wrap: wrap; gap: 12px; }
 html.riff-android .hm-firstrun-text { flex: 1 1 calc(100% - 64px); }
 html.riff-android .hm-firstrun-card > .btn,
 html.riff-android .hm-firstrun-card > .spinner { margin-left: 60px; }
-html.riff-android .hm-row { grid-auto-columns: 148px; gap: 12px; }
-html.riff-android .hm-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-/* player cover: plain rounded art instead of the desktop's oversized morphing ring */
-html.riff-android .pb-cover-canvas { display: none !important; }
-html.riff-android .pb-cover .pb-art { visibility: visible !important; }
-html.riff-android .pb-cover { filter: none; }
-
-/* the search bar stays readable over scrolled content */
-html.riff-android .top-nav { background: var(--bg); position: relative; z-index: 5; }
-
-/* mini player like phones do it: cover, title / artist, play, next */
-html.riff-android #pb-heart,
-html.riff-android #btn-prev { display: none !important; }
-html.riff-android .pb-text { min-width: 0; flex: 1; }
-html.riff-android .play-btn { width: 44px; height: 44px; }
-
-/* full-screen now playing (the karaoke view): cover, title + like, seek bar, controls, lyrics below */
-html.riff-android .tvk { padding-top: var(--sat, 0px); padding-bottom: var(--sab, 0px); }
-html.riff-android .tvk.tvk-idle .tvk-close,
-html.riff-android .tvk.tvk-idle .tvk-controls { opacity: 1 !important; pointer-events: auto !important; }
-html.riff-android .tvk.tvk-idle .tvk-meta { opacity: 1; }
-html.riff-android .tvk-close { top: calc(12px + var(--sat, 0px)); left: 14px; right: auto; }
-html.riff-android .tvk-layout { flex-direction: column !important; align-items: stretch; padding: 64px 22px 18px !important; gap: 14px !important; min-height: 0; flex: 1; }
-html.riff-android .tvk.tvk-nolyrics .tvk-layout { justify-content: center; }
-html.riff-android .tvk-side { flex-direction: column !important; align-items: stretch !important; text-align: left !important; gap: 16px; }
-html.riff-android .tvk-cover { width: min(100%, 42vh) !important; align-self: center; border-radius: 16px !important; }
-html.riff-android .tvk:not(.tvk-nolyrics) .tvk-cover { width: min(52vw, 22vh) !important; }
-html.riff-android .np-metarow { display: flex; align-items: center; gap: 10px; }
-html.riff-android .np-metarow .tvk-meta { flex: 1; min-width: 0; max-width: none; gap: 4px; }
-html.riff-android .tvk-title { font-size: 22px; }
-html.riff-android .tvk-artist { font-size: 15px; }
-html.riff-android .np-seek { display: flex; flex-direction: column; gap: 2px; }
-html.riff-android .np-seek input { width: 100%; accent-color: #fff; height: 28px; margin: 0; }
-html.riff-android .np-times { display: flex; justify-content: space-between; font-size: 12px; color: #ffffffa6; font-variant-numeric: tabular-nums; }
-html.riff-android .tvk-controls { display: flex !important; justify-content: space-between; gap: 0; padding: 0 4px; }
-html.riff-android .tvk-ctrl svg { width: 24px; height: 24px; }
-html.riff-android .tvk-ctrl.on, html.riff-android .tvk-ctrl.active { color: var(--primary, #fff); opacity: 1; }
-html.riff-android .np-heart.on svg { fill: currentColor; }
-html.riff-android .tvk-play { width: 68px; height: 68px; }
-html.riff-android .tvk-content { flex: 1; min-height: 0; overflow: hidden; }
-html.riff-android .tvk-list { padding-inline: 4px; }
-html.riff-android .tvk-visualizer { bottom: var(--sab, 0px); }
-
-/* grids and headers wrap on a phone */
-html.riff-android .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+/* Discover */
+html.riff-android .dc-wave { background: var(--mb-raised) !important; border-radius: 14px !important; box-shadow: none !important; }
 html.riff-android .dc-wave-head { flex-wrap: wrap; padding: 0 16px; row-gap: 10px; }
 html.riff-android .dc-wave-head > div:first-child { flex: 1 1 100%; }
 html.riff-android .dc-wave-msg { flex-direction: column; text-align: center; gap: 10px; }
-html.riff-android .view .actions { flex-wrap: wrap; }
-/* nothing to open on a phone */
-html.riff-android .view [data-a="folder"] { display: none; }
-/* text + button cards stack */
-html.riff-android .set-card { flex-wrap: wrap; row-gap: 12px; }
-html.riff-android .set-card > .i { flex: 1 1 100%; min-width: 0; }
-/* library search gets its own line */
-html.riff-android .lib-tools .lib-search { flex: 1 1 100%; }
-/* desktop-only settings (tray, media keys, multiple windows) */
-html.riff-android .th-item:has([data-sys-sw]) { display: none; }
-/* settings tabs: all icons visible (two rows) instead of a sideways scroller */
-html.riff-android .settings-nav { flex-wrap: wrap; overflow: visible; justify-content: flex-start; gap: 4px; }
-html.riff-android .settings-nav-btn { flex: 0 0 auto; }
-html.riff-android .settings-nav-btn.active span { display: inline; }
-html.riff-android .np-extra { display: flex; justify-content: center; gap: 10px; }
-html.riff-android .np-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 99px; background: #ffffff1f; color: #fff; font-size: 13px; font-weight: 500; }
-html.riff-android .np-chip svg { width: 16px; height: 16px; }
-/* playlist / artist / mix header: cover on top, then title and a wrapping row of buttons */
-html.riff-android .hero { flex-direction: column; align-items: flex-start; gap: 14px; }
-html.riff-android .hero .cover { width: 168px; height: 168px; align-self: center; }
-html.riff-android .hero .meta { width: 100%; min-width: 0; }
-html.riff-android .hero h1 { font-size: 30px; overflow-wrap: anywhere; }
-html.riff-android .hero .actions { flex-wrap: wrap; gap: 8px; }
-
-/* search: the source chip shows just its icon, the box keeps the full width for typing */
-html.riff-android .search-box .src-chip { margin-left: 0; padding: 0 8px; gap: 2px; height: 36px; flex: none; }
-html.riff-android .search-box .src-chip > span,
-html.riff-android .search-box > svg { display: none; }
-
-/* insets inside zoomed fixed layers */
-html.riff-android .rail { padding-bottom: calc(6px + var(--sab, 0px) / var(--app-zoom, 1)); }
-html.riff-android .tvk { padding-top: calc(var(--sat, 0px) / var(--app-zoom, 1)); padding-bottom: calc(var(--sab, 0px) / var(--app-zoom, 1)); }
-html.riff-android .toasts { bottom: calc(140px + var(--sab, 0px) / var(--app-zoom, 1)); }
-/* the on-screen keyboard (--sak) shouldn't cover dialog inputs */
-html.riff-android .modal-wrap { padding-bottom: calc(var(--sak, 0px) / var(--app-zoom, 1)); }
-html.riff-android .menu { max-height: calc(100vh / var(--app-zoom, 1) - 160px); overflow-y: auto; }
-
-/* touch targets: at least ~40 px */
-html.riff-android :is(.search-clear, .sync-mini, .fx-chip-act) { min-width: 40px; min-height: 40px; }
-html.riff-android .pill-btn { min-width: 40px; min-height: 40px; }
-html.riff-android :is(.btn, .ctrl-btn) { min-height: 40px; }
-html.riff-android .ctrl-btn { min-width: 40px; }
-html.riff-android .dc-ah-nav { opacity: 1 !important; width: 40px; height: 40px; }
-
+html.riff-android .dc-row::-webkit-scrollbar { display: none; }
+/* sideways rows run to the card's edges; their first item starts on the inner padding */
+html.riff-android :is(.dc-row, .hm-row) { margin-inline: calc(-1 * var(--mb-pad)); padding-inline: var(--mb-pad); scroll-padding-inline: var(--mb-pad); }
+html.riff-android .dc-row { gap: 12px; padding-top: 0; }
+html.riff-android .dc-row .card { margin: 0; padding: 0; }
+html.riff-android .dc-artist { width: 96px; padding: 0 0 6px; border-radius: 10px; }
+html.riff-android .dc-artist:hover { background: transparent; }
+html.riff-android .dc-artist-av { width: 96px; height: 96px; transform: none !important; }
+html.riff-android .dc-artist span { padding: 0; }
+html.riff-android .dc-ah-nav { opacity: 1 !important; width: 44px; height: 44px; }
 /* desktop-only bits */
 html.riff-android :is(.dc-card, .dc-custom, .dc-sub) { display: none !important; }
 html.riff-android .section-title:has(+ .dc-card) { display: none !important; }
+
+/* ======================================================================
+   Settings: tabs on top, one quiet block per group, rows split by hairlines
+   ====================================================================== */
+html.riff-android .settings-layout { flex-direction: column; align-items: stretch; gap: 16px; }
+/* all tab icons visible (they wrap) instead of a sideways scroller */
+html.riff-android .settings-nav {
+  flex-wrap: wrap; overflow: visible; justify-content: flex-start; gap: 4px;
+  background: var(--mb-raised) !important; box-shadow: none !important; padding: 4px !important; border-radius: 12px; width: 100%; position: static;
+}
+html.riff-android .settings-nav-btn { flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 12px; justify-content: center; border-radius: 8px !important; color: var(--mb-dim); }
+html.riff-android .settings-nav-btn:hover { background: transparent; }
+html.riff-android .settings-nav-btn.active, html.riff-android .settings-nav-btn.active:hover { background: var(--mb-acc); color: var(--mb-on-acc); font-weight: 600; }
+html.riff-android .settings-nav-btn.active span { display: inline; }
 html.riff-android .settings-nav-btn:is([data-cat="custom-themes"], [data-cat="plugins"]) { display: none !important; }
+html.riff-android .settings-pane .section-title { font-size: calc(12.5px * var(--fs)); color: var(--mb-dim); font-weight: 700; letter-spacing: 0; margin: 22px 0 10px; }
+
+html.riff-android .th-group { gap: 0; background: var(--mb-raised); border-radius: 12px; }
+html.riff-android .th-group > .th-item, html.riff-android .th-group > .setting-item {
+  background: transparent !important; border-radius: 0 !important; padding: 14px 14px;
+  box-shadow: inset 0 -1px 0 var(--mb-sep) !important;
+}
+html.riff-android .th-group > :is(.th-item, .setting-item):last-child { box-shadow: none !important; }
+html.riff-android .th-group > .th-item:first-child { border-top-left-radius: 12px !important; border-top-right-radius: 12px !important; }
+html.riff-android .th-group > .th-item:last-child { border-bottom-left-radius: 12px !important; border-bottom-right-radius: 12px !important; }
+html.riff-android .th-item:has(.th-dd.open) { position: relative; z-index: 30; } /* an open dropdown sits above the rows after it */
+html.riff-android .th-name { font-weight: 600; }
+html.riff-android .th-desc { color: var(--mb-dim); }
+/* desktop-only settings (tray, media keys, multiple windows) */
+html.riff-android .th-item:has([data-sys-sw]) { display: none; }
 html.riff-android .sys-cache { min-width: 0 !important; }
-/* tabs shrink to fit at bigger UI scales */
-html.riff-android .rail .nav-item { min-width: 0; flex: 1 1 0; }
-html.riff-android .rail .nav-ind { width: min(52px, 100%); }
+/* text + button cards stack */
+html.riff-android .set-card {
+  flex-wrap: wrap; row-gap: 12px; padding: 16px 14px;
+  background: var(--mb-raised) !important; border-radius: 12px !important; box-shadow: none !important;
+}
+html.riff-android .set-card > .i { flex: 1 1 100%; min-width: 0; }
+html.riff-android .set-card .b { color: var(--mb-dim); }
+
+/* switch: 38 x 22 track, 16px thumb, accent when on */
+html.riff-android .switch { width: 38px; height: 22px; border: 0; background: var(--mb-hi); transition: background-color var(--mb-med) var(--mb-ease); }
+html.riff-android .switch::before { content: ''; position: absolute; inset: -11px -4px; } /* 44px to tap */
+html.riff-android .switch .thumb {
+  top: 3px; left: 3px; width: 16px; height: 16px; border: 0; background: var(--mb-mute); box-shadow: none;
+  transition: transform var(--mb-med) var(--mb-ease), background-color var(--mb-med) var(--mb-ease);
+}
+html.riff-android .switch .thumb svg { display: none; }
+html.riff-android .switch.active { background: var(--mb-acc); }
+html.riff-android .switch.active .thumb { transform: translateX(16px); background: var(--mb-on-acc); }
+
+/* slider: accent fill on a quiet track */
+html.riff-android .th-sl { height: 44px; }
+html.riff-android .th-sl-on, html.riff-android .th-sl-off { top: 19px; height: 6px; }
+html.riff-android .th-sl-on { background: var(--mb-acc); border-radius: 3px; width: max(0px, calc((100% - 20px) * var(--v) + 10px - 13px)); }
+html.riff-android .th-sl-off { background: var(--mb-hi); border-radius: 3px; width: max(0px, calc(100% - ((100% - 20px) * var(--v) + 10px) - 13px)); }
+html.riff-android .th-sl input[type="range"] { height: 44px; }
+html.riff-android .th-sl input[type="range"]::-webkit-slider-runnable-track { height: 44px; }
+html.riff-android .th-sl input[type="range"]::-webkit-slider-thumb,
+html.riff-android .th-sl input[type="range"]:active::-webkit-slider-thumb { width: 20px; height: 20px; margin-top: 12px; border-radius: 50%; background: var(--mb-acc); }
+/* hue picker: its colour blocks stay, the gap follows the round thumb */
+html.riff-android .th-hue { --kx: calc((100% - 20px) * var(--v) + 10px); }
+html.riff-android .th-hue-track {
+  top: 15px; height: 14px;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--kx) - 14px), transparent calc(var(--kx) - 14px), transparent calc(var(--kx) + 14px), #000 calc(var(--kx) + 14px));
+  mask-image: linear-gradient(90deg, #000 calc(var(--kx) - 14px), transparent calc(var(--kx) - 14px), transparent calc(var(--kx) + 14px), #000 calc(var(--kx) + 14px));
+}
+html.riff-android .th-hue input[type="range"]::-webkit-slider-thumb { background: var(--on-surface); }
+
+/* segmented control */
+html.riff-android .th-seg { border-radius: 10px; background: var(--mb-hi); padding: 3px; gap: 2px; }
+html.riff-android .th-seg-btn { min-height: 38px; border-radius: 7px; color: var(--mb-dim); }
+html.riff-android .th-seg-btn:hover { background: transparent; }
+html.riff-android .th-seg-btn.active, html.riff-android .th-seg-btn.active:hover { background: var(--mb-acc); color: var(--mb-on-acc); font-weight: 600; }
+
+/* dropdown */
+html.riff-android .th-dd-trigger, html.riff-android .th-dd.open .th-dd-trigger {
+  min-height: 44px; background: var(--mb-hi) !important; border-radius: 10px !important; box-shadow: none !important;
+}
+html.riff-android .th-dd-menu {
+  top: calc(100% + 6px); padding: 5px; border-radius: 12px !important; background: var(--mb-hover) !important;
+  box-shadow: var(--mb-shadow) !important; max-height: 50vh; overflow-y: auto;
+  transform: translateY(-4px) scale(.98);
+  transition: opacity 140ms var(--mb-ease), transform 140ms var(--mb-ease) !important;
+}
+html.riff-android .th-dd.open .th-dd-menu { transform: none; }
+html.riff-android .th-dd-opt { min-height: 44px; border-radius: 8px !important; }
+html.riff-android .th-dd-opt:hover { background: transparent; }
+html.riff-android .th-dd-opt:active { background: var(--mb-hi) !important; }
+html.riff-android .th-dd-opt.selected { color: var(--on-surface); font-weight: 600; }
+html.riff-android .th-dd-opt.selected::before { background: var(--mb-acc); }
+html.riff-android .th-swatch.active { outline: 2px solid var(--on-surface); outline-offset: 3px; }
+
+/* ======================================================================
+   Popups: menus, dialogs, toasts fit the screen and share one surface
+   ====================================================================== */
+html.riff-android .menu {
+  max-width: calc(100vw - 16px); max-height: calc(100vh / var(--app-zoom, 1) - 160px); overflow-y: auto;
+  min-width: 232px; padding: 6px !important; border-radius: 14px !important; background: var(--mb-hover) !important;
+  box-shadow: var(--mb-shadow) !important; border: 0 !important;
+}
+html.riff-android .menu button { min-height: 44px; padding: 0 14px; border-radius: 9px !important; font-size: calc(13px * var(--fs)); color: var(--on-surface); }
+html.riff-android .menu.has-checks button { padding-left: 10px; }
+html.riff-android .menu button:hover { background: transparent !important; }
+html.riff-android .menu button:active { background: var(--mb-hi) !important; }
+html.riff-android .menu .sep { margin: 5px 10px; background: var(--mb-sep) !important; }
+
+/* the on-screen keyboard (--sak) shouldn't cover dialog inputs */
+html.riff-android .modal-wrap {
+  padding-bottom: calc(var(--sak, 0px) / var(--app-zoom, 1));
+  background: rgba(0, 0, 0, .55) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  animation: mb-fade 120ms ease-out !important;
+}
+html.riff-android .modal {
+  max-width: calc(100vw - 24px); max-height: calc(100vh - 48px - var(--sat, 0px) - var(--sab, 0px)); overflow: auto;
+  padding: 20px 18px 18px !important; border-radius: 16px !important; background: var(--mb-card) !important;
+  box-shadow: var(--mb-shadow) !important; border: 0 !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  animation: mb-pop 160ms var(--mb-ease) !important;
+}
+html.riff-android .modal h3 { font-size: calc(16px * var(--fs)); font-weight: 700; letter-spacing: -0.02em; }
+html.riff-android .modal p { color: var(--mb-dim); }
+html.riff-android .modal input:not([type="range"]):not([type="checkbox"]):not([type="radio"]) {
+  min-height: 44px; font-size: 16px; background: var(--mb-raised) !important; border-radius: 10px !important;
+}
+html.riff-android .modal input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus {
+  background: var(--mb-hover) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mb-acc) 40%, transparent);
+}
+html.riff-android .modal .row-btns { gap: 8px; margin-top: 18px; }
+html.riff-android .modal .th-group { background: var(--mb-raised); }
+
+html.riff-android .toasts { bottom: calc(140px + var(--sab, 0px) / var(--app-zoom, 1)); width: calc(100% - 2 * var(--mb-gutter)); }
+html.riff-android .toast {
+  max-width: 100%; padding: 12px 16px; border-radius: 12px !important; font-weight: 500;
+  box-shadow: var(--mb-shadow) !important; animation: mb-rise 160ms var(--mb-ease) !important;
+}
+html.riff-android .toast:not(.error) { background: var(--mb-hover) !important; color: var(--on-surface) !important; }
+
+/* ======================================================================
+   Full-screen now playing (the karaoke view): a flat sheet with cover, title + like,
+   seek bar, controls, then lyrics below
+   ====================================================================== */
+html.riff-android .tvk {
+  padding-top: calc(var(--sat, 0px) / var(--app-zoom, 1)); padding-bottom: calc(var(--sab, 0px) / var(--app-zoom, 1));
+  background: var(--mb-ground); color: var(--on-surface);
+  transition: opacity var(--mb-med) var(--mb-ease);
+}
+html.riff-android .tvk-bg { display: none; }
+html.riff-android .tvk.tvk-idle { cursor: auto; }
+html.riff-android .tvk.tvk-idle .tvk-close,
+html.riff-android .tvk.tvk-idle .tvk-controls { opacity: 1 !important; pointer-events: auto !important; }
+html.riff-android .tvk.tvk-idle .tvk-meta { opacity: 1; }
+html.riff-android .tvk-close {
+  top: calc(10px + var(--sat, 0px) / var(--app-zoom, 1)); left: 12px; right: auto; width: 44px; height: 44px;
+  border: 0; border-radius: 10px; background: var(--mb-raised); color: var(--on-surface);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+html.riff-android .tvk-close:hover { background: var(--mb-raised); transform: none; }
+html.riff-android .tvk-close:active { background: var(--mb-hover); transform: scale(.97); }
+html.riff-android .tvk-layout { flex-direction: column !important; align-items: stretch; padding: 66px 22px 18px !important; gap: 14px !important; min-height: 0; flex: 1; }
+html.riff-android .tvk.tvk-nolyrics .tvk-layout { justify-content: center; }
+html.riff-android .tvk-side { flex-direction: column !important; align-items: stretch !important; text-align: left !important; gap: 16px; }
+html.riff-android .tvk-cover {
+  width: min(100%, 42vh) !important; align-self: center; border-radius: 12px !important;
+  background-color: var(--mb-raised); box-shadow: none; color: var(--mb-mute);
+}
+html.riff-android .tvk:not(.tvk-nolyrics) .tvk-cover { width: min(52vw, 22vh) !important; }
+html.riff-android .np-metarow { display: flex; align-items: center; gap: 10px; }
+html.riff-android .np-metarow .tvk-meta { flex: 1; min-width: 0; max-width: none; gap: 4px; }
+html.riff-android .tvk-meta { text-shadow: none; }
+html.riff-android .tvk-title { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; color: var(--on-surface); }
+html.riff-android .tvk-artist { font-size: 15px; color: var(--mb-dim); }
+html.riff-android .tvk-msg { color: var(--mb-mute); }
+html.riff-android .np-seek { display: flex; flex-direction: column; gap: 0; }
+html.riff-android .np-seek input { width: 100%; accent-color: var(--mb-acc); height: 44px; margin: 0; }
+html.riff-android .np-times { display: flex; justify-content: space-between; margin-top: -8px; font-size: 12px; color: var(--mb-dim); font-variant-numeric: tabular-nums; }
+html.riff-android .tvk-controls { display: flex !important; justify-content: space-between; gap: 0; padding: 0 2px; }
+html.riff-android .tvk-ctrl { width: 48px; height: 48px; border-radius: 10px; color: var(--on-surface); opacity: 1; }
+html.riff-android .tvk-ctrl:hover { background: transparent; }
+html.riff-android .tvk-ctrl:active { background: var(--mb-hover); transform: scale(.97); }
+html.riff-android .tvk-ctrl svg { width: 24px; height: 24px; }
+html.riff-android .tvk-ctrl:is(.np-shuffle, .np-repeat, .np-heart) { color: var(--mb-dim); }
+html.riff-android .tvk-ctrl.on, html.riff-android .tvk-ctrl.active { color: var(--mb-acc); opacity: 1; }
+html.riff-android .np-heart.on svg { fill: currentColor; }
+html.riff-android .tvk-play { width: 64px; height: 64px; border-radius: 50%; background: var(--mb-acc); color: var(--mb-on-acc); }
+html.riff-android .tvk-play:hover { transform: none; }
+html.riff-android .tvk-play:active { transform: scale(.94); }
+html.riff-android .np-extra { display: flex; justify-content: center; gap: 8px; }
+html.riff-android .np-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 10px;
+  background: var(--mb-raised); color: var(--on-surface); font-size: 13px; font-weight: 600;
+}
+html.riff-android .np-chip:active { background: var(--mb-hover); transform: scale(.97); }
+html.riff-android .np-chip svg { width: 16px; height: 16px; color: var(--mb-dim); }
+html.riff-android .tvk-content { flex: 1; min-height: 0; overflow: hidden; }
+html.riff-android .tvk-list { padding-inline: 4px; }
+/* lyrics take the theme's text colour again (the desktop karaoke view is white on a dimmed cover) */
+html.riff-android .tvk-list .lyric-line { --on-surface: inherit; color: var(--on-surface); }
+html.riff-android .tvk-list.plain .lyric-line, html.riff-android .tvk-list .lyric-translation { color: var(--mb-dim); }
+html.riff-android .tvk-visualizer { bottom: calc(var(--sab, 0px) / var(--app-zoom, 1)); }
+html.riff-android.th-light .tvk-visualizer canvas { filter: invert(1); } /* its bars are drawn white */
+
+/* ======================================================================
+   Touch targets and motion
+   ====================================================================== */
+html.riff-android :is(.search-clear, .sync-mini, .fx-chip-act) { min-width: 44px; min-height: 44px; }
+
+html.riff-android :is(.btn, .pill-btn, .ctrl-btn, .play-btn, .src-chip, .account-pill, .settings-nav-btn, .th-seg-btn, .hm-chip, .likes-src-btn,
+  .hm-tile, .hm-showall, .card, .hm-artist, .th-dd-trigger, .th-dd-opt, .menu button, .np-chip, .tvk-ctrl, .tvk-play, .tvk-close, .sh-item) {
+  transition: background-color var(--mb-fast) var(--mb-ease), color var(--mb-fast) var(--mb-ease),
+    box-shadow var(--mb-med) var(--mb-ease), opacity var(--mb-med) var(--mb-ease), transform var(--mb-med) var(--mb-ease) !important;
+}
+/* list rows are placed by the list itself, so only their colour eases */
+html.riff-android :is(.track-row, .mini-row, .np-q-row) { transition: background-color var(--mb-fast) var(--mb-ease), color var(--mb-fast) var(--mb-ease) !important; }
+html.riff-android :is(.btn, .pill-btn, .ctrl-btn, .src-chip, .account-pill, .settings-nav-btn, .th-seg-btn, .hm-chip, .likes-src-btn, .hm-tile):active { transform: scale(.97); }
+html.riff-android .play-btn:active { transform: scale(.94); }
+
+@keyframes mb-pop { from { opacity: 0; transform: translateY(4px) scale(.98); } }
+@keyframes mb-fade { from { opacity: 0; } }
+@keyframes mb-rise { from { opacity: 0; transform: translateY(6px); } }
+html.riff-android .menu:not([hidden]) { animation: mb-pop 140ms var(--mb-ease); }
+html.riff-android .settings-pane.settings-in { animation: mb-rise 160ms var(--mb-ease) !important; }
+
+html.riff-android body.reduce-motion *, html.riff-android body.reduce-motion *::before, html.riff-android body.reduce-motion *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+@media (prefers-reduced-motion: reduce) {
+  html.riff-android *, html.riff-android *::before, html.riff-android *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+}

@@ -2449,7 +2449,7 @@ let waveHover = false;
 // track plays. Drawn on a 120px canvas (CSS px) only while playing or hovered, at 30 / 60 fps.
 const COVER_PX = 70, COVER_CANVAS = 120, RING_GAP = 5, RING_W = 2.4;
 const cover = {
-  on: load('m3Cover', true),
+  on: load('m3Cover', false), // the shaped cover is opt-in (Settings > Interface)
   canvas: $('#pb-cover-canvas'),
   ctx: null,
   img: null, url: '',

@@ -1,9 +1,9 @@
 /* ======================================================================
-   Noxx look (themes.js sets html.th-noxx and the colour tokens).
+   Noxx look (themes.js sets html.th-noxx:not(.riff-android) and the colour tokens).
    Calm dark panels on a darker ground, one near-white accent, Inter.
    Separation is by fill, not outlines; small radii; no glow or gradients.
    ====================================================================== */
-html.th-noxx {
+html.th-noxx:not(.riff-android) {
   /* All from the theme's tokens, so the Colour look restyles the same layout. */
   --nx-ground: var(--bg);
   --nx-panel: var(--th-surface-solid, var(--surface));
@@ -18,51 +18,51 @@ html.th-noxx {
   --nx-acc: var(--primary);
   --nx-on-acc: var(--on-primary);
   --nx-acc-hover: color-mix(in srgb, var(--primary) 88%, var(--on-surface));
-  --nx-r: 16px;
+  --nx-r: var(--r-l, 16px);
 }
-html.th-noxx body { background: var(--nx-ground); font-family: var(--font-family); }
-html.th-noxx .organic-bg, html.th-noxx .m3-organic-bg { display: none !important; }
-html.th-noxx ::selection { background: color-mix(in srgb, var(--nx-acc) 28%, transparent); }
+html.th-noxx:not(.riff-android) body { background: var(--nx-ground); font-family: var(--font-family); }
+html.th-noxx:not(.riff-android) .organic-bg, html.th-noxx:not(.riff-android) .m3-organic-bg { display: none !important; }
+html.th-noxx:not(.riff-android) ::selection { background: color-mix(in srgb, var(--nx-acc) 28%, transparent); }
 
 /* ---------- top bar ---------- */
-html.th-noxx .search-box { background: var(--nx-field); border-radius: 11px; height: 40px; }
-html.th-noxx .search-box:focus-within { background: var(--nx-raised); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-acc) 40%, transparent); }
-html.th-noxx .src-chip { background: transparent !important; color: var(--nx-dim); border-radius: 8px; }
-html.th-noxx .src-chip:hover { background: var(--nx-hover) !important; color: var(--on-surface); }
-html.th-noxx .top-home { background: var(--nx-field) !important; border-radius: 11px !important; color: var(--on-surface); }
-html.th-noxx .top-home:hover { background: var(--nx-raised) !important; }
-html.th-noxx .account-pill { background: var(--nx-field); }
-html.th-noxx .account-pill:hover { background: var(--nx-raised); }
-html.th-noxx .win-btn { border-radius: 8px; }
-html.th-noxx .win-btn:hover { background: var(--nx-hover); }
-html.th-noxx .win-btn.close:hover { background: #E81123; color: #fff; }
+html.th-noxx:not(.riff-android) .search-box { background: var(--nx-field); border-radius: 11px; height: 40px; }
+html.th-noxx:not(.riff-android) .search-box:focus-within { background: var(--nx-raised); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-acc) 40%, transparent); }
+html.th-noxx:not(.riff-android) .src-chip { background: transparent !important; color: var(--nx-dim); border-radius: 8px; }
+html.th-noxx:not(.riff-android) .src-chip:hover { background: var(--nx-hover) !important; color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .top-home { background: var(--nx-field) !important; border-radius: 11px !important; color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .top-home:hover { background: var(--nx-raised) !important; }
+html.th-noxx:not(.riff-android) .account-pill { background: var(--nx-field); }
+html.th-noxx:not(.riff-android) .account-pill:hover { background: var(--nx-raised); }
+html.th-noxx:not(.riff-android) .win-btn { border-radius: 8px; }
+html.th-noxx:not(.riff-android) .win-btn:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .win-btn.close:hover { background: #E81123; color: #fff; }
 
 /* ---------- sidebar: items on the ground, active item filled ---------- */
-html.th-noxx .nav-active-ind { background: var(--nx-raised) !important; border-radius: 10px !important; box-shadow: none !important; }
-html.th-noxx .nav-ind { border-radius: 10px; }
-html.th-noxx .nav-item:hover .nav-ind { background: var(--nx-hover); }
-html.th-noxx .nav-item .nav-ind, html.th-noxx .nav-item .nav-label { color: var(--nx-dim); }
-html.th-noxx .nav-item.active .nav-ind, html.th-noxx .nav-item.active .nav-label { color: var(--on-surface); }
-html.th-noxx .nav-item.active .nav-label { font-weight: 600; }
-html.th-noxx .rail-divider { background: var(--nx-sep) !important; }
+html.th-noxx:not(.riff-android) .nav-active-ind { background: var(--nx-raised) !important; border-radius: 10px !important; box-shadow: none !important; }
+html.th-noxx:not(.riff-android) .nav-ind { border-radius: 10px; }
+html.th-noxx:not(.riff-android) .nav-item:hover .nav-ind { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .nav-item .nav-ind, html.th-noxx:not(.riff-android) .nav-item .nav-label { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .nav-item.active .nav-ind, html.th-noxx:not(.riff-android) .nav-item.active .nav-label { color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .nav-item.active .nav-label { font-weight: 600; }
+html.th-noxx:not(.riff-android) .rail-divider { background: var(--nx-sep) !important; }
 
 /* ---------- panels ---------- */
-html.th-noxx .main-content,
-html.th-noxx .right-panel {
+html.th-noxx:not(.riff-android) .main-content,
+html.th-noxx:not(.riff-android) .right-panel {
   background: var(--nx-panel) !important;
   border-radius: var(--nx-r) !important;
   box-shadow: none !important;
   border: 0 !important;
   backdrop-filter: none !important;
 }
-html.th-noxx .view::-webkit-scrollbar { width: 6px; }
-html.th-noxx .view::-webkit-scrollbar-track { background: transparent; margin: 14px 0; }
-html.th-noxx .view::-webkit-scrollbar-thumb { background: var(--nx-hi); border-radius: 3px; }
-html.th-noxx .view::-webkit-scrollbar-thumb:hover { background: var(--nx-hi); }
+html.th-noxx:not(.riff-android) .view::-webkit-scrollbar { width: 6px; }
+html.th-noxx:not(.riff-android) .view::-webkit-scrollbar-track { background: transparent; margin: 14px 0; }
+html.th-noxx:not(.riff-android) .view::-webkit-scrollbar-thumb { background: var(--nx-hi); border-radius: 3px; }
+html.th-noxx:not(.riff-android) .view::-webkit-scrollbar-thumb:hover { background: var(--nx-hi); }
 
 /* ---------- player: a floating bar ---------- */
-html.th-noxx .app-layout { padding-bottom: 12px; }
-html.th-noxx .playbar {
+html.th-noxx:not(.riff-android) .app-layout { padding-bottom: 12px; }
+html.th-noxx:not(.riff-android) .playbar {
   margin: 0 12px 12px !important;
   background: var(--nx-field) !important;
   border-radius: var(--nx-r) !important;
@@ -70,128 +70,128 @@ html.th-noxx .playbar {
   border: 0 !important;
   backdrop-filter: none !important;
 }
-html.th-noxx .play-btn, html.th-noxx .play-btn.is-playing { border-radius: 50% !important; background: var(--nx-acc); color: var(--nx-on-acc); }
-html.th-noxx .play-btn:hover { background: var(--nx-acc-hover); }
-html.th-noxx .ctrl-btn, html.th-noxx .pill-btn { border-radius: 9px; }
-html.th-noxx .pill-btn { background: transparent; }
-html.th-noxx .pill-btn:hover, html.th-noxx .ctrl-btn:hover { background: var(--nx-hover); }
-html.th-noxx .pill-btn.on { background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) .play-btn, html.th-noxx:not(.riff-android) .play-btn.is-playing { border-radius: 50% !important; background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) .play-btn:hover { background: var(--nx-acc-hover); }
+html.th-noxx:not(.riff-android) .ctrl-btn, html.th-noxx:not(.riff-android) .pill-btn { border-radius: 9px; }
+html.th-noxx:not(.riff-android) .pill-btn { background: transparent; }
+html.th-noxx:not(.riff-android) .pill-btn:hover, html.th-noxx:not(.riff-android) .ctrl-btn:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .pill-btn.on { background: var(--nx-acc); color: var(--nx-on-acc); }
 
 /* ---------- type ---------- */
-html.th-noxx .page-title { font-size: calc(24px * var(--fs)); font-weight: 800; letter-spacing: -0.035em; }
-html.th-noxx .page-sub { color: var(--nx-dim); }
-html.th-noxx .section-title, html.th-noxx .hm-head h2 { font-weight: 700; letter-spacing: -0.025em; }
-html.th-noxx .hm-head h2 svg, html.th-noxx .section-title svg { display: none; }
-html.th-noxx .hm-showall { color: var(--nx-mute); font-weight: 600; }
-html.th-noxx .hm-showall:hover { color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .page-title { font-size: calc(24px * var(--fs)); font-weight: 800; letter-spacing: -0.035em; }
+html.th-noxx:not(.riff-android) .page-sub { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .section-title, html.th-noxx:not(.riff-android) .hm-head h2 { font-weight: 700; letter-spacing: -0.025em; }
+html.th-noxx:not(.riff-android) .hm-head h2 svg, html.th-noxx:not(.riff-android) .section-title svg { display: none; }
+html.th-noxx:not(.riff-android) .hm-showall { color: var(--nx-mute); font-weight: 600; }
+html.th-noxx:not(.riff-android) .hm-showall:hover { color: var(--on-surface); }
 
 /* ---------- buttons, chips, fields ---------- */
-html.th-noxx .btn { border-radius: 10px !important; background: var(--nx-raised); }
-html.th-noxx .btn:not(:disabled):hover { background: var(--nx-hover); border-radius: 10px !important; }
-html.th-noxx .btn.primary { background: var(--nx-acc); color: var(--nx-on-acc); }
-html.th-noxx .btn.primary:not(:disabled):hover { background: var(--nx-acc-hover); }
-html.th-noxx .btn.outline { background: transparent; box-shadow: inset 0 0 0 1px var(--nx-hi); }
+html.th-noxx:not(.riff-android) .btn { border-radius: 10px !important; background: var(--nx-raised); }
+html.th-noxx:not(.riff-android) .btn:not(:disabled):hover { background: var(--nx-hover); border-radius: 10px !important; }
+html.th-noxx.th-highlight:not(.riff-android) .btn.primary { background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx.th-highlight:not(.riff-android) .btn.primary:not(:disabled):hover { background: var(--nx-acc-hover); }
+html.th-noxx:not(.riff-android) .btn.outline { background: transparent; box-shadow: inset 0 0 0 1px var(--nx-hi); }
 
-html.th-noxx .hm-chip { border-radius: 7px !important; background: transparent !important; color: var(--nx-dim) !important; box-shadow: none !important; }
-html.th-noxx .hm-chip:hover { color: var(--on-surface) !important; }
-html.th-noxx .hm-chip.active, html.th-noxx .hm-chip.on { background: var(--nx-acc) !important; color: var(--nx-on-acc) !important; font-weight: 600; }
-html.th-noxx .likes-src { background: var(--nx-field); border-radius: 10px; }
-html.th-noxx .likes-src-btn { border-radius: 7px; }
-html.th-noxx .likes-src-btn.on { background: var(--nx-acc); color: var(--nx-on-acc); }
-html.th-noxx .likes-src-btn.on span { color: color-mix(in srgb, var(--nx-on-acc) 55%, transparent); }
+html.th-noxx:not(.riff-android) .hm-chip { border-radius: 7px !important; background: transparent !important; color: var(--nx-dim) !important; box-shadow: none !important; }
+html.th-noxx:not(.riff-android) .hm-chip:hover { color: var(--on-surface) !important; }
+html.th-noxx:not(.riff-android) .hm-chip.active, html.th-noxx:not(.riff-android) .hm-chip.on { background: var(--nx-acc) !important; color: var(--nx-on-acc) !important; font-weight: 600; }
+html.th-noxx:not(.riff-android) .likes-src { background: var(--nx-field); border-radius: 10px; }
+html.th-noxx:not(.riff-android) .likes-src-btn { border-radius: 7px; }
+html.th-noxx:not(.riff-android) .likes-src-btn.on { background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) .likes-src-btn.on span { color: color-mix(in srgb, var(--nx-on-acc) 55%, transparent); }
 
-html.th-noxx input[type="text"]:not(#search-input), html.th-noxx input[type="search"], html.th-noxx select, html.th-noxx .lib-search {
+html.th-noxx:not(.riff-android) input[type="text"]:not(#search-input), html.th-noxx:not(.riff-android) input[type="search"], html.th-noxx:not(.riff-android) select, html.th-noxx:not(.riff-android) .lib-search {
   border-radius: 10px;
 }
-html.th-noxx .lib-search, html.th-noxx .lib-sort { background: var(--nx-field) !important; }
+html.th-noxx:not(.riff-android) .lib-search, html.th-noxx:not(.riff-android) .lib-sort { background: var(--nx-field) !important; }
 
 /* ---------- home ---------- */
-html.th-noxx .hm-tile { background: var(--nx-raised); border-radius: 10px; }
-html.th-noxx .hm-tile:hover { background: var(--nx-hover); }
-html.th-noxx .hm-cover { border-radius: 12px; box-shadow: none; background: var(--nx-hover); }
-html.th-noxx .hm-tile-art.hm-heart { background: var(--nx-hi); color: var(--on-surface); }
-html.th-noxx .hm-arrow { border-radius: 50%; background: var(--nx-raised); }
-html.th-noxx .hm-arrow:hover:not(:disabled) { background: var(--nx-hover); }
-html.th-noxx .hm-firstrun-card, html.th-noxx .np-card { background: var(--nx-raised) !important; box-shadow: none !important; border: 0 !important; }
+html.th-noxx:not(.riff-android) .hm-tile { background: var(--nx-raised); border-radius: 10px; }
+html.th-noxx:not(.riff-android) .hm-tile:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .hm-cover { border-radius: 12px; box-shadow: none; background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .hm-tile-art.hm-heart { background: var(--nx-hi); color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .hm-arrow { border-radius: 50%; background: var(--nx-raised); }
+html.th-noxx:not(.riff-android) .hm-arrow:hover:not(:disabled) { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .hm-firstrun-card, html.th-noxx:not(.riff-android) .np-card { background: var(--nx-raised) !important; box-shadow: none !important; border: 0 !important; }
 
 /* ---------- track lists ---------- */
-html.th-noxx .track-row { border-radius: 10px; }
-html.th-noxx .track-row:hover { background: var(--nx-raised); border-radius: 10px; }
-html.th-noxx .track-row.playing { background: var(--nx-raised); box-shadow: none; }
-html.th-noxx .track-row.playing .tr-title { color: var(--on-surface); }
-html.th-noxx .track-row.playing .tr-index { color: var(--nx-acc); }
-html.th-noxx .tr-dur, html.th-noxx .tr-index { color: var(--nx-mute); font-variant-numeric: tabular-nums; }
-html.th-noxx .track-row .pill-btn { background: transparent; }
-html.th-noxx .track-row .pill-btn:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .track-row { border-radius: 10px; }
+html.th-noxx:not(.riff-android) .track-row:hover { background: var(--nx-raised); border-radius: 10px; }
+html.th-noxx:not(.riff-android) .track-row.playing { background: var(--nx-raised); box-shadow: none; }
+html.th-noxx:not(.riff-android) .track-row.playing .tr-title { color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .track-row.playing .tr-index { color: var(--nx-acc); }
+html.th-noxx:not(.riff-android) .tr-dur, html.th-noxx:not(.riff-android) .tr-index { color: var(--nx-mute); font-variant-numeric: tabular-nums; }
+html.th-noxx:not(.riff-android) .track-row .pill-btn { background: transparent; }
+html.th-noxx:not(.riff-android) .track-row .pill-btn:hover { background: var(--nx-hover); }
 
 /* ---------- right panel ---------- */
-html.th-noxx .rp-art, html.th-noxx .right-panel-cover { border-radius: 12px; }
-html.th-noxx .rp-title { font-weight: 800; letter-spacing: -0.03em; }
-html.th-noxx .rp-next-title { color: var(--nx-mute); font-weight: 600; text-transform: none; letter-spacing: 0; }
-html.th-noxx .mini-row, html.th-noxx .np-q-row { border-radius: 9px; }
-html.th-noxx .mini-row:hover, html.th-noxx .np-q-row:hover { background: var(--nx-raised); }
+html.th-noxx:not(.riff-android) .rp-art, html.th-noxx:not(.riff-android) .right-panel-cover { border-radius: 12px; }
+html.th-noxx:not(.riff-android) .rp-title { font-weight: 800; letter-spacing: -0.03em; }
+html.th-noxx:not(.riff-android) .rp-next-title { color: var(--nx-mute); font-weight: 600; text-transform: none; letter-spacing: 0; }
+html.th-noxx:not(.riff-android) .mini-row, html.th-noxx:not(.riff-android) .np-q-row { border-radius: 9px; }
+html.th-noxx:not(.riff-android) .mini-row:hover, html.th-noxx:not(.riff-android) .np-q-row:hover { background: var(--nx-raised); }
 
 /* ---------- switches and sliders ---------- */
-html.th-noxx .switch { width: 38px; height: 22px; border: 0; background: var(--nx-hi); }
-html.th-noxx .switch .thumb { top: 3px; left: 3px; width: 16px; height: 16px; border: 0; background: var(--nx-mute); box-shadow: none; }
-html.th-noxx .switch .thumb svg { display: none; }
-html.th-noxx .switch.active { background: var(--nx-acc); }
-html.th-noxx .switch.active .thumb { transform: translateX(16px); background: var(--nx-ground); }
-html.th-noxx .th-sl-on { background: var(--nx-acc); }
+html.th-noxx:not(.riff-android) .switch { width: 38px; height: 22px; border: 0; background: var(--nx-hi); }
+html.th-noxx:not(.riff-android) .switch .thumb { top: 3px; left: 3px; width: 16px; height: 16px; border: 0; background: var(--nx-mute); box-shadow: none; }
+html.th-noxx:not(.riff-android) .switch .thumb svg { display: none; }
+html.th-noxx:not(.riff-android) .switch.active { background: var(--nx-acc); }
+html.th-noxx:not(.riff-android) .switch.active .thumb { transform: translateX(16px); background: var(--nx-ground); }
+html.th-noxx:not(.riff-android) .th-sl-on { background: var(--nx-acc); }
 
 /* ---------- settings: one quiet block per group, rows split by hairlines ---------- */
-html.th-noxx .settings-nav { background: transparent !important; box-shadow: none !important; padding: 0 !important; }
-html.th-noxx .settings-nav-btn { border-radius: 9px !important; height: calc(38px * var(--fs)); color: var(--nx-dim); }
-html.th-noxx .settings-nav-btn:hover { background: var(--nx-hover); }
-html.th-noxx .settings-nav-btn.active { background: var(--nx-raised); color: var(--on-surface); font-weight: 600; }
-html.th-noxx .th-group { gap: 0; background: var(--nx-raised); border-radius: 12px; }
-html.th-noxx .th-group > .th-item:first-child { border-top-left-radius: 12px !important; border-top-right-radius: 12px !important; }
-html.th-noxx .th-group > .th-item:last-child { border-bottom-left-radius: 12px !important; border-bottom-right-radius: 12px !important; }
+html.th-noxx:not(.riff-android) .settings-nav { background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+html.th-noxx:not(.riff-android) .settings-nav-btn { border-radius: 9px !important; height: calc(38px * var(--fs)); color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .settings-nav-btn:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .settings-nav-btn.active { background: var(--nx-raised); color: var(--on-surface); font-weight: 600; }
+html.th-noxx:not(.riff-android) .th-group { gap: 0; background: var(--nx-raised); border-radius: 12px; }
+html.th-noxx:not(.riff-android) .th-group > .th-item:first-child { border-top-left-radius: 12px !important; border-top-right-radius: 12px !important; }
+html.th-noxx:not(.riff-android) .th-group > .th-item:last-child { border-bottom-left-radius: 12px !important; border-bottom-right-radius: 12px !important; }
 /* An open dropdown sits above the rows after it. */
-html.th-noxx .th-item:has(.th-dd.open) { position: relative; z-index: 30; }
-html.th-noxx .th-group > .th-item, html.th-noxx .th-group > .setting-item {
+html.th-noxx:not(.riff-android) .th-item:has(.th-dd.open) { position: relative; z-index: 30; }
+html.th-noxx:not(.riff-android) .th-group > .th-item, html.th-noxx:not(.riff-android) .th-group > .setting-item {
   background: transparent !important; border-radius: 0 !important; box-shadow: inset 0 -1px 0 var(--nx-sep) !important;
 }
-html.th-noxx .th-group > .th-item:last-child, html.th-noxx .th-group > .setting-item:last-child { box-shadow: none !important; }
-html.th-noxx .th-group > .th-item:hover { background: color-mix(in srgb, var(--on-surface) 3%, transparent) !important; }
-html.th-noxx .th-name { font-weight: 600; }
-html.th-noxx .th-desc { color: var(--nx-dim); }
-html.th-noxx .settings-pane .section-title { font-size: calc(13px * var(--fs)); color: var(--nx-dim); font-weight: 700; letter-spacing: 0; }
-html.th-noxx .th-seg { border-radius: 10px; background: var(--nx-hi); padding: 3px; gap: 2px; }
-html.th-noxx .th-seg-btn { border-radius: 7px; color: var(--nx-dim); }
-html.th-noxx .th-seg-btn.active { background: var(--nx-acc); color: var(--nx-on-acc); }
-html.th-noxx .th-dd-trigger { background: var(--nx-hi) !important; border-radius: 9px !important; box-shadow: none !important; }
+html.th-noxx:not(.riff-android) .th-group > .th-item:last-child, html.th-noxx:not(.riff-android) .th-group > .setting-item:last-child { box-shadow: none !important; }
+html.th-noxx:not(.riff-android) .th-group > .th-item:hover { background: color-mix(in srgb, var(--on-surface) 3%, transparent) !important; }
+html.th-noxx:not(.riff-android) .th-name { font-weight: 600; }
+html.th-noxx:not(.riff-android) .th-desc { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .settings-pane .section-title { font-size: calc(13px * var(--fs)); color: var(--nx-dim); font-weight: 700; letter-spacing: 0; }
+html.th-noxx:not(.riff-android) .th-seg { border-radius: 10px; background: var(--nx-hi); padding: 3px; gap: 2px; }
+html.th-noxx:not(.riff-android) .th-seg-btn { border-radius: 7px; color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .th-seg-btn.active { background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) .th-dd-trigger { background: var(--nx-hi) !important; border-radius: 9px !important; box-shadow: none !important; }
 
 /* ---------- popups: menus, dropdowns, modals, toasts ---------- */
-html.th-noxx .menu, html.th-noxx .th-dd-menu {
+html.th-noxx:not(.riff-android) .menu, html.th-noxx:not(.riff-android) .th-dd-menu {
   background: var(--nx-hover) !important; border-radius: 12px !important; padding: 5px !important;
   box-shadow: var(--nx-ring), 0 18px 48px rgba(0, 0, 0, .6) !important; backdrop-filter: none !important;
 }
-html.th-noxx .menu button, html.th-noxx .th-dd-opt { border-radius: 8px !important; }
-html.th-noxx .menu button:hover, html.th-noxx .th-dd-opt:hover { background: var(--nx-hi) !important; }
-html.th-noxx .menu .sep { background: var(--nx-sep) !important; }
-html.th-noxx .modal-wrap { background: rgba(0, 0, 0, .6) !important; backdrop-filter: none !important; }
-html.th-noxx .modal {
+html.th-noxx:not(.riff-android) .menu button, html.th-noxx:not(.riff-android) .th-dd-opt { border-radius: 8px !important; }
+html.th-noxx:not(.riff-android) .menu button:hover, html.th-noxx:not(.riff-android) .th-dd-opt:hover { background: var(--nx-hi) !important; }
+html.th-noxx:not(.riff-android) .menu .sep { background: var(--nx-sep) !important; }
+html.th-noxx:not(.riff-android) .modal-wrap { background: rgba(0, 0, 0, .6) !important; backdrop-filter: none !important; }
+html.th-noxx:not(.riff-android) .modal {
   background: var(--nx-panel) !important; border-radius: 16px !important; padding: 22px 24px !important;
   box-shadow: var(--nx-ring), 0 24px 70px rgba(0, 0, 0, .7) !important; backdrop-filter: none !important;
 }
-html.th-noxx .modal h3 { font-size: calc(16px * var(--fs)); font-weight: 700; letter-spacing: -0.02em; }
-html.th-noxx .modal p { color: var(--nx-dim); }
-html.th-noxx .modal input { background: var(--nx-raised) !important; border-radius: 10px !important; }
-html.th-noxx .toast:not(.error) { background: var(--nx-hover) !important; color: var(--on-surface) !important; font-weight: 500; border-radius: 12px !important; box-shadow: var(--nx-ring), 0 14px 40px rgba(0, 0, 0, .6) !important; }
-html.th-noxx .toast.error { border-radius: 12px !important; }
+html.th-noxx:not(.riff-android) .modal h3 { font-size: calc(16px * var(--fs)); font-weight: 700; letter-spacing: -0.02em; }
+html.th-noxx:not(.riff-android) .modal p { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .modal input { background: var(--nx-raised) !important; border-radius: 10px !important; }
+html.th-noxx:not(.riff-android) .toast:not(.error) { background: var(--nx-hover) !important; color: var(--on-surface) !important; font-weight: 500; border-radius: 12px !important; box-shadow: var(--nx-ring), 0 14px 40px rgba(0, 0, 0, .6) !important; }
+html.th-noxx:not(.riff-android) .toast.error { border-radius: 12px !important; }
 
 /* ---------- the docked layout's own chrome is replaced by the panels above ---------- */
-html.th-noxx { --panel-bg: var(--nx-ground); --page-bg: var(--nx-panel); }
-html.th-noxx body.docked .rail::before, html.th-noxx body.docked .rail::after,
-html.th-noxx body.docked .playbar::before, html.th-noxx body.docked .playbar::after,
-html.th-noxx body.docked .app-layout::before, html.th-noxx body.docked .app-layout::after,
-html.th-noxx body.docked .main-content::before, html.th-noxx body.docked .main-content::after { display: none !important; content: none !important; }
+html.th-noxx:not(.riff-android) { --panel-bg: var(--nx-ground); --page-bg: var(--nx-panel); }
+html.th-noxx:not(.riff-android) body.docked .rail::before, html.th-noxx:not(.riff-android) body.docked .rail::after,
+html.th-noxx:not(.riff-android) body.docked .playbar::before, html.th-noxx:not(.riff-android) body.docked .playbar::after,
+html.th-noxx:not(.riff-android) body.docked .app-layout::before, html.th-noxx:not(.riff-android) body.docked .app-layout::after,
+html.th-noxx:not(.riff-android) body.docked .main-content::before, html.th-noxx:not(.riff-android) body.docked .main-content::after { display: none !important; content: none !important; }
 /* Flat ground: no album glow or texture behind the panels. */
-html.th-noxx .th-aurora, html.th-noxx .th-grain { display: none !important; }
+html.th-noxx:not(.riff-android) .th-aurora, html.th-noxx:not(.riff-android) .th-grain { display: none !important; }
 /* Narrow windows: keep room for the song title in the player. */
-html.th-noxx .pb-text { min-width: 0; flex: 1; }
-html.th-noxx .pb-title, html.th-noxx .pb-artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.th-noxx:not(.riff-android) .pb-text { min-width: 0; flex: 1; }
+html.th-noxx:not(.riff-android) .pb-title, html.th-noxx:not(.riff-android) .pb-artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 
 /* ======================================================================
@@ -202,111 +202,110 @@ html.th-noxx .pb-title, html.th-noxx .pb-artist { overflow: hidden; text-overflo
 .nx-greet { display: none; }
 
 /* ---------- top bar ---------- */
-html.th-noxx .noxx-word { font-family: var(--font-family) !important; font-weight: 800; font-size: 16px; letter-spacing: -0.03em; transform: none !important; }
-html.th-noxx body.docked .top-nav.top-panel { margin-left: 0; padding-left: 24px; }
-html.th-noxx .hist-btn { background: transparent !important; box-shadow: none !important; border-radius: 8px !important; color: var(--nx-dim); }
-html.th-noxx .hist-btn:hover:not(:disabled) { background: var(--nx-hover) !important; color: var(--on-surface); }
-html.th-noxx .search-box { height: 40px; padding: 0 6px; gap: 10px; }
-html.th-noxx .search-box > .src-chip { height: 30px; background: var(--nx-hi) !important; color: var(--on-surface); font-weight: 600; }
-html.th-noxx .account-pill { height: 34px; min-width: 34px; padding: 0; background: transparent; }
-html.th-noxx .account-pill .av { width: 34px; height: 34px; background-color: var(--nx-hi); }
-html.th-noxx .account-pill .ap-name { padding: 0 12px 0 2px; }
-html.th-noxx .account-pill:has(.ap-name:not(:empty)) { background: var(--nx-field); }
-html.th-noxx .win-btns { gap: 0; }
-html.th-noxx .win-btn { width: 34px; height: 30px; color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .noxx-word { font-family: var(--font-family) !important; font-weight: 800; font-size: 16px; letter-spacing: -0.03em; transform: none !important; }
+html.th-noxx:not(.riff-android) body.docked .top-nav.top-panel { margin-left: 0; padding-left: 24px; }
+html.th-noxx:not(.riff-android) .hist-btn { background: transparent !important; box-shadow: none !important; border-radius: 8px !important; color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .hist-btn:hover:not(:disabled) { background: var(--nx-hover) !important; color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .search-box { height: 40px; padding: 0 6px; gap: 10px; }
+html.th-noxx:not(.riff-android) .search-box > .src-chip { height: 30px; background: var(--nx-hi) !important; color: var(--on-surface); font-weight: 600; }
+html.th-noxx:not(.riff-android) .account-pill { height: 34px; min-width: 34px; padding: 0; background: transparent; }
+html.th-noxx:not(.riff-android) .account-pill .av { width: 34px; height: 34px; background-color: var(--nx-hi); }
+html.th-noxx:not(.riff-android) .account-pill .ap-name { padding: 0 12px 0 2px; }
+html.th-noxx:not(.riff-android) .account-pill:has(.ap-name:not(:empty)) { background: var(--nx-field); }
+html.th-noxx:not(.riff-android) .win-btns { gap: 0; }
+html.th-noxx:not(.riff-android) .win-btn { width: 34px; height: 30px; color: var(--nx-dim); }
 
 /* ---------- side bar: its own card ---------- */
-html.th-noxx #nav-active-ind { display: none !important; }
-html.th-noxx body.docked .rail {
+html.th-noxx:not(.riff-android) #nav-active-ind { display: none !important; }
+html.th-noxx:not(.riff-android) body.docked .rail {
   top: 64px; left: 12px; bottom: calc(var(--pb-h) + 12px); padding: 10px !important; gap: 2px;
   background: var(--nx-panel) !important; border-radius: var(--nx-r) !important;
 }
-html.th-noxx body.docked .app-layout.rail-sized { margin-left: calc(var(--rail-w) + 22px); gap: 10px; padding-right: 12px; }
-html.th-noxx .rail .nav-item { border-radius: 10px; transition: background 150ms ease; }
-html.th-noxx .rail .nav-item:hover { background: var(--nx-hover); }
-html.th-noxx .rail .nav-item.active { background: var(--container-high); }
-html.th-noxx .rail .nav-item.active .nav-ind { color: var(--nx-acc); }
-html.th-noxx .rail .nav-item .nav-ind, html.th-noxx .rail .nav-item:hover .nav-ind { background: transparent !important; }
-html.th-noxx .rail .nav-label { font-size: calc(13.5px * var(--fs)); }
-html.th-noxx .rail .rail-divider { width: auto; align-self: stretch; margin: 8px 10px; }
-html.th-noxx .rail .rail-resize-edge { right: -8px; }
+html.th-noxx:not(.riff-android) body.docked .app-layout.rail-sized { margin-left: calc(var(--rail-w) + 22px); gap: 10px; padding-right: 12px; }
+html.th-noxx:not(.riff-android) .rail .nav-item { border-radius: 10px; transition: background 150ms ease; }
+html.th-noxx:not(.riff-android) .rail .nav-item:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .rail .nav-item.active { background: var(--container-high); }
+html.th-noxx:not(.riff-android) .rail .nav-item.active .nav-ind { color: var(--nx-acc); }
+html.th-noxx:not(.riff-android) .rail .nav-item .nav-ind, html.th-noxx:not(.riff-android) .rail .nav-item:hover .nav-ind { background: transparent !important; }
+html.th-noxx:not(.riff-android) .rail .nav-label { font-size: calc(13.5px * var(--fs)); }
+html.th-noxx:not(.riff-android) .rail .rail-divider { width: auto; align-self: stretch; margin: 8px 10px; }
+html.th-noxx:not(.riff-android) .rail .rail-resize-edge { right: -8px; }
 
 /* ---------- Home: greeting + source chips, tiles, four cards per row ---------- */
-html.th-noxx .hm-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
-html.th-noxx .nx-greet { display: block; margin: 0 auto 0 0; font-size: calc(24px * var(--fs)); font-weight: 800; letter-spacing: -0.035em; }
-html.th-noxx .hm-quick { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important; gap: 8px !important; }
-html.th-noxx .hm-tile { height: 56px; }
-html.th-noxx .hm-tile-art { width: 56px; height: 56px; flex-basis: 56px; }
-html.th-noxx .hm-tile-title { font-weight: 600; font-size: calc(13.5px * var(--fs)); }
-html.th-noxx .hm-tile-sub { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .hm-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+html.th-noxx:not(.riff-android) .nx-greet { display: block; margin: 0 auto 0 0; font-size: calc(24px * var(--fs)); font-weight: 800; letter-spacing: -0.035em; }
+html.th-noxx:not(.riff-android) .hm-quick { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important; gap: 8px !important; }
+html.th-noxx:not(.riff-android) .hm-tile { height: 56px; }
+html.th-noxx:not(.riff-android) .hm-tile-art { width: 56px; height: 56px; flex-basis: 56px; }
+html.th-noxx:not(.riff-android) .hm-tile-title { font-weight: 600; font-size: calc(13.5px * var(--fs)); }
+html.th-noxx:not(.riff-android) .hm-tile-sub { color: var(--nx-dim); }
 /* Exactly four cards fit; the arrows page through the rest, so nothing is cut at the edge. */
-html.th-noxx .hm-row { gap: 16px !important; scroll-snap-type: x mandatory; scroll-padding: 0; }
-html.th-noxx .hm-row > * { flex: 0 0 calc((100% - 48px) / 4) !important; width: auto !important; min-width: 0 !important; max-width: none !important; scroll-snap-align: start; }
-html.th-noxx .hm-row.hm-artists { display: flex !important; overflow-x: auto; }
-html.th-noxx .hm-card .hm-title { font-weight: 600; margin-top: 10px; }
-html.th-noxx .hm-card .hm-sub { color: var(--nx-dim); }
-html.th-noxx .hm-section { margin-top: 28px; }
-html.th-noxx .hm-body > .hm-section:first-child { margin-top: 0; }
+html.th-noxx:not(.riff-android) .hm-row { gap: 16px !important; scroll-snap-type: x mandatory; scroll-padding: 0; }
+html.th-noxx:not(.riff-android) .hm-row > * { flex: 0 0 calc((100% - 48px) / 4) !important; width: auto !important; min-width: 0 !important; max-width: none !important; scroll-snap-align: start; }
+html.th-noxx:not(.riff-android) .hm-row.hm-artists { display: flex !important; overflow-x: auto; }
+html.th-noxx:not(.riff-android) .hm-card .hm-title { font-weight: 600; margin-top: 10px; }
+html.th-noxx:not(.riff-android) .hm-card .hm-sub { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .hm-section { margin-top: 28px; }
+html.th-noxx:not(.riff-android) .hm-body > .hm-section:first-child { margin-top: 0; }
 
 /* ---------- pages ---------- */
 
 /* ---------- right panel: tools, cover, title, artist, up next, artist cards ---------- */
-html.th-noxx .np-cover-shade { display: none !important; }
-html.th-noxx #right-panel { padding: 14px; gap: 14px; }
-html.th-noxx #right-panel > .ly-bar { background: var(--nx-field); border-radius: 10px; box-shadow: none; align-self: center; }
-html.th-noxx .ly-tab { border-radius: 7px; }
-html.th-noxx .ly-tab.active { background: var(--nx-acc); color: var(--nx-on-acc); }
-html.th-noxx #right-panel .rp-art { width: 100% !important; aspect-ratio: 1; border-radius: 12px !important; clip-path: none !important; box-shadow: none !important; }
-html.th-noxx #right-panel .rp-art-box { display: block !important; padding: 0 !important; }
-html.th-noxx #right-panel .rp-meta { position: static !important; padding: 14px 2px 0 !important; text-align: left !important; width: auto !important; gap: 3px; }
-html.th-noxx #right-panel .rp-title { font-size: calc(18px * var(--fs)) !important; font-weight: 800 !important; letter-spacing: -0.03em; color: var(--on-surface) !important; text-shadow: none !important; }
-html.th-noxx #right-panel .rp-artist { font-size: calc(13px * var(--fs)) !important; color: var(--nx-dim) !important; font-weight: 400 !important; }
-html.th-noxx #right-panel.ly-on .ly-section { margin: 0 !important; background: var(--nx-raised); border-radius: 12px; }
+html.th-noxx:not(.riff-android) .np-cover-shade { display: none !important; }
+html.th-noxx:not(.riff-android) #right-panel { padding: 14px; gap: 14px; }
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar { background: var(--nx-field); border-radius: 10px; box-shadow: none; align-self: center; }
+html.th-noxx:not(.riff-android) .ly-tab { border-radius: 7px; }
+html.th-noxx:not(.riff-android) .ly-tab.active { background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) #right-panel.np-large .rp-art { width: 100% !important; aspect-ratio: 1; border-radius: 12px !important; box-shadow: none !important; }
+html.th-noxx:not(.riff-android) #right-panel.np-large .rp-art-box { display: block !important; padding: 0 !important; }
+html.th-noxx:not(.riff-android) #right-panel.np-large .rp-meta { position: static !important; padding: 14px 2px 0 !important; width: auto !important; gap: 3px; }
+html.th-noxx:not(.riff-android) #right-panel .rp-title { font-size: calc(18px * var(--fs)) !important; font-weight: 800 !important; letter-spacing: -0.03em; color: var(--on-surface) !important; text-shadow: none !important; }
+html.th-noxx:not(.riff-android) #right-panel .rp-artist { font-size: calc(13px * var(--fs)) !important; color: var(--nx-dim) !important; font-weight: 400 !important; }
+html.th-noxx:not(.riff-android) #right-panel.ly-on .ly-section { margin: 0 !important; background: var(--nx-raised); border-radius: 12px; }
 
 /* ---------- player ---------- */
-html.th-noxx .pb-art { visibility: visible !important; width: 52px; height: 52px; border-radius: 9px; }
-html.th-noxx .pb-cover-canvas { display: none !important; }
-html.th-noxx .pb-cover { width: 52px; height: 52px; filter: none !important; }
-html.th-noxx body.docked .playbar { padding: 0 18px 0 12px; }
-html.th-noxx .pb-title { font-weight: 700; }
-html.th-noxx .pb-viz { display: none !important; }
-html.th-noxx .pb-right .pill-btn:not(.on), html.th-noxx .pb-left .pill-btn:not(.on):not(.heart) { color: var(--nx-dim); }
-html.th-noxx .pb-right .pill-btn:hover, html.th-noxx .pb-left .pill-btn:hover { color: var(--on-surface); }
-html.th-noxx .time { color: var(--nx-dim); font-variant-numeric: tabular-nums; }
+html.th-noxx:not(.riff-android) body:not(.m3-cover-on) .pb-art { visibility: visible !important; width: 52px; height: 52px; border-radius: 9px; }
+html.th-noxx:not(.riff-android) body:not(.m3-cover-on) .pb-cover-canvas { display: none !important; }
+html.th-noxx:not(.riff-android) body:not(.m3-cover-on) .pb-cover { width: 52px; height: 52px; filter: none !important; }
+html.th-noxx:not(.riff-android) body.docked .playbar { padding: 0 18px 0 12px; }
+html.th-noxx:not(.riff-android) .pb-title { font-weight: 700; }
+html.th-noxx:not(.riff-android) .pb-right .pill-btn:not(.on), html.th-noxx:not(.riff-android) .pb-left .pill-btn:not(.on):not(.heart) { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .pb-right .pill-btn:hover, html.th-noxx:not(.riff-android) .pb-left .pill-btn:hover { color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .time { color: var(--nx-dim); font-variant-numeric: tabular-nums; }
 
 /* ---------- search: icon, text, source picker inside on the right ---------- */
-html.th-noxx #nav-home { display: none !important; }
-html.th-noxx .search-box { padding: 0 5px 0 14px; }
-html.th-noxx .search-box > svg { order: 1; width: 15px; height: 15px; color: var(--nx-mute); }
-html.th-noxx .search-box > input { order: 2; font-size: calc(13.5px * var(--fs)); }
-html.th-noxx .search-box > .search-clear { order: 3; }
-html.th-noxx .search-box > .src-chip { order: 4; background: transparent !important; color: var(--nx-dim); font-weight: 400; }
-html.th-noxx .search-box > .src-chip:hover { background: var(--nx-hover) !important; color: var(--on-surface); }
+html.th-noxx:not(.riff-android) #nav-home { display: none !important; }
+html.th-noxx:not(.riff-android) .search-box { padding: 0 5px 0 14px; }
+html.th-noxx:not(.riff-android) .search-box > svg { order: 1; width: 15px; height: 15px; color: var(--nx-mute); }
+html.th-noxx:not(.riff-android) .search-box > input { order: 2; font-size: calc(13.5px * var(--fs)); }
+html.th-noxx:not(.riff-android) .search-box > .search-clear { order: 3; }
+html.th-noxx:not(.riff-android) .search-box > .src-chip { order: 4; background: transparent !important; color: var(--nx-dim); font-weight: 400; }
+html.th-noxx:not(.riff-android) .search-box > .src-chip:hover { background: var(--nx-hover) !important; color: var(--on-surface); }
 
 /* ---------- even edges: the three cards end on one line, same gap everywhere ---------- */
-html.th-noxx body.docked .app-layout.rail-sized { padding-bottom: 10px; gap: 10px; }
-html.th-noxx body.docked .right-panel { margin-bottom: 0 !important; }
-html.th-noxx body.docked .rail { bottom: calc(var(--pb-h) + 10px); }
-html.th-noxx body.docked .playbar { margin: 0 12px 12px !important; height: calc(var(--pb-h) - 12px); padding: 0 16px 0 12px; }
+html.th-noxx:not(.riff-android) body.docked .app-layout.rail-sized { padding-bottom: 10px; gap: 10px; }
+html.th-noxx:not(.riff-android) body.docked .right-panel { margin-bottom: 0 !important; }
+html.th-noxx:not(.riff-android) body.docked .rail { bottom: calc(var(--pb-h) + 10px); }
+html.th-noxx:not(.riff-android) body.docked .playbar { margin: 0 12px 12px !important; height: calc(var(--pb-h) - 12px); padding: 0 16px 0 12px; }
 
 /* ---------- rows: exactly four cards ---------- */
-html.th-noxx .hm-row { grid-auto-columns: calc((100% - 48px) / 4) !important; }
+html.th-noxx:not(.riff-android) .hm-row { grid-auto-columns: calc((100% - 48px) / 4) !important; }
 
 /* ---------- right panel title block stays inside the card ---------- */
-html.th-noxx #right-panel .rp-meta { width: 100% !important; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; margin: 0 !important; }
-html.th-noxx #right-panel .rp-title, html.th-noxx #right-panel .rp-artist { width: auto !important; max-width: 100%; }
+html.th-noxx:not(.riff-android) #right-panel .rp-meta { width: 100% !important; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; margin: 0 !important; }
+html.th-noxx:not(.riff-android) #right-panel .rp-title, html.th-noxx:not(.riff-android) #right-panel .rp-artist { width: auto !important; max-width: 100%; }
 
 /* ---------- player: controls centred with air above and below ---------- */
-html.th-noxx, html.th-noxx body, html.th-noxx body.docked { --pb-h: 100px; }
-html.th-noxx body.docked .playbar { height: calc(var(--pb-h) - 12px); align-items: center; }
-html.th-noxx .pb-center { display: flex; flex-direction: column; justify-content: center; gap: 6px; height: 100%; padding: 10px 0; box-sizing: border-box; }
-html.th-noxx .pb-controls { gap: 14px; align-items: center; }
-html.th-noxx .play-btn { width: 40px; height: 40px; }
-html.th-noxx .play-btn svg { width: 18px; height: 18px; }
+html.th-noxx:not(.riff-android), html.th-noxx:not(.riff-android) body, html.th-noxx:not(.riff-android) body.docked { --pb-h: 100px; }
+html.th-noxx:not(.riff-android) body.docked .playbar { height: calc(var(--pb-h) - 12px); align-items: center; }
+html.th-noxx:not(.riff-android) .pb-center { display: flex; flex-direction: column; justify-content: center; gap: 6px; height: 100%; padding: 10px 0; box-sizing: border-box; }
+html.th-noxx:not(.riff-android) .pb-controls { gap: 14px; align-items: center; }
+html.th-noxx:not(.riff-android) .play-btn { width: 40px; height: 40px; }
+html.th-noxx:not(.riff-android) .play-btn svg { width: 18px; height: 18px; }
 
 
 /* ---------- player is a card like the others ---------- */
-html.th-noxx body.docked .playbar, html.th-noxx .playbar { background: var(--nx-panel) !important; box-shadow: none !important; }
+html.th-noxx:not(.riff-android) body.docked .playbar, html.th-noxx:not(.riff-android) .playbar { background: var(--nx-panel) !important; box-shadow: none !important; }
 
 /* ======================================================================
    Minimal layout (html.nx-min, the default; Settings > Theme > Layout).
@@ -314,102 +313,102 @@ html.th-noxx body.docked .playbar, html.th-noxx .playbar { background: var(--nx-
 .nx-lib, .nx-tabs { display: none; }
 
 /* top bar: wordmark, search, avatar */
-html.th-noxx.nx-min .brand svg, html.th-noxx.nx-min .brand .noxx-logo, html.th-noxx.nx-min .nav-history { display: none !important; }
-html.th-noxx.nx-min .noxx-word { font-size: 17px; letter-spacing: -0.04em; }
-html.th-noxx.nx-min .search-box { width: min(460px, 42vw) !important; height: 38px; }
+html.th-noxx:not(.riff-android).nx-min .brand svg, html.th-noxx:not(.riff-android).nx-min .brand .noxx-logo, html.th-noxx:not(.riff-android).nx-min .nav-history { display: none !important; }
+html.th-noxx:not(.riff-android).nx-min .noxx-word { font-size: 17px; letter-spacing: -0.04em; }
+html.th-noxx:not(.riff-android).nx-min .search-box { width: min(460px, 42vw) !important; height: 38px; }
 
 /* side bar: on the ground, four items, Settings at the bottom */
-html.th-noxx.nx-min .nx-lib { display: flex; }
-html.th-noxx.nx-min .rail .nav-item:is([data-view="likes"], [data-view="playlists"], [data-view="history"], [data-view="files"], [data-view="queue"]),
-html.th-noxx.nx-min .rail .rail-divider, html.th-noxx.nx-min .rail .rail-lib { display: none !important; }
-html.th-noxx.nx-min body.docked .rail { background: transparent !important; padding: 0 !important; }
-html.th-noxx.nx-min .rail .nav-item:hover, html.th-noxx.nx-min .rail .nav-item.active { background: var(--nx-field); }
-html.th-noxx.nx-min .rail .nav-item.active .nav-ind { color: var(--on-surface); }
-html.th-noxx.nx-min .rail .nav-item[data-view="settings"] { margin-top: auto; }
+html.th-noxx:not(.riff-android).nx-min .nx-lib { display: flex; }
+html.th-noxx:not(.riff-android).nx-min .rail .nav-item:is([data-view="likes"], [data-view="playlists"], [data-view="history"], [data-view="files"], [data-view="queue"]),
+html.th-noxx:not(.riff-android).nx-min .rail .rail-divider, html.th-noxx:not(.riff-android).nx-min .rail:not(.rail-wide) .rail-lib { display: none !important; }
+html.th-noxx:not(.riff-android).nx-min body.docked .rail { background: transparent !important; padding: 0 !important; }
+html.th-noxx:not(.riff-android).nx-min .rail .nav-item:hover, html.th-noxx:not(.riff-android).nx-min .rail .nav-item.active { background: var(--nx-field); }
+html.th-noxx:not(.riff-android).nx-min .rail .nav-item.active .nav-ind { color: var(--on-surface); }
+html.th-noxx:not(.riff-android).nx-min .rail .nav-item[data-view="settings"] { margin-top: auto; }
 
 /* Library tabs */
-html.th-noxx.nx-min .nx-tabs { display: flex; align-items: center; gap: 18px; margin: 0 0 18px; box-shadow: inset 0 -1px 0 var(--nx-sep); }
-html.th-noxx.nx-min .nx-tab { height: 34px; padding: 0; color: var(--nx-dim); font-size: calc(13.5px * var(--fs)); background: none; transition: color 150ms ease; }
-html.th-noxx.nx-min .nx-tab:hover { color: var(--on-surface); }
-html.th-noxx.nx-min .nx-tab.active { color: var(--on-surface); font-weight: 600; box-shadow: inset 0 -2px 0 var(--nx-acc); }
+html.th-noxx:not(.riff-android).nx-min .nx-tabs { display: flex; align-items: center; gap: 18px; margin: 0 0 18px; box-shadow: inset 0 -1px 0 var(--nx-sep); }
+html.th-noxx:not(.riff-android).nx-min .nx-tab { height: 34px; padding: 0; color: var(--nx-dim); font-size: calc(13.5px * var(--fs)); background: none; transition: color 150ms ease; }
+html.th-noxx:not(.riff-android).nx-min .nx-tab:hover { color: var(--on-surface); }
+html.th-noxx:not(.riff-android).nx-min .nx-tab.active { color: var(--on-surface); font-weight: 600; box-shadow: inset 0 -2px 0 var(--nx-acc); }
 
 /* Home: greeting, six tiles, four cards per row */
-html.th-noxx.nx-min .hm-top > :not(.nx-greet) { display: none !important; }
-html.th-noxx.nx-min .nx-greet { font-size: calc(26px * var(--fs)); letter-spacing: -0.04em; }
-html.th-noxx.nx-min .hm-quick { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
-html.th-noxx.nx-min .hm-quick > .hm-tile:nth-child(n+7), html.th-noxx.nx-min .hm-tile-sub { display: none; }
-html.th-noxx.nx-min .hm-tile { height: 54px; }
-html.th-noxx.nx-min .hm-tile-art { width: 54px; height: 54px; flex-basis: 54px; }
-html.th-noxx.nx-min .hm-row { overflow: hidden !important; }
-html.th-noxx.nx-min .hm-row > :nth-child(n+5), html.th-noxx.nx-min .hm-arrow { display: none !important; }
-html.th-noxx.nx-min .hm-card .hm-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.th-noxx:not(.riff-android).nx-min .hm-top > :not(.nx-greet) { display: none !important; }
+html.th-noxx:not(.riff-android).nx-min .nx-greet { font-size: calc(26px * var(--fs)); letter-spacing: -0.04em; }
+html.th-noxx:not(.riff-android).nx-min .hm-quick { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+html.th-noxx:not(.riff-android).nx-min .hm-quick > .hm-tile:nth-child(n+7), html.th-noxx:not(.riff-android).nx-min .hm-tile-sub { display: none; }
+html.th-noxx:not(.riff-android).nx-min .hm-tile { height: 54px; }
+html.th-noxx:not(.riff-android).nx-min .hm-tile-art { width: 54px; height: 54px; flex-basis: 54px; }
+html.th-noxx:not(.riff-android).nx-min .hm-row { overflow: hidden !important; }
+html.th-noxx:not(.riff-android).nx-min .hm-row > :nth-child(n+5), html.th-noxx:not(.riff-android).nx-min .hm-arrow { display: none !important; }
+html.th-noxx:not(.riff-android).nx-min .hm-card .hm-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* right panel: its tools show when the pointer is over the card */
-html.th-noxx.nx-min #right-panel.np-on > .ly-bar {
+html.th-noxx:not(.riff-android).nx-min #right-panel.np-on > .ly-bar {
   position: absolute; top: 24px; left: 50%; transform: translateX(-50%); z-index: 5; margin: 0;
   background: var(--nx-raised); opacity: 0; pointer-events: none; transition: opacity 160ms ease;
 }
-html.th-noxx.nx-min #right-panel:hover > .ly-bar, html.th-noxx.nx-min #right-panel > .ly-bar:focus-within { opacity: 1; pointer-events: auto; }
+html.th-noxx:not(.riff-android).nx-min #right-panel:hover > .ly-bar, html.th-noxx:not(.riff-android).nx-min #right-panel > .ly-bar:focus-within { opacity: 1; pointer-events: auto; }
 
 /* player: extras next to the title show on hover */
-html.th-noxx.nx-min .pb-left > .pill-btn:not(.heart):not(.on) { opacity: 0; transition: opacity 160ms ease; }
-html.th-noxx.nx-min .pb-left:hover > .pill-btn, html.th-noxx.nx-min .pb-left > .pill-btn:focus-visible { opacity: 1; }
+html.th-noxx:not(.riff-android).nx-min .pb-left > .pill-btn:not(.heart):not(.on) { opacity: 0; transition: opacity 160ms ease; }
+html.th-noxx:not(.riff-android).nx-min .pb-left:hover > .pill-btn, html.th-noxx:not(.riff-android).nx-min .pb-left > .pill-btn:focus-visible { opacity: 1; }
 
 /* ---------- right panel: no box inside the card, thin scrollbar ---------- */
-html.th-noxx #right-panel.ly-on .ly-section { background: transparent !important; border-radius: 0; margin: 4px 0 0 !important; }
-html.th-noxx #right-panel .lyrics-container { padding-left: 2px; padding-right: 2px; }
-html.th-noxx #right-panel *::-webkit-scrollbar { width: 6px; height: 6px; }
-html.th-noxx #right-panel *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-html.th-noxx #right-panel *::-webkit-scrollbar-track { background: transparent; }
-html.th-noxx #right-panel *::-webkit-scrollbar-thumb { background: var(--nx-hi); border-radius: 3px; }
-html.th-noxx .view::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-html.th-noxx #right-panel .rp-next-title { font-size: calc(12px * var(--fs)); margin-top: 6px; }
+html.th-noxx:not(.riff-android) #right-panel.ly-on .ly-section { background: transparent !important; border-radius: 0; margin: 4px 0 0 !important; }
+html.th-noxx:not(.riff-android) #right-panel .lyrics-container { padding-left: 2px; padding-right: 2px; }
+html.th-noxx:not(.riff-android) #right-panel *::-webkit-scrollbar { width: 6px; height: 6px; }
+html.th-noxx:not(.riff-android) #right-panel *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+html.th-noxx:not(.riff-android) #right-panel *::-webkit-scrollbar-track { background: transparent; }
+html.th-noxx:not(.riff-android) #right-panel *::-webkit-scrollbar-thumb { background: var(--nx-hi); border-radius: 3px; }
+html.th-noxx:not(.riff-android) .view::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+html.th-noxx:not(.riff-android) #right-panel .rp-next-title { font-size: calc(12px * var(--fs)); margin-top: 6px; }
 
 /* the side bar width handle only shows while it is used */
-html.th-noxx .rail-resize-edge { opacity: 0; transition: opacity 150ms ease; }
-html.th-noxx .rail-resize-edge:hover, html.th-noxx .rail-resize-edge:active { opacity: 1; }
+html.th-noxx:not(.riff-android) .rail-resize-edge { opacity: 0; transition: opacity 150ms ease; }
+html.th-noxx:not(.riff-android) .rail-resize-edge:hover, html.th-noxx:not(.riff-android) .rail-resize-edge:active { opacity: 1; }
 
 /* ======================================================================
    Pages
    ====================================================================== */
-html.th-noxx .page-title { margin-bottom: 6px; }
-html.th-noxx .page-title + :not(.page-sub) { margin-top: 16px; }
-html.th-noxx .page-sub { margin-bottom: 20px; }
-html.th-noxx .head-row { align-items: flex-end; margin-bottom: 18px; }
+html.th-noxx:not(.riff-android) .page-title { margin-bottom: 6px; }
+html.th-noxx:not(.riff-android) .page-title + :not(.page-sub) { margin-top: 16px; }
+html.th-noxx:not(.riff-android) .page-sub { margin-bottom: 20px; }
+html.th-noxx:not(.riff-android) .head-row { align-items: flex-end; margin-bottom: 18px; }
 
 /* list headers: round Play, quiet round Shuffle */
-html.th-noxx .head-row .actions { gap: 10px; align-items: center; }
-html.th-noxx .head-row .actions .btn[data-a="play"], html.th-noxx .head-row .actions .btn[data-a="shuffle"] {
+html.th-noxx:not(.riff-android) .head-row .actions { gap: 10px; align-items: center; }
+html.th-noxx:not(.riff-android) .head-row .actions .btn[data-a="play"], html.th-noxx:not(.riff-android) .head-row .actions .btn[data-a="shuffle"] {
   width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 50% !important; font-size: 0; gap: 0;
 }
-html.th-noxx .head-row .actions .btn[data-a="shuffle"] { width: 38px; height: 38px; order: -1; }
-html.th-noxx .head-row .actions .btn[data-a="play"] svg { width: 18px; height: 18px; margin-left: 2px; }
+html.th-noxx:not(.riff-android) .head-row .actions .btn[data-a="shuffle"] { width: 38px; height: 38px; order: -1; }
+html.th-noxx:not(.riff-android) .head-row .actions .btn[data-a="play"] svg { width: 18px; height: 18px; margin-left: 2px; }
 
 /* horizontal rows (artists, albums): fade out at the card edge instead of a hard cut */
-html.th-noxx .dc-row {
+html.th-noxx:not(.riff-android) .dc-row {
   -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent);
           mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent);
 }
-html.th-noxx .dc-row::-webkit-scrollbar { display: none; }
-html.th-noxx .card .t, html.th-noxx .card .cover, html.th-noxx .dc-row .card > :first-child { border-radius: 12px; }
+html.th-noxx:not(.riff-android) .dc-row::-webkit-scrollbar { display: none; }
+html.th-noxx:not(.riff-android) .card .t, html.th-noxx:not(.riff-android) .card .cover, html.th-noxx:not(.riff-android) .dc-row .card > :first-child { border-radius: 12px; }
 
 /* Discover: My Wave is a flat raised block */
-html.th-noxx .dc-wave { background: var(--nx-raised) !important; border-radius: 14px !important; box-shadow: none !important; }
-html.th-noxx .set-card { background: var(--nx-raised) !important; border-radius: 12px !important; box-shadow: none !important; }
-html.th-noxx .empty { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .dc-wave { background: var(--nx-raised) !important; border-radius: 14px !important; box-shadow: none !important; }
+html.th-noxx:not(.riff-android) .set-card { background: var(--nx-raised) !important; border-radius: 12px !important; box-shadow: none !important; }
+html.th-noxx:not(.riff-android) .empty { color: var(--nx-dim); }
 
 /* player: buttons next to the title take no room until the pointer is there (Minimal) */
-html.th-noxx.nx-min .pb-left > .pill-btn:not(.heart):not(.on) { width: 0; min-width: 0; padding: 0; margin: 0 -7px; overflow: hidden; transition: opacity 160ms ease, width 160ms ease, margin 160ms ease; }
-html.th-noxx.nx-min .pb-left:hover > .pill-btn:not(.heart):not(.on) { width: 34px; margin: 0; }
+html.th-noxx:not(.riff-android).nx-min .pb-left > .pill-btn:not(.heart):not(.on) { width: 0; min-width: 0; padding: 0; margin: 0 -7px; overflow: hidden; transition: opacity 160ms ease, width 160ms ease, margin 160ms ease; }
+html.th-noxx:not(.riff-android).nx-min .pb-left:hover > .pill-btn:not(.heart):not(.on) { width: 34px; margin: 0; }
 
 /* ======================================================================
    Motion. Everything eases, nothing takes longer than 200ms.
    Off with Settings > Advanced > Reduce motion (body.reduce-motion) or the system setting.
    ====================================================================== */
-html.th-noxx { --nx-ease: cubic-bezier(.2, .8, .2, 1); --nx-fast: 120ms; --nx-med: 160ms; }
+html.th-noxx:not(.riff-android) { --nx-ease: cubic-bezier(.2, .8, .2, 1); --nx-fast: 120ms; --nx-med: 160ms; }
 
 /* hover / press / select states */
-html.th-noxx :is(.btn, .pill-btn, .ctrl-btn, .play-btn, .win-btn, .hist-btn, .top-home, .src-chip, .account-pill, .search-box,
+html.th-noxx:not(.riff-android) :is(.btn, .pill-btn, .ctrl-btn, .play-btn, .win-btn, .hist-btn, .top-home, .src-chip, .account-pill, .search-box,
   .nav-item, .nav-ind, .nav-label, .settings-nav-btn, .nx-tab, .th-seg-btn, .hm-chip, .likes-src-btn, .ly-tab,
   .hm-tile, .hm-cover, .hm-showall, .hm-arrow, .track-row, .mini-row, .np-q-row, .card, .dc-artist,
   .th-item, .th-dd-trigger, .th-dd-opt, .menu button, .switch, .switch .thumb, .th-sl-on, .th-sl-off) {
@@ -417,122 +416,122 @@ html.th-noxx :is(.btn, .pill-btn, .ctrl-btn, .play-btn, .win-btn, .hist-btn, .to
     box-shadow var(--nx-med) var(--nx-ease), opacity var(--nx-med) var(--nx-ease),
     transform var(--nx-med) var(--nx-ease), border-radius var(--nx-med) var(--nx-ease) !important;
 }
-html.th-noxx :is(.btn, .pill-btn, .ctrl-btn, .win-btn, .hist-btn, .src-chip, .th-seg-btn, .hm-chip, .likes-src-btn, .settings-nav-btn, .nav-item):active { transform: scale(.97); }
-html.th-noxx .play-btn:hover { transform: scale(1.05); }
-html.th-noxx .play-btn:active { transform: scale(.94); }
-html.th-noxx .hm-tile:active, html.th-noxx .track-row:active, html.th-noxx .mini-row:active { transform: scale(.99); }
+html.th-noxx:not(.riff-android) :is(.btn, .pill-btn, .ctrl-btn, .win-btn, .hist-btn, .src-chip, .th-seg-btn, .hm-chip, .likes-src-btn, .settings-nav-btn, .nav-item):active { transform: scale(.97); }
+html.th-noxx:not(.riff-android) .play-btn:hover { transform: scale(1.05); }
+html.th-noxx:not(.riff-android) .play-btn:active { transform: scale(.94); }
+html.th-noxx:not(.riff-android) .hm-tile:active, html.th-noxx:not(.riff-android) .track-row:active, html.th-noxx:not(.riff-android) .mini-row:active { transform: scale(.99); }
 
 /* covers lift a little under the pointer */
-html.th-noxx .hm-card:hover .hm-cover, html.th-noxx .card:hover > :first-child { transform: translateY(-3px); }
-html.th-noxx .hm-card .hm-play { transition: opacity var(--nx-med) var(--nx-ease), transform var(--nx-med) var(--nx-ease) !important; }
-html.th-noxx .hm-card:not(:hover) .hm-play { transform: translateY(4px); }
-html.th-noxx .dc-artist:hover { transform: translateY(-2px); }
+html.th-noxx:not(.riff-android) .hm-card:hover .hm-cover, html.th-noxx:not(.riff-android) .card:hover > :first-child { transform: translateY(-3px); }
+html.th-noxx:not(.riff-android) .hm-card .hm-play { transition: opacity var(--nx-med) var(--nx-ease), transform var(--nx-med) var(--nx-ease) !important; }
+html.th-noxx:not(.riff-android) .hm-card:not(:hover) .hm-play { transform: translateY(4px); }
+html.th-noxx:not(.riff-android) .dc-artist:hover { transform: translateY(-2px); }
 
 /* Library tabs: the underline slides in */
-html.th-noxx.nx-min .nx-tab { position: relative; box-shadow: none !important; }
-html.th-noxx.nx-min .nx-tab::after {
+html.th-noxx:not(.riff-android).nx-min .nx-tab { position: relative; box-shadow: none !important; }
+html.th-noxx:not(.riff-android).nx-min .nx-tab::after {
   content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 1px; background: var(--nx-acc);
   transform: scaleX(0); transform-origin: center; transition: transform var(--nx-med) var(--nx-ease);
 }
-html.th-noxx.nx-min .nx-tab.active::after { transform: scaleX(1); }
+html.th-noxx:not(.riff-android).nx-min .nx-tab.active::after { transform: scaleX(1); }
 
 /* things that appear */
 @keyframes nx-pop { from { opacity: 0; transform: translateY(4px) scale(.98); } }
 @keyframes nx-fade { from { opacity: 0; } }
 @keyframes nx-rise { from { opacity: 0; transform: translateY(6px); } }
-html.th-noxx .menu:not([hidden]) { animation: nx-pop 140ms var(--nx-ease); transform-origin: top left; }
-html.th-noxx .th-dd-menu { transition: opacity 140ms var(--nx-ease), transform 140ms var(--nx-ease) !important; }
-html.th-noxx .modal-wrap { animation: nx-fade 120ms ease-out !important; }
-html.th-noxx .modal { animation: nx-pop 160ms var(--nx-ease) !important; }
-html.th-noxx .toast { animation: nx-rise 160ms var(--nx-ease) !important; }
-html.th-noxx .nx-tabs, html.th-noxx .nx-greet { animation: nx-fade 140ms ease-out; }
-html.th-noxx .settings-pane.settings-in { animation: nx-rise 160ms var(--nx-ease) !important; }
-html.th-noxx .settings-pane.settings-in > .th-group, html.th-noxx .settings-pane.settings-in > .section-title { animation: nx-rise 180ms var(--nx-ease) backwards; }
-html.th-noxx .settings-pane.settings-in > :nth-child(2) { animation-delay: 15ms; }
-html.th-noxx .settings-pane.settings-in > :nth-child(3) { animation-delay: 30ms; }
-html.th-noxx .settings-pane.settings-in > :nth-child(n+4) { animation-delay: 45ms; }
+html.th-noxx:not(.riff-android) .menu:not([hidden]) { animation: nx-pop 140ms var(--nx-ease); transform-origin: top left; }
+html.th-noxx:not(.riff-android) .th-dd-menu { transition: opacity 140ms var(--nx-ease), transform 140ms var(--nx-ease) !important; }
+html.th-noxx:not(.riff-android) .modal-wrap { animation: nx-fade 120ms ease-out !important; }
+html.th-noxx:not(.riff-android) .modal { animation: nx-pop 160ms var(--nx-ease) !important; }
+html.th-noxx:not(.riff-android) .toast { animation: nx-rise 160ms var(--nx-ease) !important; }
+html.th-noxx:not(.riff-android) .nx-tabs, html.th-noxx:not(.riff-android) .nx-greet { animation: nx-fade 140ms ease-out; }
+html.th-noxx:not(.riff-android) .settings-pane.settings-in { animation: nx-rise 160ms var(--nx-ease) !important; }
+html.th-noxx:not(.riff-android) .settings-pane.settings-in > .th-group, html.th-noxx:not(.riff-android) .settings-pane.settings-in > .section-title { animation: nx-rise 180ms var(--nx-ease) backwards; }
+html.th-noxx:not(.riff-android) .settings-pane.settings-in > :nth-child(2) { animation-delay: 15ms; }
+html.th-noxx:not(.riff-android) .settings-pane.settings-in > :nth-child(3) { animation-delay: 30ms; }
+html.th-noxx:not(.riff-android) .settings-pane.settings-in > :nth-child(n+4) { animation-delay: 45ms; }
 /* right panel and player follow the song */
-html.th-noxx #right-panel .rp-art, html.th-noxx .pb-art { transition: opacity var(--nx-med) var(--nx-ease), transform var(--nx-med) var(--nx-ease), background-image 0s; }
-html.th-noxx.nx-min #right-panel > .ly-bar { transition: opacity var(--nx-med) var(--nx-ease), transform var(--nx-med) var(--nx-ease) !important; }
-html.th-noxx.nx-min #right-panel:not(:hover) > .ly-bar { transform: translateX(-50%) translateY(-4px); }
+html.th-noxx:not(.riff-android) #right-panel .rp-art, html.th-noxx:not(.riff-android) .pb-art { transition: opacity var(--nx-med) var(--nx-ease), transform var(--nx-med) var(--nx-ease), background-image 0s; }
+html.th-noxx:not(.riff-android).nx-min #right-panel > .ly-bar { transition: opacity var(--nx-med) var(--nx-ease), transform var(--nx-med) var(--nx-ease) !important; }
+html.th-noxx:not(.riff-android).nx-min #right-panel:not(:hover) > .ly-bar { transform: translateX(-50%) translateY(-4px); }
 
-html.th-noxx body.reduce-motion *, html.th-noxx body.reduce-motion *::before, html.th-noxx body.reduce-motion *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+html.th-noxx:not(.riff-android) body.reduce-motion *, html.th-noxx:not(.riff-android) body.reduce-motion *::before, html.th-noxx:not(.riff-android) body.reduce-motion *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
 @media (prefers-reduced-motion: reduce) {
-  html.th-noxx *, html.th-noxx *::before, html.th-noxx *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+  html.th-noxx:not(.riff-android) *, html.th-noxx:not(.riff-android) *::before, html.th-noxx:not(.riff-android) *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
 }
 
 /* list rows move with the pointer while dragging, so only their colour eases */
-html.th-noxx .track-row, html.th-noxx .mini-row, html.th-noxx .np-q-row { transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease) !important; }
-html.th-noxx .track-row:active, html.th-noxx .mini-row:active { transform: none; }
+html.th-noxx:not(.riff-android) .track-row, html.th-noxx:not(.riff-android) .mini-row, html.th-noxx:not(.riff-android) .np-q-row { transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease) !important; }
+html.th-noxx:not(.riff-android) .track-row:active, html.th-noxx:not(.riff-android) .mini-row:active { transform: none; }
 
 /* ======================================================================
    QoL pieces: recent searches, lyrics timing, drop overlay, offline chip,
    shortcuts editor. Same surfaces as the other popups.
    ====================================================================== */
 /* recent searches under the search box */
-html.th-noxx .search-history {
+html.th-noxx:not(.riff-android) .search-history {
   top: calc(100% + 6px); padding: 5px; background: var(--nx-hover); border: 0; border-radius: 12px;
   box-shadow: var(--nx-ring), 0 18px 48px rgba(0, 0, 0, .6); animation: nx-pop 140ms var(--nx-ease); transform-origin: top center;
 }
-html.th-noxx .sh-head { padding: 6px 10px 6px; color: var(--nx-mute); font-weight: 600; }
-html.th-noxx .sh-clear { border-radius: 7px; color: var(--nx-dim); transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease); }
-html.th-noxx .sh-clear:hover { background: var(--nx-hi); color: var(--on-surface); }
-html.th-noxx .sh-item { border-radius: 8px; font-size: calc(13.5px * var(--fs)); transition: background-color var(--nx-fast) var(--nx-ease); }
-html.th-noxx .sh-item > svg { color: var(--nx-mute); }
-html.th-noxx .sh-item:hover, html.th-noxx .sh-item.active { background: var(--nx-hi); }
-html.th-noxx .sh-del { border-radius: 7px; transition: opacity var(--nx-fast) var(--nx-ease), background-color var(--nx-fast) var(--nx-ease); }
-html.th-noxx .sh-del:hover { background: color-mix(in srgb, var(--on-surface) 12%, transparent); }
+html.th-noxx:not(.riff-android) .sh-head { padding: 6px 10px 6px; color: var(--nx-mute); font-weight: 600; }
+html.th-noxx:not(.riff-android) .sh-clear { border-radius: 7px; color: var(--nx-dim); transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .sh-clear:hover { background: var(--nx-hi); color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .sh-item { border-radius: 8px; font-size: calc(13.5px * var(--fs)); transition: background-color var(--nx-fast) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .sh-item > svg { color: var(--nx-mute); }
+html.th-noxx:not(.riff-android) .sh-item:hover, html.th-noxx:not(.riff-android) .sh-item.active { background: var(--nx-hi); }
+html.th-noxx:not(.riff-android) .sh-del { border-radius: 7px; transition: opacity var(--nx-fast) var(--nx-ease), background-color var(--nx-fast) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .sh-del:hover { background: color-mix(in srgb, var(--on-surface) 12%, transparent); }
 
 /* lyrics timing popover */
-html.th-noxx .ly-timing {
+html.th-noxx:not(.riff-android) .ly-timing {
   padding: 14px; gap: 8px; background: var(--nx-hover); border: 0; border-radius: 12px;
   box-shadow: var(--nx-ring), 0 18px 48px rgba(0, 0, 0, .6); animation: nx-pop 140ms var(--nx-ease);
 }
-html.th-noxx .ly-timing-head { font-weight: 700; letter-spacing: -0.01em; }
-html.th-noxx .ly-timing-row > span { color: var(--nx-dim); }
-html.th-noxx .ly-timing-row b { font-weight: 600; }
-html.th-noxx .ly-timing-row button { border-radius: 8px; background: var(--nx-hi); transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease), transform var(--nx-med) var(--nx-ease); }
-html.th-noxx .ly-timing-row button:hover { background: var(--nx-acc); color: var(--nx-on-acc); }
-html.th-noxx .ly-timing-row button:active { transform: scale(.94); }
-html.th-noxx .ly-timing-hint { color: var(--nx-mute); }
-html.th-noxx .lyrics-action-btn[data-a="timing"].active { color: var(--nx-acc); }
+html.th-noxx:not(.riff-android) .ly-timing-head { font-weight: 700; letter-spacing: -0.01em; }
+html.th-noxx:not(.riff-android) .ly-timing-row > span { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .ly-timing-row b { font-weight: 600; }
+html.th-noxx:not(.riff-android) .ly-timing-row button { border-radius: 8px; background: var(--nx-hi); transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease), transform var(--nx-med) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .ly-timing-row button:hover { background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) .ly-timing-row button:active { transform: scale(.94); }
+html.th-noxx:not(.riff-android) .ly-timing-hint { color: var(--nx-mute); }
+html.th-noxx:not(.riff-android) .lyrics-action-btn[data-a="timing"].active { color: var(--nx-acc); }
 
 /* drop files onto the window */
-html.th-noxx .lf-drop { background: color-mix(in srgb, var(--nx-ground) 82%, transparent); backdrop-filter: none; transition: opacity 140ms var(--nx-ease); }
-html.th-noxx .lf-drop-card {
+html.th-noxx:not(.riff-android) .lf-drop { background: color-mix(in srgb, var(--nx-ground) 82%, transparent); backdrop-filter: none; transition: opacity 140ms var(--nx-ease); }
+html.th-noxx:not(.riff-android) .lf-drop-card {
   padding: 34px 52px; gap: 10px; border: 0; border-radius: 16px; background: var(--nx-panel);
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--nx-acc) 55%, transparent), 0 24px 70px rgba(0, 0, 0, .7);
   transform: scale(.97); transition: transform 160ms var(--nx-ease);
 }
-html.th-noxx .lf-drop.on .lf-drop-card { transform: none; }
-html.th-noxx .lf-drop-card svg { color: var(--nx-acc); }
-html.th-noxx .lf-drop-card b { font-weight: 700; letter-spacing: -0.02em; }
-html.th-noxx .lf-drop-card span { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .lf-drop.on .lf-drop-card { transform: none; }
+html.th-noxx:not(.riff-android) .lf-drop-card svg { color: var(--nx-acc); }
+html.th-noxx:not(.riff-android) .lf-drop-card b { font-weight: 700; letter-spacing: -0.02em; }
+html.th-noxx:not(.riff-android) .lf-drop-card span { color: var(--nx-dim); }
 
 /* offline chip in the top bar (keep the [hidden] rule: the chip only shows while offline) */
-html.th-noxx .offline-chip {
+html.th-noxx:not(.riff-android) .offline-chip {
   height: 30px; padding: 0 11px; border-radius: 9px; background: var(--nx-field); color: var(--nx-dim); font-weight: 600;
   font-size: calc(12.5px * var(--fs)); transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease), opacity var(--nx-med) var(--nx-ease);
 }
-html.th-noxx .offline-chip svg { width: 15px; height: 15px; color: #E8C580; }
-html.th-noxx .offline-chip:hover { background: var(--nx-hover); color: var(--on-surface); }
-html.th-noxx .offline-chip[hidden] { display: none; }
+html.th-noxx:not(.riff-android) .offline-chip svg { width: 15px; height: 15px; color: #E8C580; }
+html.th-noxx:not(.riff-android) .offline-chip:hover { background: var(--nx-hover); color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .offline-chip[hidden] { display: none; }
 
 /* shortcuts editor */
-html.th-noxx .shortcuts-modal { width: min(640px, 94vw); }
-html.th-noxx .sc-cols { padding: 0 6px 8px 0; color: var(--nx-mute); font-weight: 600; letter-spacing: .08em; box-shadow: inset 0 -1px 0 var(--nx-sep); margin-bottom: 4px; }
-html.th-noxx .shortcuts-modal .sc-row { min-height: 40px; padding: 0 6px 0 0; border-radius: 8px; font-size: calc(13px * var(--fs)); }
-html.th-noxx .sc-bind { border: 0; border-radius: 8px; min-height: 32px; transition: background-color var(--nx-fast) var(--nx-ease), box-shadow var(--nx-fast) var(--nx-ease); }
-html.th-noxx .sc-bind:hover { background: var(--nx-hover); }
-html.th-noxx .sc-bind.rec { background: var(--nx-hover); box-shadow: inset 0 0 0 1.5px var(--nx-acc); }
-html.th-noxx .sc-bind.bad { box-shadow: inset 0 0 0 1.5px #F07A7A; }
-html.th-noxx .sc-bind kbd, html.th-noxx .shortcuts-modal kbd {
+html.th-noxx:not(.riff-android) .shortcuts-modal { width: min(640px, 94vw); }
+html.th-noxx:not(.riff-android) .sc-cols { padding: 0 6px 8px 0; color: var(--nx-mute); font-weight: 600; letter-spacing: .08em; box-shadow: inset 0 -1px 0 var(--nx-sep); margin-bottom: 4px; }
+html.th-noxx:not(.riff-android) .shortcuts-modal .sc-row { min-height: 40px; padding: 0 6px 0 0; border-radius: 8px; font-size: calc(13px * var(--fs)); }
+html.th-noxx:not(.riff-android) .sc-bind { border: 0; border-radius: 8px; min-height: 32px; transition: background-color var(--nx-fast) var(--nx-ease), box-shadow var(--nx-fast) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .sc-bind:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .sc-bind.rec { background: var(--nx-hover); box-shadow: inset 0 0 0 1.5px var(--nx-acc); }
+html.th-noxx:not(.riff-android) .sc-bind.bad { box-shadow: inset 0 0 0 1.5px #F07A7A; }
+html.th-noxx:not(.riff-android) .sc-bind kbd, html.th-noxx:not(.riff-android) .shortcuts-modal kbd {
   font: 600 calc(11.5px * var(--fs)) var(--font-family); padding: 3px 7px; border-radius: 6px; background: var(--nx-hi); color: var(--on-surface); border: 0; box-shadow: none;
 }
-html.th-noxx .sc-none { color: var(--nx-mute); }
-html.th-noxx .sc-foot { margin-top: 14px; padding-top: 12px; box-shadow: inset 0 1px 0 var(--nx-sep); }
-html.th-noxx .sc-msg { color: var(--nx-dim); }
-html.th-noxx .sc-msg.bad { color: #F07A7A; }
+html.th-noxx:not(.riff-android) .sc-none { color: var(--nx-mute); }
+html.th-noxx:not(.riff-android) .sc-foot { margin-top: 14px; padding-top: 12px; box-shadow: inset 0 1px 0 var(--nx-sep); }
+html.th-noxx:not(.riff-android) .sc-msg { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .sc-msg.bad { color: #F07A7A; }
 
 
 /* ======================================================================
@@ -540,28 +539,169 @@ html.th-noxx .sc-msg.bad { color: #F07A7A; }
    behind the cards again; cards, the player and popups are frosted over them.
    Performance mode (body.perf) turns the blur off.
    ====================================================================== */
-html.th-noxx .main-content, html.th-noxx .right-panel, html.th-noxx body.docked .playbar, html.th-noxx .playbar,
-html.th-noxx.nx-min body.docked .rail:not(#x) { backdrop-filter: none !important; }
-html.th-noxx .main-content, html.th-noxx .right-panel, html.th-noxx body.docked .playbar, html.th-noxx .playbar {
-  background: color-mix(in srgb, var(--nx-panel) 84%, transparent) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(120%) !important; backdrop-filter: blur(28px) saturate(120%) !important;
+html.th-noxx:not(.riff-android) .main-content, html.th-noxx:not(.riff-android) .right-panel, html.th-noxx:not(.riff-android) body.docked .playbar, html.th-noxx:not(.riff-android) .playbar,
+html.th-noxx:not(.riff-android).nx-min body.docked .rail:not(#x) { backdrop-filter: none !important; }
+html.th-noxx:not(.riff-android) .main-content, html.th-noxx:not(.riff-android) .right-panel, html.th-noxx:not(.riff-android) body.docked .playbar, html.th-noxx:not(.riff-android) .playbar {
+  background: color-mix(in srgb, var(--surface) var(--nx-glass, 84%), transparent) !important;
+  -webkit-backdrop-filter: blur(var(--nx-blur, 28px)) saturate(120%) !important; backdrop-filter: blur(var(--nx-blur, 28px)) saturate(120%) !important;
 }
-html.th-noxx:not(.nx-min) body.docked .rail {
-  background: color-mix(in srgb, var(--nx-panel) 84%, transparent) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(120%) !important; backdrop-filter: blur(28px) saturate(120%) !important;
+html.th-noxx:not(.riff-android):not(.nx-min) body.docked .rail {
+  background: color-mix(in srgb, var(--surface) var(--nx-glass, 84%), transparent) !important;
+  -webkit-backdrop-filter: blur(var(--nx-blur, 28px)) saturate(120%) !important; backdrop-filter: blur(var(--nx-blur, 28px)) saturate(120%) !important;
 }
-html.th-noxx .search-box { background: color-mix(in srgb, var(--nx-field) 80%, transparent); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
-html.th-noxx .menu, html.th-noxx .th-dd-menu, html.th-noxx .search-history, html.th-noxx .ly-timing {
+html.th-noxx:not(.riff-android) .search-box { background: color-mix(in srgb, var(--nx-field) 80%, transparent); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+html.th-noxx:not(.riff-android) .menu, html.th-noxx:not(.riff-android) .th-dd-menu, html.th-noxx:not(.riff-android) .search-history, html.th-noxx:not(.riff-android) .ly-timing {
   background: color-mix(in srgb, var(--nx-hover) 88%, transparent) !important;
   -webkit-backdrop-filter: blur(24px) saturate(120%) !important; backdrop-filter: blur(24px) saturate(120%) !important;
 }
-html.th-noxx .modal-wrap { background: rgba(0, 0, 0, .5) !important; -webkit-backdrop-filter: blur(10px) !important; backdrop-filter: blur(10px) !important; }
-html.th-noxx .modal { background: color-mix(in srgb, var(--nx-panel) 92%, transparent) !important; }
-html.th-noxx .toast:not(.error) { background: color-mix(in srgb, var(--nx-hover) 86%, transparent) !important; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
-html.th-noxx .lf-drop { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+html.th-noxx:not(.riff-android) .modal-wrap { background: rgba(0, 0, 0, .5) !important; -webkit-backdrop-filter: blur(10px) !important; backdrop-filter: blur(10px) !important; }
+html.th-noxx:not(.riff-android) .modal { background: color-mix(in srgb, var(--nx-panel) 92%, transparent) !important; }
+html.th-noxx:not(.riff-android) .toast:not(.error) { background: color-mix(in srgb, var(--nx-hover) 86%, transparent) !important; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+html.th-noxx:not(.riff-android) .lf-drop { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 /* the right panel's banner sits behind its content again */
-html.th-noxx #right-panel > .ly-bar { background: color-mix(in srgb, var(--nx-field) 80%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
-html.th-noxx body.perf :is(.main-content, .right-panel, .playbar, .rail, .search-box, .menu, .th-dd-menu, .search-history, .ly-timing, .modal-wrap, .toast, .lf-drop, .ly-bar) {
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar { background: color-mix(in srgb, var(--nx-field) 80%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+html.th-noxx:not(.riff-android) body.perf :is(.main-content, .right-panel, .playbar, .rail, .search-box, .menu, .th-dd-menu, .search-history, .ly-timing, .modal-wrap, .toast, .lf-drop, .ly-bar) {
   -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
-html.th-noxx body.perf :is(.main-content, .right-panel, .playbar) { background: var(--nx-panel) !important; }
+html.th-noxx:not(.riff-android) body.perf :is(.main-content, .right-panel, .playbar) { background: var(--nx-panel) !important; }
+
+/* player: the buttons after the heart keep their place (only fade), so the heart never moves */
+html.th-noxx:not(.riff-android).nx-min .pb-left > .pill-btn:not(.heart):not(.on),
+html.th-noxx:not(.riff-android).nx-min .pb-left:hover > .pill-btn:not(.heart):not(.on) { width: 34px; min-width: 34px; margin: 0; padding: 0; overflow: visible; }
+@media (max-width: 1240px) { html.th-noxx:not(.riff-android).nx-min .pb-left > .pill-btn:not(.heart):not(.on) { display: none; } }
+
+/* ---------- popups are solid: nothing behind them reads through ---------- */
+html.th-noxx:not(.riff-android) .modal { background: var(--nx-panel) !important; }
+
+/* ---------- import popup (Spotify, YouTube, Apple Music) ---------- */
+html.th-noxx:not(.riff-android) .imp-head h3 { font-weight: 700; letter-spacing: -0.02em; }
+html.th-noxx:not(.riff-android) .imp-modes { gap: 2px; padding: 3px; border-radius: 10px; background: var(--nx-raised); }
+html.th-noxx:not(.riff-android) .imp-modes button { border-radius: 7px; color: var(--nx-dim); transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .imp-modes button:hover:not(:disabled) { color: var(--on-surface); background: transparent; }
+html.th-noxx:not(.riff-android) .imp-modes button.active { background: var(--nx-acc); color: var(--nx-on-acc); font-weight: 600; }
+html.th-noxx:not(.riff-android) .imp-field, html.th-noxx:not(.riff-android) .imp-box { background: var(--nx-raised) !important; border: 0 !important; border-radius: 10px !important; box-shadow: none !important; }
+html.th-noxx:not(.riff-android) .imp-field:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-acc) 40%, transparent) !important; }
+html.th-noxx:not(.riff-android) .imp-field-ic { color: var(--nx-mute); }
+html.th-noxx:not(.riff-android) .imp-label { color: var(--nx-dim); font-weight: 600; }
+html.th-noxx:not(.riff-android) .imp-dd-trigger { background: var(--nx-raised) !important; border: 0 !important; border-radius: 10px !important; box-shadow: none !important; transition: background-color var(--nx-fast) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .imp-dd-trigger:hover:not(:disabled) { background: var(--nx-hover) !important; }
+html.th-noxx:not(.riff-android) .imp-dd-menu { background: var(--nx-hover) !important; border: 0 !important; border-radius: 12px !important; padding: 5px; box-shadow: var(--nx-ring), 0 18px 48px rgba(0, 0, 0, .6) !important; }
+html.th-noxx:not(.riff-android) .imp-dd-menu button { border-radius: 8px; }
+html.th-noxx:not(.riff-android) .imp-dd-menu button:hover, html.th-noxx:not(.riff-android) .imp-dd-menu button.selected { background: var(--nx-hi); }
+html.th-noxx:not(.riff-android) .imp-dim, html.th-noxx:not(.riff-android) .imp-help, html.th-noxx:not(.riff-android) .imp-progress span { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .imp-help code { background: var(--nx-raised); border-radius: 5px; padding: 1px 5px; }
+html.th-noxx:not(.riff-android) .imp-missing { background: var(--nx-raised); border-radius: 10px; border: 0; }
+html.th-noxx:not(.riff-android) .imp-miss { border-radius: 8px; }
+html.th-noxx:not(.riff-android) .imp-miss:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .imp-error { color: #F07A7A; }
+html.th-noxx:not(.riff-android) .imp-modal .btn:disabled { opacity: .5; }
+
+/* ---------- background: album glow strength and a dim layer (Settings > Theme > Background and glass) ---------- */
+.nx-dim { display: none; }
+html.th-noxx:not(.riff-android) .nx-dim { display: block; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: #000; opacity: var(--nx-dim, 0); transition: opacity 160ms ease; }
+html.th-noxx:not(.riff-android) #cover-bg { opacity: var(--nx-glow, .6); }
+
+/* ---------- menus and dropdowns are solid (text under them must never read through) ---------- */
+html.th-noxx:not(.riff-android) .menu, html.th-noxx:not(.riff-android) .th-dd-menu, html.th-noxx:not(.riff-android) .imp-dd-menu,
+html.th-noxx:not(.riff-android) .search-history, html.th-noxx:not(.riff-android) .ly-timing {
+  background: var(--nx-hover) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; opacity: 1;
+}
+html.th-noxx:not(.riff-android) .th-dd:not(.open) .th-dd-menu { opacity: 0; }
+html.th-noxx:not(.riff-android) :is(.menu, .th-dd-menu, .imp-dd-menu, .modal, .search-history)::-webkit-scrollbar { width: 6px; }
+html.th-noxx:not(.riff-android) :is(.menu, .th-dd-menu, .imp-dd-menu, .modal, .search-history)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+html.th-noxx:not(.riff-android) :is(.menu, .th-dd-menu, .imp-dd-menu, .modal, .search-history)::-webkit-scrollbar-track { background: transparent; }
+html.th-noxx:not(.riff-android) :is(.menu, .th-dd-menu, .imp-dd-menu, .modal, .search-history)::-webkit-scrollbar-thumb { background: var(--nx-hi); border-radius: 3px; }
+html.th-noxx:not(.riff-android) .th-item:has(.th-dd.open), html.th-noxx:not(.riff-android) .setting-item:has(.th-dd.open) { position: relative; z-index: 40; }
+
+/* ---------- Blur at 0 (the default): no blur layers anywhere, so nothing is re-blurred while you scroll ---------- */
+html.th-noxx:not(.riff-android).nx-noblur :is(.main-content, .right-panel, .playbar, .rail, .search-box, .toast, .ly-bar, .modal-wrap, .lf-drop) {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+/* the cover glow is one static soft layer: keep it off the scroll path */
+html.th-noxx:not(.riff-android) #cover-bg { will-change: opacity; contain: strict; }
+
+
+/* ---------- settings that the new look had switched off (audit) ---------- */
+/* Clip effects to panels: off lets the background show straight through the page */
+html.th-noxx.th-no-clip-fx:not(.riff-android) .main-content { background: transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+/* Compact engine buttons: icon only in the source picker */
+html.th-noxx:not(.riff-android) body.compact-engine-btns #platform-switch > span { display: none; }
+/* Performance mode: no blur on the side bar either, no transitions or pop-in animations */
+html.th-noxx:not(.riff-android) body.perf .rail:not(#x) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+html.th-noxx:not(.riff-android) body.perf *, html.th-noxx:not(.riff-android) body.perf *::before, html.th-noxx:not(.riff-android) body.perf *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+/* buttons without Highlight buttons: quiet fill, same shape */
+html.th-noxx:not(.th-highlight):not(.riff-android) .btn.primary { background: var(--nx-hover); color: var(--on-surface); }
+
+
+
+
+/* ---------- right panel: cover, title and artist never move; only the list under them scrolls,
+   with its own scrollbar (look-noxx.js puts the artist cards inside that list) ---------- */
+html.th-noxx:not(.riff-android) #right-panel.np-on .np-scroll { overflow: hidden !important; display: flex; flex-direction: column; min-height: 0; padding-right: 0; margin-right: 0; }
+html.th-noxx:not(.riff-android) #right-panel.np-on .rp-art-box { flex: none; }
+html.th-noxx:not(.riff-android) #right-panel.np-on .rp-next {
+  display: block !important; flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  margin: 12px -8px 0 0; padding-right: 8px; scrollbar-gutter: stable;
+}
+html.th-noxx:not(.riff-android) #right-panel.np-on.np-next-off .rp-next > .rp-next-title, html.th-noxx:not(.riff-android) #right-panel.np-on.np-next-off .rp-next > #rp-next-list { display: none; }
+html.th-noxx:not(.riff-android) #right-panel.np-on.np-cover-only .rp-next { display: none !important; }
+html.th-noxx:not(.riff-android) #right-panel.np-on.ly-on .rp-next { flex: 0 0 auto; max-height: 34%; }
+html.th-noxx:not(.riff-android) #right-panel.np-on .rp-next > .np-cards { margin-top: 14px; }
+html.th-noxx:not(.riff-android) #right-panel .rp-next::-webkit-scrollbar { width: 6px; }
+html.th-noxx:not(.riff-android) #right-panel .rp-next::-webkit-scrollbar-thumb { background: var(--nx-hi); border-radius: 3px; }
+/* shaped cover: centred on the card, no box behind it */
+html.th-noxx:not(.riff-android) #right-panel.np-shaped .rp-art-box { background: none !important; }
+html.th-noxx:not(.riff-android) #right-panel.np-shaped .rp-meta { text-align: center; }
+
+/* ---------- audio popup (enhancer, speed, equalizer, sleep timer) ---------- */
+html.th-noxx:not(.riff-android) .modal.fx-modal {
+  --fx-bg: var(--nx-panel); --fx-tile: var(--nx-raised); --fx-tile-hi: var(--nx-hover); --fx-line: var(--nx-sep);
+  border-radius: 16px !important; padding: 8px 18px 14px !important; background: var(--nx-panel) !important;
+  box-shadow: var(--nx-ring), 0 24px 70px rgba(0, 0, 0, .7) !important;
+}
+html.th-noxx:not(.riff-android) .modal.fx-modal.fx-docked { border-radius: 16px !important; translate: 0 -10px; }
+html.th-noxx:not(.riff-android) .fx-docked::before, html.th-noxx:not(.riff-android) .fx-docked::after { display: none !important; }
+html.th-noxx:not(.riff-android) .fx-bar { border-bottom: 0; box-shadow: inset 0 -1px 0 var(--nx-sep); }
+html.th-noxx:not(.riff-android) .fx-tab { color: var(--nx-dim); opacity: 1; transition: color var(--nx-fast) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .fx-tab:hover { color: var(--on-surface); opacity: 1; }
+html.th-noxx:not(.riff-android) .fx-tab.active { color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .fx-tab::after { background: var(--nx-acc); height: 2px; border-radius: 1px; transition: transform var(--nx-med) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .fx-close { border-radius: 8px; }
+html.th-noxx:not(.riff-android) .fx-card { background: var(--nx-raised); border-radius: 12px; }
+html.th-noxx:not(.riff-android) .fx-name { font-weight: 600; }
+html.th-noxx:not(.riff-android) .fx-hint, html.th-noxx:not(.riff-android) .fx-sub, html.th-noxx:not(.riff-android) .fx-note { color: var(--nx-dim); }
+html.th-noxx:not(.riff-android) .fx-badge { border-radius: 5px; background: var(--nx-hi); color: var(--on-surface); font-weight: 700; letter-spacing: .06em; }
+html.th-noxx:not(.riff-android) .fx-switch { width: 38px; height: 22px; border: 0; background: var(--nx-hi); }
+html.th-noxx:not(.riff-android) .fx-switch .thumb { top: 3px; left: 3px; width: 16px; height: 16px; border: 0; background: var(--nx-mute); box-shadow: none; transition: transform var(--nx-med) var(--nx-ease), background-color var(--nx-fast) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .fx-switch .thumb svg { display: none; }
+html.th-noxx:not(.riff-android) .fx-switch.active { background: var(--nx-acc); }
+html.th-noxx:not(.riff-android) .fx-switch.active .thumb { transform: translateX(16px); background: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) .fx-chip { border-radius: 8px; background: var(--nx-raised); color: var(--nx-dim); transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease), transform var(--nx-med) var(--nx-ease); }
+html.th-noxx:not(.riff-android) .fx-chip:hover { background: var(--nx-hover); color: var(--on-surface); }
+html.th-noxx:not(.riff-android) .fx-chip.active { background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) .fx-dd-trigger { background: var(--nx-raised); border: 0; border-radius: 9px; box-shadow: none; }
+html.th-noxx:not(.riff-android) .fx-dd-trigger:hover { background: var(--nx-hover); }
+html.th-noxx:not(.riff-android) .fx-dd-menu { background: var(--nx-hover); border: 0; border-radius: 12px; padding: 5px; box-shadow: var(--nx-ring), 0 18px 48px rgba(0, 0, 0, .6); }
+html.th-noxx:not(.riff-android) .fx-dd-opt { border-radius: 8px; }
+html.th-noxx:not(.riff-android) .fx-dd-opt:hover, html.th-noxx:not(.riff-android) .fx-dd-opt.selected { background: var(--nx-hi); }
+html.th-noxx:not(.riff-android) .fx-foot { border-top: 0; box-shadow: inset 0 1px 0 var(--nx-sep); }
+html.th-noxx:not(.riff-android) .btn.fx-small { border-radius: 9px !important; }
+
+/* the audio popup hangs above the player: the app behind it stays clear */
+html.th-noxx:not(.riff-android) .modal-wrap:has(> .modal.fx-docked) { background: transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; animation: none !important; }
+html.th-noxx:not(.riff-android) #right-panel .rp-next::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+/* ---------- right panel tools (lyrics, queue, full screen): one small segmented control ---------- */
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar {
+  display: inline-flex; align-items: center; gap: 2px; width: auto; height: auto; padding: 3px;
+  border-radius: 10px; background: color-mix(in srgb, var(--nx-ground) 78%, transparent) !important;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: var(--nx-ring);
+}
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar :is(.ly-tab, .lyrics-action-btn) {
+  width: 32px; height: 28px; border-radius: 7px; background: transparent; color: var(--nx-dim); display: grid; place-items: center;
+}
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar :is(.ly-tab, .lyrics-action-btn) svg { width: 15px; height: 15px; }
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar :is(.ly-tab, .lyrics-action-btn):hover { background: var(--nx-hover); color: var(--on-surface); }
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar :is(.ly-tab.active, .lyrics-action-btn.active) { background: var(--nx-acc); color: var(--nx-on-acc); }
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar .lyrics-mode-btn { height: 28px; padding: 0 9px; border-radius: 7px; font-size: calc(11.5px * var(--fs)); font-weight: 600; color: var(--nx-dim); opacity: 1; }
+html.th-noxx:not(.riff-android) #right-panel > .ly-bar .lyrics-mode-btn:hover { background: var(--nx-hover); color: var(--on-surface); }

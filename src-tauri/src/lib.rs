@@ -359,6 +359,17 @@ pub fn run() {
         // WebView2 reads this before Tauri's own data folder.
         std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &web);
     }
+    // Performance mode draws without the GPU (less memory, no GPU process). WebView2 adds these to
+    // the arguments from tauri.conf.json; they are read once, when the webview starts.
+    #[cfg(windows)]
+    if features::system::early_settings().no_gpu {
+        let extra = "--disable-gpu --in-process-gpu";
+        let args = match std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+            Ok(cur) if !cur.trim().is_empty() => format!("{cur} {extra}"),
+            _ => extra.to_string(),
+        };
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args);
+    }
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
     // Settings → Advanced → Allow multiple instances (off: a second launch focuses this window).

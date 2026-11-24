@@ -2468,7 +2468,7 @@ dependencies = [
 
 [[package]]
 name = "noxx"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "discord-rich-presence",
  "futures",
