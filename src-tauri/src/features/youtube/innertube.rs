@@ -10,6 +10,8 @@ pub const WEB_VERSION: &str = "2.20250101.00.00";
 /// riff's YouTube Music client (server.js YTM_CLIENT_VERSION / YTM_SONGS_PARAMS).
 pub const YTM_VERSION: &str = "1.20250101.01.00";
 pub const YTM_SONGS_PARAMS: &str = "EgWKAQIIAWoMEA4QChADEAQQCRAF";
+/// YouTube Music search filter: albums (same family as the songs filter).
+pub const YTM_ALBUMS_PARAMS: &str = "EgWKAQIYAWoMEA4QChADEAQQCRAF";
 /// "Type: Video" filter on www.youtube.com.
 pub const YT_VIDEOS_PARAMS: &str = "EgIQAQ==";
 /// www.youtube.com search: sort by view count (1: 3), upload date this month (2.1: 4), type video (2.2: 1).

@@ -482,6 +482,38 @@ impl Yt {
         }
     }
 
+    /// Albums / singles / EPs matching `query` on YouTube Music.
+    pub async fn albums(&self, query: &str) -> Result<Vec<music::Album>, String> {
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
+        let visitor = lock(&self.visitor).0.clone();
+        let body = json!({ "context": innertube::ytm_context(&visitor), "query": q, "params": innertube::YTM_ALBUMS_PARAMS });
+        let v = self.post("music.youtube.com", "search", &body, None).await?;
+        self.note_visitor(&v);
+        Ok(music::parse_albums(&v))
+    }
+
+    /// One album page: details + tracks.
+    pub async fn album(&self, id: &str) -> Result<Value, String> {
+        if !id.starts_with("MPREb") {
+            return Err("youtube.album: not a YouTube Music album".into());
+        }
+        let visitor = lock(&self.visitor).0.clone();
+        let body = json!({ "context": innertube::ytm_context(&visitor), "browseId": id });
+        let v = self.post("music.youtube.com", "browse", &body, None).await?;
+        let (album, tracks) = music::parse_album_page(id, &v);
+        if let (Some(y), Some((_, f))) = (album.year, lock(&self.years).as_mut()) {
+            f.albums.insert(id.to_string(), y);
+            f.dirty = true;
+        }
+        Ok(json!({
+            "id": album.id, "title": album.title, "artist": album.artist, "artistId": album.artist_id,
+            "year": album.year, "kind": album.kind, "artwork": album.artwork, "url": album.url, "tracks": tracks,
+        }))
+    }
+
     async fn album_year(&self, album: &str) -> Result<u16, String> {
         if let Some(y) = lock(&self.years).as_ref().and_then(|(_, f)| f.albums.get(album).copied()) {
             return Ok(y);
@@ -981,6 +1013,13 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             Ok(json!(yt.search(src, query, offset).await?))
         }
         "link" => Ok(json!(yt.link(args["text"].as_str().unwrap_or("")).await?)),
+        "albums" => {
+            let limit = args["limit"].as_u64().unwrap_or(12).clamp(1, 30) as usize;
+            let mut a = yt.albums(args["query"].as_str().unwrap_or("")).await?;
+            a.truncate(limit);
+            Ok(json!(a))
+        }
+        "album" => yt.album(args["id"].as_str().unwrap_or("")).await,
         "trending_for" => {
             let genres: Vec<String> = args["genres"].as_array().map(|a| a.iter().filter_map(|g| g.as_str().map(String::from)).collect()).unwrap_or_default();
             let limit = args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize;
@@ -1133,6 +1172,31 @@ mod tests {
                 let r3 = yt.search(src, "lofi beats", 0).await.unwrap();
                 println!("{} warm search: {} tracks in {}ms", src.key(), r3.len(), ms(t));
             }
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn youtube_live_albums() {
+        rt().block_on(async {
+            let yt = Yt::global();
+            yt.visitor().await;
+            let list = yt.albums("daft punk").await.unwrap();
+            println!("{} albums", list.len());
+            for a in list.iter().take(5) {
+                println!("  {} | {} | {} | {:?} | {} | art {}", a.id, a.title, a.artist, a.year, a.kind, !a.artwork.is_empty());
+            }
+            assert!(list.len() >= 3, "albums found");
+            assert!(list.iter().any(|a| a.title.to_lowercase().contains("discovery") || a.title.to_lowercase().contains("random access")));
+            let page = yt.album(&list[0].id).await.unwrap();
+            let tracks = page["tracks"].as_array().unwrap();
+            println!("album {} by {} ({:?}): {} tracks", page["title"], page["artist"], page["year"], tracks.len());
+            for t in tracks.iter().take(4) {
+                println!("  {} | {} | {}s | {}", t["title"], t["artist"], t["duration"], t["artwork"].as_str().unwrap_or("").chars().take(40).collect::<String>());
+            }
+            assert!(!page["title"].as_str().unwrap_or("").is_empty());
+            assert!(tracks.len() >= 3);
+            assert!(tracks.iter().all(|t| t["artist"] != "unknown artist" && t["duration"].as_u64().unwrap_or(0) > 0));
         });
     }
 

@@ -141,6 +141,134 @@ pub fn song_albums(v: &Value) -> HashMap<String, String> {
     out
 }
 
+// ---------------------------------------------------------------- albums (search + album page)
+
+/// A YouTube Music album / single / EP, as the search and the album page show it.
+#[derive(Clone, Debug, Default, serde::Serialize, PartialEq)]
+pub struct Album {
+    /// browse id (MPREb_…)
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    #[serde(rename = "artistId", skip_serializing_if = "String::is_empty")]
+    pub artist_id: String,
+    pub year: Option<u16>,
+    /// "album" | "single" | "ep"
+    pub kind: String,
+    pub artwork: String,
+    /// so the UI knows to open it through youtube.album
+    pub source: &'static str,
+    pub url: String,
+}
+
+fn best_thumb(r: &Value) -> String {
+    let t = r["thumbnail"]["musicThumbnailRenderer"]["thumbnail"]["thumbnails"]
+        .as_array()
+        .or_else(|| r["thumbnail"]["croppedSquareThumbnailRenderer"]["thumbnail"]["thumbnails"].as_array());
+    let url = t.and_then(|t| t.last()).and_then(|t| t["url"].as_str()).unwrap_or("");
+    match url.find("=w") {
+        Some(p) => format!("{}=w544-h544-l90-rj", &url[..p]),
+        None => url.to_string(),
+    }
+}
+
+/// "Album • Artist • 2019" / "Single • Artist • 2021" -> (kind, artist, artist channel, year).
+fn album_byline(runs: &[Value]) -> (String, String, String, Option<u16>) {
+    let mut kind = String::new();
+    let mut artists: Vec<String> = Vec::new();
+    let mut channel = String::new();
+    let mut year = None;
+    for (i, r) in runs.iter().enumerate() {
+        let t = r["text"].as_str().unwrap_or("").trim();
+        if t.is_empty() || t == "•" || t == "&" || t == "," {
+            continue;
+        }
+        if let Some(y) = year_text(t) {
+            year = Some(y);
+        } else if i == 0 && matches!(t.to_lowercase().as_str(), "album" | "single" | "ep") {
+            kind = t.to_lowercase();
+        } else {
+            if channel.is_empty() {
+                if let Some(b) = r["navigationEndpoint"]["browseEndpoint"]["browseId"].as_str() {
+                    if b.starts_with("UC") {
+                        channel = b.to_string();
+                    }
+                }
+            }
+            artists.push(t.to_string());
+        }
+    }
+    (if kind.is_empty() { "album".into() } else { kind }, artists.join(", "), channel, year)
+}
+
+/// Albums from a YouTube Music search with the albums filter.
+pub fn parse_albums(v: &Value) -> Vec<Album> {
+    let mut found = Vec::new();
+    collect(v, "musicResponsiveListItemRenderer", &mut found);
+    let mut out: Vec<Album> = Vec::new();
+    for r in found {
+        let Some(id) = r["navigationEndpoint"]["browseEndpoint"]["browseId"].as_str().filter(|b| is_album_id(b)) else { continue };
+        if out.iter().any(|a| a.id == id) {
+            continue;
+        }
+        let cols = r["flexColumns"].as_array().cloned().unwrap_or_default();
+        let col = |i: usize| cols.get(i).and_then(|c| c["musicResponsiveListItemFlexColumnRenderer"]["text"]["runs"].as_array().cloned()).unwrap_or_default();
+        let title: String = col(0).iter().filter_map(|x| x["text"].as_str()).collect::<String>().trim().to_string();
+        if title.is_empty() {
+            continue;
+        }
+        let (kind, artist, artist_id, year) = album_byline(&col(1));
+        out.push(Album {
+            id: id.to_string(),
+            title,
+            artist,
+            artist_id,
+            year,
+            kind,
+            artwork: best_thumb(r),
+            source: "ytm",
+            url: format!("https://music.youtube.com/browse/{id}"),
+        });
+    }
+    out
+}
+
+/// An album page: header details and its tracks (artist and cover filled in from the album
+/// when the rows leave them out, which album rows usually do).
+pub fn parse_album_page(id: &str, v: &Value) -> (Album, Vec<Track>) {
+    let mut album = Album { id: id.to_string(), source: "ytm", url: format!("https://music.youtube.com/browse/{id}"), kind: "album".into(), ..Album::default() };
+    for key in ["musicResponsiveHeaderRenderer", "musicDetailHeaderRenderer", "musicImmersiveHeaderRenderer"] {
+        let mut found = Vec::new();
+        collect(v, key, &mut found);
+        if let Some(h) = found.first() {
+            album.title = text_of(&h["title"]).trim().to_string();
+            let strap = h["straplineTextOne"]["runs"].as_array().cloned().unwrap_or_default();
+            let sub = h["subtitle"]["runs"].as_array().cloned().unwrap_or_default();
+            let (kind, artist, channel, year) = album_byline(&sub);
+            let (_, strap_artist, strap_channel, _) = album_byline(&strap);
+            album.kind = kind;
+            album.year = year;
+            album.artist = if strap_artist.is_empty() { artist } else { strap_artist };
+            album.artist_id = if strap_channel.is_empty() { channel } else { strap_channel };
+            album.artwork = best_thumb(h);
+            break;
+        }
+    }
+    let mut tracks = innertube::parse_ytm_songs(v);
+    for t in &mut tracks {
+        if (t.artist.is_empty() || t.artist == "unknown artist") && !album.artist.is_empty() {
+            t.artist = album.artist.clone();
+            if t.artist_id.is_empty() {
+                t.artist_id = album.artist_id.clone();
+            }
+        }
+        if !album.artwork.is_empty() && (t.artwork.is_empty() || t.artwork.contains("i.ytimg.com/vi/")) {
+            t.artwork = album.artwork.clone();
+        }
+    }
+    (album, tracks)
+}
+
 // ---------------------------------------------------------------- matching a song by title / artist / length
 
 /// Lowercase words without bracketed parts, "feat." credits and punctuation.
