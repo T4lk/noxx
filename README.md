@@ -90,4 +90,6 @@ Tests: `cargo test` runs offline. `cargo test -- --ignored --nocapture` runs aga
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Bundled hls.js is MIT and the UnifrakturCook font is SIL OFL 1.1 (see `ui/vendor/`).
+[PolyForm Noncommercial 1.0.0](LICENSE): you can use, change and share noxx for personal and other non-commercial purposes. Commercial use needs permission.
+
+Parts that come from riff stay MIT, and the bundled hls.js (MIT) and UnifrakturCook font (SIL OFL 1.1) keep their own licenses; see [NOTICE](NOTICE). Versions up to 0.1.18 were released under MIT.
