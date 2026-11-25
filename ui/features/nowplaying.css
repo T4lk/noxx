@@ -16,7 +16,7 @@
 
 /* ---------- cover box ---------- */
 #right-panel.np-on .rp-art-box { position: relative; display: block; flex: none; }
-#right-panel.np-on .rp-art { transition: border-radius 250ms var(--ease); }
+#right-panel.np-on .rp-art { transition: border-radius 200ms var(--ease); }
 
 /* Large: the cover fills the panel width, title and artist sit over a soft shade at its bottom */
 #right-panel.np-large .rp-art { width: 100%; border-radius: var(--r-l); }
@@ -72,7 +72,7 @@ body:is(.perf, .reduce-motion) .np-marquee .np-inner { animation: none; }
 /* ---------- glow visualizer behind the cover and lyrics ---------- */
 .np-glow {
   position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none;
-  opacity: 0; transition: opacity 600ms ease; border-radius: inherit;
+  opacity: 0; transition: opacity 200ms ease; border-radius: inherit;
 }
 .np-glow.on { opacity: .85; }
 .th-glass .np-glow.on { opacity: .6; }
@@ -92,7 +92,7 @@ body:is(.perf, .reduce-motion) .np-marquee .np-inner { animation: none; }
 
 /* About the artist */
 .np-a-img {
-  position: relative; aspect-ratio: 16 / 10; background: var(--container-high) center 30% / cover; transition: opacity 250ms ease;
+  position: relative; aspect-ratio: 16 / 10; background: var(--container-high) center 30% / cover; transition: opacity 200ms ease;
 }
 .np-a-img.wide { aspect-ratio: 16 / 7; background-position: center; }
 .np-a-img.empty { aspect-ratio: auto; height: 46px; background: none; }
@@ -153,7 +153,7 @@ body:is(.perf, .reduce-motion) .np-marquee .np-inner { animation: none; }
     color-mix(in srgb, var(--np-tint) 36%, transparent) 40%,
     color-mix(in srgb, var(--np-tint) 14%, transparent) 72%,
     transparent 100%);
-  opacity: 0; transition: opacity 400ms ease;
+  opacity: 0; transition: opacity 200ms ease;
 }
 .np-tint.show { opacity: 1; }
 .th-glass .np-tint.show { opacity: .5; }
