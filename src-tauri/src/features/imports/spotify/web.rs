@@ -99,9 +99,12 @@ pub async fn login(app: &AppHandle, dir: &Path) -> Result<Value, String> {
     let mut b = tauri::WebviewWindowBuilder::new(app, WINDOW, tauri::WebviewUrl::External(url))
         .title("Sign in to Spotify")
         .inner_size(480.0, 760.0)
-        .min_inner_size(380.0, 560.0)
-        .center()
-        .focused(true);
+        .min_inner_size(380.0, 560.0);
+    // Placing and focusing a window only exists on desktop.
+    #[cfg(desktop)]
+    {
+        b = b.center().focused(true);
+    }
     // Every webview in the process must share the main window's browser arguments.
     if let Some(args) = app.config().app.windows.first().and_then(|c| c.additional_browser_args.clone()) {
         b = b.additional_browser_args(&args);
