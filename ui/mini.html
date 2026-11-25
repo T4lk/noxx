@@ -236,7 +236,16 @@
     if (e.code === 'Space') { e.preventDefault(); emit('mini-cmd', { action: 'playPause' }); }
     else if (e.key === 'Escape') emit('mini-cmd', { action: 'close' });
   });
-  emit('mini-cmd', { action: 'hello' });
+  // Always fit the window: display scaling or a smaller window must never cut the player off.
+  const BASE_W = 430, BASE_H = 144;
+  function fit() {
+    const s = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H) || 1;
+    document.documentElement.style.zoom = String(Math.max(0.5, Math.min(2, s)));
+    return s;
+  }
+  window.addEventListener('resize', fit);
+  const scale = fit();
+  emit('mini-cmd', { action: 'hello', size: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio, scale: +scale.toFixed(3) } });
 })();
 </script>
 </body>

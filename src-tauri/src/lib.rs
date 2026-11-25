@@ -381,11 +381,12 @@ pub fn run() {
         }
         builder = builder.plugin(features::system::shortcut_plugin());
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        // Only the main window: the mini player and the Spotify sign-in have their own size and place.
         // Size, position and maximized state come back on launch (not visibility: closing to
         // the tray hides the window, and the next launch must still show it).
         {
             use tauri_plugin_window_state::StateFlags;
-            builder = builder.plugin(tauri_plugin_window_state::Builder::new().with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED).build());
+            builder = builder.plugin(tauri_plugin_window_state::Builder::new().with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED).with_denylist(&["mini", "spotify-login"]).build());
         }
     }
     boot_log("plugins: single-instance checked");

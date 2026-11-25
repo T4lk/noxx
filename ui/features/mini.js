@@ -36,11 +36,24 @@
 
   // Live spectrum for the mini player's visualizer: ~30 times a second while it's open, playing
   // and showing one. The analyser is released as soon as that stops.
-  let levelsTimer = 0, freq = null;
+  // The ticks come from a worker: while noxx is minimized its page is hidden, and timers in a
+  // hidden page run about once a second (too slow for a visualizer). Worker timers don't slow down.
+  let ticker = null, freq = null;
+  const levels = { sent: 0, peak: 0 };
   function syncLevels() {
     const want = st.open && !audio.paused && R.pref('miniViz', 'bars') !== 'off' && typeof R.getAnalyser === 'function';
-    if (want && !levelsTimer) levelsTimer = setInterval(sendLevels, 33);
-    else if (!want && levelsTimer) { clearInterval(levelsTimer); levelsTimer = 0; if (R.releaseAnalyser) R.releaseAnalyser('mini'); }
+    if (want && !ticker) {
+      try {
+        ticker = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 33);'], { type: 'text/javascript' })));
+        ticker.onmessage = sendLevels;
+      } catch (e) {
+        R.log('warn', `mini player: no worker for the visualizer (${R.errText(e)}), using a timer`);
+        ticker = { terminate: ((id) => () => clearInterval(id))(setInterval(sendLevels, 33)) };
+      }
+    } else if (!want && ticker) {
+      ticker.terminate(); ticker = null;
+      if (R.releaseAnalyser) R.releaseAnalyser('mini');
+    }
   }
   function sendLevels() {
     const an = R.getAnalyser('mini');
@@ -50,6 +63,8 @@
     // 48 bands from the lower ~3/4 of the spectrum (the top is mostly empty for music).
     const n = 48, use = Math.floor(freq.length * 0.75), out = new Array(n);
     for (let i = 0; i < n; i++) out[i] = freq[Math.floor((i / n) * use)];
+    levels.sent++;
+    levels.peak = Math.max(levels.peak, ...out);
     emit('mini-levels', out).catch(() => {});
   }
 
@@ -71,7 +86,10 @@
   R.listen('mini-cmd', (e) => {
     const c = e.payload || {};
     switch (c.action) {
-      case 'hello': st.open = true; paintBtn(); send(); break;
+      case 'hello':
+        st.open = true; paintBtn(); send();
+        if (c.size) { st.size = c.size; R.log('info', `mini player window ${c.size.w}x${c.size.h} @${c.size.dpr}, drawn at ${c.size.scale}`); }
+        break;
       case 'playPause': R.togglePlay(); break;
       case 'next': R.next(false); break;
       case 'prev': R.prev(); break;
@@ -118,15 +136,30 @@
     ]);
   }, 'interface');
 
-  R.mini = { toggle, open: (on) => setOpen(on), get isOpen() { return st.open; } };
+  R.mini = { toggle, open: (on) => setOpen(on), get isOpen() { return st.open; }, get levels() { return { ...levels }; }, get size() { return st.size; } };
 
   R.addSelftest(async (log) => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-    await setOpen(true);
+    // Start from a closed window so the page's hello is heard.
+    await setOpen(false);
     let hello = false;
     const un = await R.listen('mini-cmd', (e) => { if (e.payload && e.payload.action === 'hello') hello = true; });
+    await setOpen(true);
     for (let i = 0; i < 40 && !hello; i++) await wait(250);
-    log(`mini player open ${st.open && hello ? 'OK' : 'FAILED'} (window ${st.open}, page answered ${hello})`);
+    const fits = !!st.size && st.size.w >= 420 && st.size.h >= 136;
+    log(`mini player open ${st.open && hello && fits ? 'OK' : 'FAILED'} (window ${st.open}, page answered ${hello}, size ${JSON.stringify(st.size || null)})`);
+    // Visualizer levels: about 30 a second, also while the main window is minimized.
+    if (R.player.current) {
+      if (audio.paused) { await audio.play().catch(() => {}); await wait(800); }
+      const rate = async () => { const a = levels.sent; await wait(3000); return Math.round((levels.sent - a) / 3); };
+      const shown = await rate();
+      const win = window.__TAURI__.window.getCurrentWindow();
+      await win.minimize().catch(() => {});
+      await wait(1500);
+      const hidden = await rate();
+      await R.call('system.show_main').catch(() => {});
+      log(`mini player levels ${shown >= 20 && hidden >= 20 ? 'OK' : 'FAILED'}: ${shown}/s shown, ${hidden}/s minimized, peak ${levels.peak} (0 is normal here: the selftest plays muted)`);
+    } else log('mini player levels skipped: nothing playing');
     await setOpen(false);
     log(`mini player close ${!st.open ? 'OK' : 'FAILED'}`);
     if (typeof un === 'function') un();

@@ -621,7 +621,7 @@
 
     const m = open('spotify');
     const tabs = m.querySelectorAll('.imp-modes button').length;
-    log(`imports modal ${ok(tabs === 3 && m.querySelector('[data-k=url]') && m.querySelector('.imp-dd'))}: ${tabs} tabs`);
+    log(`imports modal ${ok(tabs === 4 && m.querySelector('[data-k=url]') && m.querySelector('.imp-dd'))}: ${tabs} tabs`);
     R.closeModal();
   });
 })();
