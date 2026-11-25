@@ -87,3 +87,10 @@ div.imp-dim:not(:empty) { margin-bottom: 12px; }
 .imp-set-ic.imp-ytmusic { color: #ff3b30; }
 .imp-set-ic.imp-soundcloud { color: #ff7a1a; }
 .imp-set .btn { flex: none; }
+
+/* Spotify sign-in status: expired in red */
+[data-sp-acc-desc][data-state="expired"], [data-k="web-status"][data-state="expired"] { color: #ff6b6b; }
+/* Spotify button in the top bar, next to SoundCloud's */
+.sp-pill { margin-right: 6px; }
+.sp-pill .sp-av { color: #1ed760; }
+.sp-pill.warn .sp-av { color: inherit; }

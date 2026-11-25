@@ -154,7 +154,7 @@
   // ------------------------------------------------------------ the modal
 
   const MODES = {
-    spotify: { title: 'Import from Spotify', icon: IC.spotify, tabs: [['link', 'Playlist link'], ['file', 'Export files'], ['login', 'Log in']], placeholder: 'Spotify playlist, album or track link', newLabel: 'New playlist (Spotify name)' },
+    spotify: { title: 'Import from Spotify', icon: IC.spotify, tabs: [['link', 'Playlist link'], ['web', 'Liked songs'], ['file', 'Export files'], ['login', 'Developer app']], placeholder: 'Spotify playlist, album or track link', newLabel: 'New playlist (Spotify name)' },
     apple: { title: 'Import from Apple Music', icon: IC.apple, tabs: [['link', 'Playlist link'], ['file', 'Export files']], placeholder: 'Paste an Apple Music playlist or album link', newLabel: 'New playlist (Apple Music name)' },
     link: { title: 'Import from link', icon: IC.link, tabs: [['link', 'Link']], placeholder: 'Paste a YouTube, YouTube Music or SoundCloud link', newLabel: 'New playlist (same name)' },
   };
@@ -196,8 +196,13 @@
         <div class="imp-dim" data-k="file-sum"></div>
         <div class="imp-warn">${IC.warn}<span>${WARN_TEXT}</span></div>
       </div>
+      <div class="imp-pane" data-mode="web" hidden>
+        <p class="imp-help">Sign in to Spotify in a noxx window to import your Liked songs. No developer app or data export needed.</p>
+        <div class="imp-row"><button type="button" class="btn outline" data-k="web-login">Sign in to Spotify</button><button type="button" class="btn outline" data-k="web-logout" hidden>Sign out</button><span class="imp-dim" data-k="web-status">Not signed in</span></div>
+        <div class="imp-warn">${IC.warn}<span>You sign in on Spotify's own page. noxx keeps the sign-in in the app data folder to read your Liked songs, and reads them the way the Spotify web player does, so a Spotify update can break this until noxx catches up. For playlists, use Playlist link.</span></div>
+      </div>
       <div class="imp-pane" data-mode="login" hidden>
-        <p class="imp-help">Public playlist links import in full without logging in. Log in only for your Liked songs and private playlists.</p>
+        <p class="imp-help">Public playlists: use Playlist link. Liked songs: use the Liked songs tab. This option is for private playlists, through your own Spotify developer app.</p>
         <p class="imp-help">1) Open <a href="#" data-k="dash">developer.spotify.com/dashboard</a> and create an app (Web API). 2) Add this exact Redirect URI: <code data-k="redir">http://127.0.0.1:43827/callback</code><button type="button" class="imp-copy" data-k="copy" title="Copy">${IC.copy}</button> 3) Paste the app's Client ID here and log in.</p>
         <label class="imp-field"><input type="text" data-k="client" placeholder="Client ID" spellcheck="false"></label>
         <div class="imp-row"><button type="button" class="btn outline" data-k="login">Log in with Spotify</button><button type="button" class="btn outline" data-k="logout" hidden>Disconnect</button><span class="imp-dim" data-k="login-status">Not connected</span></div>
@@ -222,6 +227,7 @@
       err('');
       if (!done) $('go').disabled = false;
       if (k === 'login') refreshAuth();
+      if (k === 'web') refreshWeb();
     };
     m.querySelectorAll('.imp-modes button').forEach((b) => { b.onclick = () => !busyHere && setMode(b.dataset.mode); });
 
@@ -261,6 +267,32 @@
       $('logout').onclick = async () => { auth = await R.call('imports.spotify_logout'); paintAuth(); paintSettings(); };
     }
 
+    // spotify sign-in in noxx (Liked songs)
+    let web = null;
+    const paintWeb = () => {
+      if (!web || !$('web-status')) return;
+      $('web-status').textContent = webText(web);
+      $('web-status').dataset.state = web.state || '';
+      $('web-login').hidden = !!web.signedIn;
+      $('web-login').textContent = web.state === 'expired' ? 'Sign in again' : 'Sign in to Spotify';
+      $('web-logout').hidden = !web.signedIn;
+    };
+    // Shows what's saved at once, then asks Spotify whether it still works.
+    async function refreshWeb() {
+      try {
+        web = await R.call('imports.spotify_web_status'); paintWeb();
+        if (web.signedIn) { $('web-status').textContent = 'Checking your Spotify sign-in…'; web = await R.call('imports.spotify_web_status', { check: true }); paintWeb(); setWebState(web); }
+      } catch (_) {}
+    }
+    if ($('web-login')) {
+      $('web-login').onclick = async () => {
+        err(''); $('web-login').disabled = true; $('web-status').textContent = 'Sign in in the Spotify window…';
+        try { web = await R.call('imports.spotify_web_login'); paintWeb(); setWebState(web); R.toast(web.name ? `Signed in to Spotify as ${web.name}` : 'Signed in to Spotify'); } catch (e) { err(R.errText(e)); refreshWeb(); }
+        $('web-login').disabled = false;
+      };
+      $('web-logout').onclick = async () => { web = await R.call('imports.spotify_web_logout'); paintWeb(); setWebState(web); };
+    }
+
     // progress
     let bar = null; let base = 0; let grand = 0;
     const showProgress = (on) => {
@@ -277,7 +309,7 @@
     let busyHere = false;
     const lock = (on) => {
       busyHere = on;
-      m.querySelectorAll('input, .imp-modes button, .imp-dd-trigger, [data-k=pick], [data-k=login]').forEach((x) => { x.disabled = on; });
+      m.querySelectorAll('input, .imp-modes button, .imp-dd-trigger, [data-k=pick], [data-k=login], [data-k=web-login], [data-k=web-logout]').forEach((x) => { x.disabled = on; });
       $('go').disabled = on;
       $('go-text').textContent = on ? 'Importing…' : (kind === 'link' ? 'Import' : M.title);
       $('cancel').textContent = on ? 'Stop' : 'Cancel';
@@ -316,6 +348,15 @@
           if (wantP) lists.push(...files.playlists.map((p) => ({ name: p.name, items: p.tracks, into: 'new' })));
           if (!lists.length) throw new Error('Nothing to import from those files.');
           label = `${src} export`;
+        } else if (mode === 'web') {
+          if (!web || !web.signedIn) throw new Error('Sign in to Spotify first.');
+          $('status').hidden = false; $('status').textContent = 'Reading your Liked songs…';
+          let r;
+          try { r = await R.call('imports.spotify_web_likes'); } catch (e) { refreshWeb(); throw e; }
+          if (!r.likes.length) throw new Error('Your Liked songs on Spotify look empty.');
+          $('status').textContent = `Liked songs: ${R.plural(r.likes.length, 'track')}${r.total > r.likes.length ? ` (of ${r.total})` : ''}`;
+          lists.push({ name: 'Liked songs (Spotify)', items: r.likes, into: 'new' });
+          label = 'your Spotify Liked songs';
         } else if (mode === 'login') {
           if (!auth || !auth.connected) throw new Error('Log in with Spotify first.');
           $('status').hidden = false; $('status').textContent = 'Reading your Spotify library…';
@@ -432,15 +473,100 @@
   });
 
   let settingsGroup = null;
+  // ---------------------------------------------------------------- Spotify sign-in status
+  // One place for "is Spotify signed in": the Integrations row, the import row and the dialog.
+  // state: signed-in | signed-out | expired (Spotify refused it) | unknown (couldn't check).
+  let webState = null;
+  function webText(w) {
+    if (!w) return 'Not signed in';
+    if (w.state === 'expired') return 'Sign-in expired. Sign in again';
+    if (!w.signedIn) return 'Not signed in';
+    const who = w.name ? `Signed in as ${w.name}` : 'Signed in';
+    return w.state === 'unknown' ? `${who} (couldn't reach Spotify to check)` : who;
+  }
+  function setWebState(w) { if (w) { webState = w; paintSettings(); } }
+  async function checkWeb() {
+    try { setWebState(await R.call('imports.spotify_web_status', { check: true })); } catch (_) {}
+    return webState;
+  }
+  // A while after start: tell once if the saved sign-in stopped working.
+  R.on('ready', () => { R.call('imports.spotify_web_status').then(setWebState).catch(() => {}); });
+  R.on('ready', () => setTimeout(async () => {
+    let w = null;
+    try { w = await R.call('imports.spotify_web_status'); } catch (_) { return; }
+    setWebState(w);
+    if (!w.signedIn) return;
+    w = await checkWeb();
+    if (w && w.state === 'expired') R.toast('Your Spotify sign-in has expired. Sign in again in Settings → Integrations', 'error');
+  }, 20000));
+
+  // Top bar: a Spotify button next to SoundCloud's (same look), shown once you've signed in to
+  // Spotify in noxx (or while that sign-in has expired). Click: Settings → Integrations.
+  let spPill = null;
+  function paintPill() {
+    const w = webState;
+    const show = !!w && (w.signedIn || w.state === 'expired');
+    if (!spPill) {
+      const sc = document.getElementById('account-pill');
+      if (!sc || !show) return;
+      spPill = R.el('<button type="button" class="account-pill sp-pill"></button>');
+      spPill.addEventListener('click', () => R.openSettings('integrations'));
+      sc.before(spPill);
+    }
+    spPill.hidden = !show;
+    if (!show) return;
+    const expired = w.state === 'expired';
+    spPill.classList.toggle('warn', expired);
+    spPill.innerHTML = `<span class="av sp-av" style="${!expired && w.avatar ? R.bg(w.avatar) : ''}">${!expired && w.avatar ? '' : IC.spotify}</span>${expired ? '<span class="ap-name">Reconnect</span>' : ''}`;
+    spPill.title = expired ? 'Spotify sign-in expired. Click to sign in again'
+      : w.state === 'unknown' ? `Spotify: ${w.name || 'signed in'} (couldn't reach Spotify to check)`
+      : `Spotify: ${w.name || 'signed in'}`;
+  }
+
+  let accountRow = null;
   function paintSettings() {
+    paintPill();
+    if (accountRow && accountRow.isConnected) {
+      const w = webState;
+      accountRow.querySelector('[data-sp-acc-desc]').textContent = webText(w) + (w && w.signedIn ? ' · Liked songs can be imported' : '');
+      accountRow.querySelector('[data-sp-acc-desc]').dataset.state = (w && w.state) || '';
+      accountRow.querySelector('[data-sp-acc=in]').hidden = !!(w && w.signedIn);
+      accountRow.querySelector('[data-sp-acc=in]').textContent = w && w.state === 'expired' ? 'Sign in again' : 'Sign in';
+      accountRow.querySelector('[data-sp-acc=out]').hidden = !(w && w.signedIn);
+    }
     if (!settingsGroup || !settingsGroup.isConnected) return;
     R.call('imports.spotify_status').then((s) => {
       const d = settingsGroup.querySelector('[data-imp-sp-desc]');
-      if (d) d.textContent = s.connected ? 'Account connected: playlists import in full, plus your liked songs' : 'Playlists, albums and tracks by link, export files or your account';
+      if (!d) return;
+      const w = webState;
+      d.textContent = w && w.signedIn ? `${webText(w)}: playlists by link, plus your Liked songs`
+        : s.connected ? 'Developer app connected: playlists import in full, plus your liked songs'
+        : 'Playlists, albums and tracks by link, export files, or sign in for your Liked songs';
     }).catch(() => {});
   }
   R.addSettings(() => {
     const row = (k, icon, name, desc, extra = '') => `<div class="th-item setting-item imp-set"><div class="th-top"><div class="imp-set-l"><span class="imp-set-ic imp-${k}">${icon}</span><div class="th-col"><span class="th-name">${name}</span><span class="th-desc"${extra}>${desc}</span></div></div><button type="button" class="btn primary" data-imp="${k}">Import</button></div></div>`;
+    R.add('<div class="section-title">Spotify account</div>');
+    accountRow = R.add(`<div class="th-group"><div class="th-item setting-item imp-set"><div class="th-top"><div class="imp-set-l"><span class="imp-set-ic imp-spotify">${IC.spotify}</span><div class="th-col"><span class="th-name">Spotify</span><span class="th-desc imp-acc-desc" data-sp-acc-desc>Checking…</span></div></div>
+      <div class="th-side"><button type="button" class="btn outline" data-sp-acc="out" hidden>Sign out</button><button type="button" class="btn primary" data-sp-acc="in" hidden>Sign in</button></div></div></div></div>`);
+    accountRow.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-sp-acc]');
+      if (!b) return;
+      b.disabled = true;
+      try {
+        if (b.dataset.spAcc === 'in') {
+          accountRow.querySelector('[data-sp-acc-desc]').textContent = 'Sign in in the Spotify window…';
+          const w = await R.call('imports.spotify_web_login');
+          setWebState(w);
+          R.toast(w.name ? `Signed in to Spotify as ${w.name}` : 'Signed in to Spotify');
+        } else if (await R.confirmBox('Sign out of Spotify', 'noxx forgets your Spotify sign-in. Playlists you already imported stay.', 'Sign out')) {
+          setWebState(await R.call('imports.spotify_web_logout'));
+        }
+      } catch (err) { R.toast(R.errText(err), 'error'); checkWeb(); }
+      b.disabled = false;
+    });
+    // Saved state at once, then the real check.
+    R.call('imports.spotify_web_status').then((w) => { setWebState(w); if (w.signedIn) checkWeb(); }).catch(() => {});
     R.add('<div class="section-title">Import playlists</div>');
     settingsGroup = R.add(`<div class="th-group imp-group">
       ${row('spotify', IC.spotify, 'Spotify', 'Playlists, albums and tracks by link, export files or your account', ' data-imp-sp-desc')}

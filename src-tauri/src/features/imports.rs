@@ -6,6 +6,8 @@
 //! 6 at a time, in order, emits `import-progress`, and saves one local playlist.
 //! Spotify account (own Client ID, PKCE): `spotify_status`, `spotify_login`, `spotify_logout`,
 //! `spotify_library {likes, playlists}`.
+//! Spotify sign-in in noxx (session cookie): `spotify_web_status {check?}`, `spotify_web_login`,
+//! `spotify_web_logout`, `spotify_web_likes` -> { likes, total }.
 
 mod apple;
 mod matcher;
@@ -374,6 +376,14 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: Value) -> super::Out {
             }
             Ok(Value::Null)
         }
+        // Sign in to Spotify inside noxx (no developer app): Liked Songs.
+        "spotify_web_status" => Ok(if args["check"].as_bool() == Some(true) { spotify::web::check(app, &dir).await } else { spotify::web::status(&dir) }),
+        "spotify_web_login" => spotify::web::login(app, &dir).await,
+        "spotify_web_logout" => {
+            spotify::web::logout(app, &dir);
+            Ok(spotify::web::status(&dir))
+        }
+        "spotify_web_likes" => spotify::web::likes(app, &dir).await,
         "spotify_status" => Ok(spotify::Auth::status(&dir)),
         "spotify_login" => spotify::login(&dir, args["clientId"].as_str().unwrap_or("")).await,
         "spotify_logout" => {

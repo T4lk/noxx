@@ -3,6 +3,7 @@
 //! with their own app's Client ID (PKCE).
 
 mod guest;
+pub mod web;
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
