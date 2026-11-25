@@ -23,12 +23,17 @@ It uses about **200 MB** of memory in total, where the Electron version used abo
 
 - **SoundCloud:** search, trending, your playlists and likes. Likes sync on launch and every 30 minutes, keep SoundCloud's order, and keep tracks you only hearted in noxx.
 - **YouTube and YouTube Music:** search and play from either, with a source switch in the search bar.
-- **Playlist imports:** paste a Spotify, Apple Music, SoundCloud or YouTube link. Each track is matched to a playable one and saved as a local playlist.
-- **Lyrics:** synced lyrics with karaoke word highlighting, a full-screen karaoke mode and translation into 130+ languages.
+- **Playlist imports:** paste a Spotify, Apple Music, SoundCloud or YouTube link. Each track is matched to a playable one and saved as a local playlist. Spotify playlists import in full (thousands of tracks) without logging in.
+- **Spotify Liked songs:** sign in to Spotify inside noxx (a free account is enough, no developer app) and import your Liked songs. noxx checks the sign-in and shows it in Settings and the top bar.
+- **Mini player:** a floating, always-on-top player with a spinning record or wavy cover, a progress ring, a live visualizer and like / skip buttons. It can open by itself when you minimize noxx.
+- **Offline:** songs you play are cached (up to a size you pick) so they start instantly and play without internet; liked songs can download in the background. When the connection drops, noxx plays what's on your PC and skips the rest.
+- **Picks up where you left off:** your queue, song and position come back after a restart, and so does the window's size and position.
+- **Keyboard:** every shortcut can be changed, and any action can get a system-wide key that works while noxx is in the background. On Windows, the taskbar preview has previous / play / next buttons.
+- **Lyrics:** synced lyrics with karaoke word highlighting, a full-screen karaoke mode and translation into 130+ languages. Lyrics running early or late can be nudged, for one song or all of them.
 - **Sound:** EQ, effects, tempo and pitch, presets, crossfade, sleep timer.
-- **Looks:** the Glasshouse theme by default, accent colours, Material You palettes, custom themes, banner and background images or videos, a CSS editor.
+- **Looks:** a black-and-white look by default, or a Colour look with accent colours and Material You palettes; glass cards with blur and background settings, custom themes, banner and background images or videos, a CSS editor.
 - **Android:** the same app on your phone, with a phone layout, full-screen now playing, background playback and lock-screen controls.
-- **Also:** Discover (mixes, artist pages, radio), history, downloads for offline play, local files, Discord Rich Presence, media keys, minimize to tray, and plugins.
+- **Also:** Discover (mixes, artist pages, radio), history, downloads for offline play, local files (drag them onto the window), recent searches, album audio instead of the music-video version when YouTube Music has it, pause when headphones disconnect, keep the screen awake while playing, Discord Rich Presence, media keys, minimize to tray, and plugins.
 
 ## Screenshots
 
