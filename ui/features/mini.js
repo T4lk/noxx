@@ -28,7 +28,29 @@
       duration: R.duration() || (t && t.duration) || 0,
       liked: !!(t && R.state.favIds && R.state.favIds.has(t.id)),
       theme: theme(),
+      cover: R.pref('miniCover', 'record'),
+      viz: R.pref('miniViz', 'bars'),
     }).catch(() => {});
+    syncLevels();
+  }
+
+  // Live spectrum for the mini player's visualizer: ~30 times a second while it's open, playing
+  // and showing one. The analyser is released as soon as that stops.
+  let levelsTimer = 0, freq = null;
+  function syncLevels() {
+    const want = st.open && !audio.paused && R.pref('miniViz', 'bars') !== 'off' && typeof R.getAnalyser === 'function';
+    if (want && !levelsTimer) levelsTimer = setInterval(sendLevels, 33);
+    else if (!want && levelsTimer) { clearInterval(levelsTimer); levelsTimer = 0; if (R.releaseAnalyser) R.releaseAnalyser('mini'); }
+  }
+  function sendLevels() {
+    const an = R.getAnalyser('mini');
+    if (!an) return;
+    if (!freq || freq.length !== an.frequencyBinCount) freq = new Uint8Array(an.frequencyBinCount);
+    an.getByteFrequencyData(freq);
+    // 48 bands from the lower ~3/4 of the spectrum (the top is mostly empty for music).
+    const n = 48, use = Math.floor(freq.length * 0.75), out = new Array(n);
+    for (let i = 0; i < n; i++) out[i] = freq[Math.floor((i / n) * use)];
+    emit('mini-levels', out).catch(() => {});
   }
 
   async function setOpen(open, auto = false) {
@@ -38,6 +60,7 @@
       st.open = !!(r && r.open);
       st.auto = st.open && auto;
       paintBtn();
+      syncLevels();
       if (st.open) setTimeout(send, 400);
     } catch (e) {
       R.toast(`Mini player: ${R.errText(e)}`, 'error');
@@ -88,6 +111,8 @@
     R.add('<div class="section-title">Mini player</div>');
     S.group([
       S.select({ name: 'Position', desc: 'Where the mini player opens. You can drag it anywhere', options: POSITIONS, value: R.pref('miniPos', 'top-right'), onChange: (v) => { R.setPref('miniPos', v); if (st.open) { st.open = false; setOpen(true); } } }),
+      S.select({ name: 'Cover', options: [['record', 'Record'], ['wavy', 'Wavy shape']], value: R.pref('miniCover', 'record'), onChange: (v) => { R.setPref('miniCover', v); send(); } }),
+      S.select({ name: 'Visualizer', options: [['bars', 'Bars'], ['wave', 'Wave'], ['dots', 'Dots'], ['off', 'Off']], value: R.pref('miniViz', 'bars'), onChange: (v) => { R.setPref('miniViz', v); send(); } }),
       S.prefToggle('miniOnMinimize', false, 'Show when noxx is minimized', 'The mini player opens while the main window is minimized or in the tray, and closes when it comes back'),
       S.button && S.button({ name: 'Open the mini player', label: st.open ? 'Close' : 'Open', onClick: toggle }),
     ]);

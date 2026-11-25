@@ -3,47 +3,98 @@
 <head>
 <meta charset="utf-8">
 <title>noxx mini player</title>
-<!-- Floating mini player (features/mini.js in the main window drives it through events). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&display=swap">
+<!--
+  Floating mini player: a transparent window (no box), a spinning record (or wavy cover) with a
+  dotted progress ring, and two cards: title / artist, and time + live visualizer + length.
+  features/mini.js in the main window drives it: "mini-state" (song, play state, time, style)
+  and "mini-levels" (live spectrum while playing); clicks go back as "mini-cmd".
+-->
 <style>
-  :root { --bg: #161616; --fg: #ffffff; --dim: #a8a8a8; --accent: #ffffff; --on-accent: #121212; --track: #ffffff26; }
+  :root {
+    --card: rgba(22, 22, 25, .94); --edge: rgba(255, 255, 255, .07); --fg: #f3f3f5; --dim: #9a9aa2;
+    --accent: #ffffff; --faint: rgba(255, 255, 255, .22);
+  }
   * { box-sizing: border-box; margin: 0; }
-  html, body { height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.3 Inter, "Google Sans", "Segoe UI", system-ui, sans-serif; overflow: hidden; user-select: none; cursor: default; }
-  .mini { position: relative; display: flex; align-items: center; gap: 10px; height: 100%; padding: 10px 12px 12px; }
-  .art { width: 54px; height: 54px; flex: none; border-radius: 9px; background: var(--track) center/cover; }
-  .meta { flex: 1; min-width: 0; }
+  html, body { height: 100%; background: transparent; color: var(--fg); overflow: hidden; user-select: none; cursor: default;
+    font: 13px/1.25 "Google Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  .mini { display: flex; align-items: center; gap: 14px; height: 100%; padding: 8px 10px; }
+
+  /* ------------------------------------------------ cover: record or wavy shape, with the ring */
+  .disc-box { position: relative; width: 124px; height: 124px; flex: none; display: grid; place-items: center; cursor: pointer; }
+  .ring { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .ring .dots, .ring .wdots { fill: none; stroke: var(--faint); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 0 7; }
+  .ring .arc, .ring .warc { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .ring .wdots, .ring .warc { display: none; }
+  .ring .wdots { stroke-dasharray: 0 17; } /* pathLength 1000 on a ~400 px outline: same ~7 px spacing as the circle */
+  .cover-wavy .ring .dots, .cover-wavy .ring .arc { display: none; }
+  .cover-wavy .ring .wdots, .cover-wavy .ring .warc { display: block; }
+  .disc { position: relative; width: 92px; height: 92px; border-radius: 50%; background: #f1f1f3; display: grid; place-items: center;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .45); animation: spin 9s linear infinite; animation-play-state: paused; }
+  .playing .disc { animation-play-state: running; }
+  .disc .art { width: 62px; height: 62px; border-radius: 50%; background: #2a2a2e center/cover; }
+  .disc .hole { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #f1f1f3; box-shadow: inset 0 0 0 4px #141416; }
+  .wavy { display: none; width: 96px; height: 96px; background: #2a2a2e center/cover; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .45)); }
+  .cover-wavy .disc { display: none; }
+  .cover-wavy .wavy { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* play / pause hint over the cover */
+  .disc-box .hint { position: absolute; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+    background: rgba(0, 0, 0, .55); color: #fff; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .disc-box .hint svg { width: 16px; height: 16px; }
+  .disc-box:hover .hint { opacity: 1; }
+
+  /* ------------------------------------------------ cards */
+  .side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+  .card { position: relative; background: var(--card); border: 1px solid var(--edge); border-radius: 11px; }
+  .info { padding: 10px 12px 9px; min-height: 52px; }
   .title, .artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .title { font-weight: 700; font-size: 13.5px; letter-spacing: -0.01em; }
-  .artist { color: var(--dim); margin-top: 2px; }
-  .ctrls { display: flex; align-items: center; gap: 2px; flex: none; }
-  button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 9px; background: transparent; color: var(--fg); transition: background-color .12s ease, transform .16s cubic-bezier(.2,.8,.2,1), opacity .15s ease; }
-  button:active { transform: scale(.94); }
-  button:hover { background: var(--track); }
-  button svg { width: 18px; height: 18px; }
-  button.play { width: 38px; height: 38px; border-radius: 50%; background: var(--accent); color: var(--on-accent); }
-  button.play:hover { filter: brightness(.92); background: var(--accent); }
-  button.liked { color: var(--accent); }
-  button.liked svg { fill: currentColor; }
-  .close { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; opacity: 0; transition: opacity .15s; }
-  .close svg { width: 12px; height: 12px; }
-  body:hover .close { opacity: .8; }
-  .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--track); cursor: pointer; }
-  .bar { transition: height .12s ease; }
-  .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .title { font-weight: 700; font-size: 14.5px; padding-right: 4px; }
+  .artist { color: var(--dim); font-size: 11.5px; margin-top: 4px; }
+  /* like / previous / next always there; open-noxx and close appear on hover */
+  .info { display: flex; align-items: center; gap: 6px; }
+  .meta { flex: 1; min-width: 0; }
+  .ctrls { display: flex; align-items: center; gap: 1px; flex: none; }
+  .ctrls .more { display: none; }
+  .info:hover .ctrls .more { display: grid; }
+  .ctrls button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--fg); }
+  .ctrls button:hover { background: rgba(255, 255, 255, .1); }
+  .ctrls svg { width: 15px; height: 15px; }
+  .ctrls .liked { color: #ff5c7a; }
+  .ctrls .liked svg { fill: currentColor; }
+  .viz-card { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--fg); }
+  .viz-card canvas { flex: 1; min-width: 0; height: 18px; }
+  .bar { height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .14); cursor: pointer; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; }
   .bar:hover { height: 5px; }
 </style>
 </head>
 <body>
-<div class="mini" data-tauri-drag-region>
-  <div class="art" data-tauri-drag-region></div>
-  <div class="meta" data-tauri-drag-region><div class="title" data-tauri-drag-region>Nothing playing</div><div class="artist" data-tauri-drag-region></div></div>
-  <div class="ctrls">
-    <button data-a="like" title="Like"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg></button>
-    <button data-a="prev" title="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM9.5 12 19 5v14z"/></svg></button>
-    <button data-a="playPause" class="play" title="Play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-    <button data-a="next" title="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM5 5l9.5 7L5 19z"/></svg></button>
+<div class="mini">
+  <div class="disc-box" title="Play / pause">
+    <svg class="ring" viewBox="0 0 124 124"><circle class="dots" cx="62" cy="62" r="58" transform="rotate(-90 62 62)"/><circle class="arc" cx="62" cy="62" r="58" transform="rotate(-90 62 62)"/><path class="wdots" pathLength="1000"/><path class="warc" pathLength="1000"/></svg>
+    <div class="disc"><div class="art"></div><div class="hole"></div></div>
+    <div class="wavy"></div>
+    <div class="hint"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>
   </div>
-  <button class="close" data-a="close" title="Close mini player"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-  <div class="bar"><i></i></div>
+  <div class="side">
+    <div class="card info" data-tauri-drag-region>
+      <div class="meta" data-tauri-drag-region><div class="title" data-tauri-drag-region>Nothing playing</div>
+      <div class="artist" data-tauri-drag-region>noxx</div></div>
+      <div class="ctrls">
+        <button data-a="like" title="Like"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg></button>
+        <button data-a="prev" title="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM9.5 12 19 5v14z"/></svg></button>
+        <button data-a="next" title="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM5 5l9.5 7L5 19z"/></svg></button>
+        <button class="more" data-a="focusMain" title="Open noxx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></button>
+        <button class="more" data-a="close" title="Close mini player"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+    </div>
+    <div class="card viz-card" data-tauri-drag-region>
+      <span class="t-cur">0:00</span><canvas width="200" height="18"></canvas><span class="t-dur">0:00</span>
+    </div>
+    <div class="bar"><i></i></div>
+  </div>
 </div>
 <script>
 'use strict';
@@ -51,40 +102,136 @@
   const { emit, listen } = window.__TAURI__.event;
   const $ = (s) => document.querySelector(s);
   const PLAY = '<path d="M8 5v14l11-7z"/>', PAUSE = '<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>';
-  const st = { duration: 0, time: 0, playing: false, at: 0 };
+  const st = { duration: 0, time: 0, playing: false, at: 0, viz: 'bars', levels: new Float32Array(48), target: new Float32Array(48), lastLevels: 0 };
+  const RING = 2 * Math.PI * 58;
+  const arc = $('.ring .arc');
+  arc.style.strokeDasharray = `${RING}`;
+
+  const fmt = (s) => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const now = () => st.time + (st.playing ? (performance.now() - st.at) / 1000 : 0);
+  const frac = () => (st.duration ? Math.min(1, now() / st.duration) : 0);
+
+  // Cookie shape (12 soft waves) like the Material 3 shapes in the main player. The same
+  // outline clips the cover and, one size bigger, draws the ring; it starts at the top so the
+  // progress does too, and its waves turn while playing (cover and ring together).
+  const WAVES = 12, wv = { phase: 0, last: performance.now() };
+  function cookie(c, r, amp, phase) {
+    const pts = [];
+    for (let i = 0; i <= 192; i++) {
+      const a = -Math.PI / 2 + (i / 192) * Math.PI * 2, rr = r + amp * Math.cos(WAVES * (a - phase));
+      pts.push(`${(c + rr * Math.cos(a)).toFixed(2)} ${(c + rr * Math.sin(a)).toFixed(2)}`);
+    }
+    return `M ${pts.join(' L ')} Z`;
+  }
+  const wdots = $('.ring .wdots'), warc = $('.ring .warc');
+  function drawWavy(p) {
+    const t = performance.now();
+    if (st.playing) wv.phase = (wv.phase + ((t - wv.last) / 1000) * 0.12) % (Math.PI * 2);
+    wv.last = t;
+    $('.wavy').style.clipPath = `path('${cookie(48, 45, 3.2, wv.phase)}')`;
+    const ring = cookie(62, 56.5, 3.6, wv.phase);
+    wdots.setAttribute('d', ring);
+    warc.setAttribute('d', ring);
+    warc.style.strokeDasharray = `${Math.max(0.01, p * 1000)} 1000`;
+  }
 
   function paint(s) {
-    if (s.theme) for (const [k, v] of Object.entries(s.theme)) if (v) document.documentElement.style.setProperty(k, v);
+    if (s.theme && s.theme['--accent']) document.documentElement.style.setProperty('--accent', s.theme['--accent']);
     const t = s.track;
     $('.title').textContent = t ? t.title : 'Nothing playing';
-    $('.artist').textContent = t ? t.artist : '';
-    $('.art').style.backgroundImage = t && t.artwork ? `url("${t.artwork}")` : '';
-    const play = $('[data-a=playPause]');
-    play.title = s.playing ? 'Pause' : 'Play';
-    play.querySelector('svg').innerHTML = s.playing ? PAUSE : PLAY;
-    $('[data-a=like]').classList.toggle('liked', !!s.liked);
-    $('[data-a=like] svg').setAttribute('fill', s.liked ? 'currentColor' : 'none');
+    $('.artist').textContent = t ? t.artist : 'noxx';
+    const art = t && t.artwork ? `url("${t.artwork}")` : '';
+    $('.disc .art').style.backgroundImage = art;
+    $('.wavy').style.backgroundImage = art;
+    document.body.classList.toggle('playing', !!s.playing);
+    document.body.classList.toggle('cover-wavy', s.cover === 'wavy');
+    $('.hint svg').innerHTML = s.playing ? PAUSE : PLAY;
+    const like = $('[data-a=like]');
+    like.classList.toggle('liked', !!s.liked);
+    like.title = s.liked ? 'Remove from likes' : 'Like';
+    st.viz = s.viz || 'bars';
+    $('.viz-card canvas').style.display = st.viz === 'off' ? 'none' : '';
     Object.assign(st, { duration: s.duration || 0, time: s.time || 0, playing: !!s.playing, at: performance.now() });
-    bar();
+    $('.t-dur').textContent = fmt(st.duration);
   }
-  // The bar moves on its own between state messages (they come about once a second).
-  function bar() {
-    const t = st.time + (st.playing ? (performance.now() - st.at) / 1000 : 0);
-    $('.bar i').style.width = st.duration ? `${Math.min(100, (t / st.duration) * 100)}%` : '0';
+
+  // ------------------------------------------------ visualizer (levels from the main window)
+  const cv = $('.viz-card canvas'), cx = cv.getContext('2d');
+  function size() {
+    const r = cv.getBoundingClientRect(), k = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(r.width * k)), h = Math.max(1, Math.round(r.height * k));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    cx.setTransform(k, 0, 0, k, 0, 0);
+    return [r.width, r.height];
   }
-  setInterval(bar, 250);
+  function draw() {
+    requestAnimationFrame(draw);
+    const p = frac();
+    $('.t-cur').textContent = fmt(now());
+    $('.bar i').style.width = `${p * 100}%`;
+    arc.style.strokeDashoffset = `${RING * (1 - p)}`;
+    if (document.body.classList.contains('cover-wavy')) drawWavy(p);
+    if (st.viz === 'off') return;
+    // Ease toward the latest levels; fall to a quiet idle line when paused or nothing arrives.
+    const stale = !st.playing || performance.now() - st.lastLevels > 400;
+    for (let i = 0; i < st.levels.length; i++) {
+      const goal = stale ? 0.06 : st.target[i];
+      st.levels[i] += (goal - st.levels[i]) * (goal > st.levels[i] ? 0.55 : 0.18);
+    }
+    const [W, H] = size();
+    cx.clearRect(0, 0, W, H);
+    const lit = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
+    const dim = 'rgba(255,255,255,.28)';
+    const L = st.levels;
+    if (st.viz === 'wave') {
+      cx.lineWidth = 1.6; cx.lineJoin = 'round';
+      for (const [from, to, color] of [[0, p, lit], [p, 1, dim]]) {
+        cx.save(); cx.beginPath(); cx.rect(from * W, 0, (to - from) * W, H); cx.clip();
+        cx.strokeStyle = color; cx.beginPath();
+        for (let i = 0; i < L.length; i++) {
+          const x = (i / (L.length - 1)) * W, a = L[i] * (H / 2 - 1) * (i % 2 ? -1 : 1);
+          if (i) cx.lineTo(x, H / 2 + a); else cx.moveTo(x, H / 2 + a);
+        }
+        cx.stroke(); cx.restore();
+      }
+    } else if (st.viz === 'dots') {
+      const cols = Math.floor(W / 5), rows = 4;
+      for (let c = 0; c < cols; c++) {
+        const v = L[Math.floor((c / cols) * L.length)], on = Math.round(v * rows);
+        for (let r = 0; r < rows; r++) {
+          cx.fillStyle = r < on ? (c / cols <= p ? lit : 'rgba(255,255,255,.55)') : 'rgba(255,255,255,.12)';
+          cx.fillRect(c * 5, H - (r + 1) * (H / rows) + 1, 3, H / rows - 2);
+        }
+      }
+    } else {
+      const n = L.length, bw = W / n;
+      for (let i = 0; i < n; i++) {
+        const h = Math.max(2, L[i] * H);
+        cx.fillStyle = i / n <= p ? lit : dim;
+        cx.beginPath(); cx.roundRect(i * bw + bw * 0.18, (H - h) / 2, bw * 0.64, h, 1.5); cx.fill();
+      }
+    }
+  }
+  requestAnimationFrame(draw);
 
   listen('mini-state', (e) => paint(e.payload || {}));
+  listen('mini-levels', (e) => {
+    const a = e.payload || [];
+    for (let i = 0; i < st.target.length; i++) st.target[i] = Math.min(1, (a[Math.floor((i / st.target.length) * a.length)] || 0) / 255);
+    st.lastLevels = performance.now();
+  });
+
+  // ------------------------------------------------ input
+  $('.disc-box').addEventListener('click', () => emit('mini-cmd', { action: 'playPause' }));
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-a]');
+    const b = e.target.closest('button[data-a]');
     if (b) emit('mini-cmd', { action: b.dataset.a });
   });
   $('.bar').addEventListener('click', (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     emit('mini-cmd', { action: 'seek', frac: (e.clientX - r.left) / r.width });
   });
-  // Double-click the cover or title: back to the main window.
-  $('.mini').addEventListener('dblclick', (e) => { if (!e.target.closest('button, .bar')) emit('mini-cmd', { action: 'focusMain' }); });
+  $('.info').addEventListener('dblclick', (e) => { if (!e.target.closest('button')) emit('mini-cmd', { action: 'focusMain' }); });
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space') { e.preventDefault(); emit('mini-cmd', { action: 'playPause' }); }
     else if (e.key === 'Escape') emit('mini-cmd', { action: 'close' });
