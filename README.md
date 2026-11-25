@@ -14,11 +14,6 @@
   <img src="docs/screenshot.png" width="860" alt="noxx screenshot">
 </p>
 
-## Why
-
-noxx is a rebuild of the riff music player from scratch in Rust with Tauri 2 instead of Electron.
-It uses about **200 MB** of memory in total, where the Electron version used about 1.4 GB.
-
 ## Features
 
 - **SoundCloud:** search, trending, your playlists and likes. Likes sync on launch and every 30 minutes, keep SoundCloud's order, and keep tracks you only hearted in noxx.
