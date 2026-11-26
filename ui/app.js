@@ -1362,9 +1362,17 @@ function showSearchHistory() {
     const item = e.target.closest('.sh-item');
     if (item) pickSearch(searchHist.list[+item.dataset.i]);
   });
-  $('.search-box').append(box);
+  // In the page body like the menus, not inside the search box: there it sat in the top bar's
+  // layer, and the main panel (a higher layer in the noxx look) covered it.
+  document.body.append(box);
+  placeSearchHistory(box);
   searchHist.box = box;
 }
+function placeSearchHistory(box) {
+  const r = $('.search-box').getBoundingClientRect(), z = uiZoom();
+  Object.assign(box.style, { position: 'fixed', left: `${r.left / z}px`, top: `${(r.bottom + 6) / z}px`, width: `${r.width / z}px`, right: 'auto', zIndex: '55' });
+}
+window.addEventListener('resize', () => { if (searchHist.box) placeSearchHistory(searchHist.box); });
 function pickSearch(q) {
   if (!q) return;
   hideSearchHistory();
